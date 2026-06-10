@@ -1,0 +1,452 @@
+:root {
+  color-scheme: dark;
+  --bg: #0f1720;
+  --panel: #16212d;
+  --panel-strong: #1d2c3d;
+  --panel-soft: #101922;
+  --text: #f6f7fb;
+  --muted: #94a9bd;
+  --accent: #ff6b35;
+  --accent-soft: #ff9a73;
+  --border: rgba(255, 255, 255, 0.1);
+  --shadow: rgba(6, 10, 16, 0.45);
+  --radius: 24px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100dvh;
+  font-family: "Aptos", "Segoe UI", sans-serif;
+  background:
+    radial-gradient(circle at top left, rgba(255, 107, 53, 0.24), transparent 28%),
+    radial-gradient(circle at bottom right, rgba(71, 131, 255, 0.18), transparent 24%),
+    linear-gradient(160deg, #091017 0%, #111c26 55%, #0c141c 100%);
+  color: var(--text);
+}
+
+button,
+input {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+  border: 0;
+}
+
+.app-shell {
+  width: min(1180px, calc(100% - 32px));
+  margin: 0 auto;
+  padding: 24px 0 40px;
+}
+
+.hero {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr);
+  gap: 20px;
+  margin-bottom: 20px;
+}
+
+.hero-copy,
+.hero-card,
+.panel {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: rgba(17, 27, 38, 0.88);
+  box-shadow: 0 24px 60px var(--shadow);
+  backdrop-filter: blur(18px);
+}
+
+.hero-copy {
+  padding: 34px;
+}
+
+.hero-card {
+  padding: 24px;
+  display: grid;
+  gap: 16px;
+  align-content: start;
+  background:
+    linear-gradient(180deg, rgba(255, 107, 53, 0.14), transparent 55%),
+    rgba(17, 27, 38, 0.94);
+}
+
+.eyebrow {
+  margin: 0 0 10px;
+  color: var(--accent-soft);
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+h1,
+h2,
+.song-name {
+  font-family: "Bahnschrift", "Arial Narrow", sans-serif;
+}
+
+h1 {
+  margin: 0;
+  max-width: 10ch;
+  font-size: clamp(2.8rem, 7vw, 5.5rem);
+  line-height: 0.95;
+  letter-spacing: -0.05em;
+}
+
+.hero-text,
+.battle-helper,
+.song-meta,
+.hero-stat-label,
+.metric-label {
+  color: var(--muted);
+}
+
+.hero-text {
+  max-width: 44ch;
+  margin: 18px 0 0;
+  font-size: 1.05rem;
+  line-height: 1.6;
+}
+
+.hero-actions,
+.utility-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.hero-actions {
+  margin-top: 28px;
+}
+
+.primary-button,
+.ghost-button,
+.upload-label,
+.delete-button,
+.song-card {
+  transition: transform 140ms ease, background-color 140ms ease, border-color 140ms ease;
+}
+
+.primary-button,
+.ghost-button,
+.upload-label {
+  min-height: 48px;
+  padding: 0 18px;
+  border-radius: 999px;
+  font-weight: 600;
+}
+
+.primary-button {
+  color: #111;
+  background: var(--accent);
+}
+
+.ghost-button,
+.upload-label,
+.delete-button {
+  color: var(--text);
+  background: transparent;
+  border: 1px solid var(--border);
+}
+
+.primary-button:hover,
+.ghost-button:hover,
+.upload-label:hover,
+.song-card:hover,
+.delete-button:hover {
+  transform: translateY(-1px);
+}
+
+.primary-button:active,
+.ghost-button:active,
+.upload-label:active,
+.song-card:active,
+.delete-button:active {
+  transform: scale(0.98);
+}
+
+.hero-stat {
+  padding: 14px 16px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.hero-stat strong {
+  display: block;
+  margin-top: 4px;
+  font-size: 1.1rem;
+}
+
+.main-grid {
+  display: grid;
+  grid-template-columns: 320px minmax(0, 1fr) 360px;
+  gap: 20px;
+}
+
+.panel {
+  padding: 24px;
+}
+
+.panel-heading h2 {
+  margin: 0;
+  font-size: 1.55rem;
+  line-height: 1.05;
+}
+
+.song-form {
+  display: grid;
+  gap: 14px;
+  margin-top: 22px;
+}
+
+.song-form label {
+  display: grid;
+  gap: 8px;
+}
+
+.song-form span {
+  font-size: 0.92rem;
+  color: var(--muted);
+}
+
+.song-form input {
+  min-height: 48px;
+  padding: 0 14px;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: var(--panel-soft);
+  color: var(--text);
+}
+
+.song-form input:focus {
+  outline: 2px solid rgba(255, 107, 53, 0.5);
+  outline-offset: 2px;
+}
+
+.full-width {
+  width: 100%;
+}
+
+.utility-actions {
+  margin-top: 16px;
+}
+
+#importInput {
+  display: none;
+}
+
+.battle-panel {
+  display: flex;
+  flex-direction: column;
+}
+
+.battle-helper {
+  margin: 12px 0 24px;
+  min-height: 24px;
+}
+
+.battle-stage {
+  flex: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 100px minmax(0, 1fr);
+  gap: 16px;
+  align-items: stretch;
+}
+
+.song-card {
+  display: grid;
+  gap: 10px;
+  padding: 24px;
+  min-height: 320px;
+  text-align: left;
+  border-radius: 24px;
+  border: 1px solid var(--border);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.04), transparent 32%),
+    var(--panel);
+}
+
+.left-card {
+  background:
+    linear-gradient(145deg, rgba(255, 107, 53, 0.16), transparent 45%),
+    var(--panel);
+}
+
+.right-card {
+  background:
+    linear-gradient(145deg, rgba(74, 144, 226, 0.16), transparent 45%),
+    var(--panel);
+}
+
+.choice-label {
+  display: inline-flex;
+  width: fit-content;
+  padding: 7px 12px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+
+.choice-title {
+  margin: auto 0 0;
+  font-size: clamp(1.8rem, 2vw, 2.4rem);
+  line-height: 1;
+  letter-spacing: -0.04em;
+}
+
+.choice-artist {
+  font-size: 1rem;
+  color: #d6dfeb;
+}
+
+.choice-meta {
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.battle-center {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  align-items: center;
+  justify-content: center;
+}
+
+.versus {
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border);
+  font-family: "Bahnschrift", "Arial Narrow", sans-serif;
+  font-size: 1rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.stats-strip {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin: 18px 0;
+}
+
+.stats-strip div {
+  padding: 14px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.metric-label {
+  display: block;
+  font-size: 0.8rem;
+  margin-bottom: 4px;
+}
+
+.leaderboard {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 12px;
+}
+
+.leaderboard-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.song-name {
+  margin: 0;
+  font-size: 1.08rem;
+}
+
+.song-meta {
+  margin: 4px 0 0;
+  font-size: 0.92rem;
+}
+
+.score-block {
+  display: flex;
+  flex-direction: column;
+  align-items: end;
+  gap: 10px;
+}
+
+.song-score {
+  font-family: "Bahnschrift", "Arial Narrow", sans-serif;
+  font-size: 1.2rem;
+}
+
+.delete-button {
+  padding: 8px 12px;
+  border-radius: 999px;
+}
+
+.empty-state {
+  padding: 18px;
+  border-radius: 18px;
+  border: 1px dashed rgba(255, 255, 255, 0.14);
+  color: var(--muted);
+}
+
+@media (max-width: 1080px) {
+  .main-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .battle-stage {
+    grid-template-columns: 1fr;
+  }
+
+  .battle-center {
+    flex-direction: row;
+  }
+
+  .song-card {
+    min-height: 220px;
+  }
+}
+
+@media (max-width: 780px) {
+  .app-shell {
+    width: min(100% - 20px, 1180px);
+    padding-top: 10px;
+  }
+
+  .hero {
+    grid-template-columns: 1fr;
+  }
+
+  .hero-copy,
+  .hero-card,
+  .panel {
+    padding: 20px;
+  }
+
+  h1 {
+    max-width: 12ch;
+    font-size: clamp(2.4rem, 14vw, 4rem);
+  }
+
+  .stats-strip {
+    grid-template-columns: 1fr;
+  }
+}
