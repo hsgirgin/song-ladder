@@ -58,7 +58,9 @@ class RankViewModel(
 
     fun skip() {
         viewModelScope.launch {
-            uiState.value.matchup?.left?.id?.let(rankingRepository::recordSkip)
+            uiState.value.matchup?.left?.id?.let { songId ->
+                rankingRepository.recordSkip(songId)
+            }
             previousMatchup.value = uiState.value.matchup
         }
     }

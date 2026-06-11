@@ -56,14 +56,15 @@ fun RankScreen(viewModel: RankViewModel) {
         }
 
         item {
-            if (uiState.matchup == null) {
+            val matchup = uiState.matchup
+            if (matchup == null) {
                 EmptyRankState()
             } else {
                 Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     SongBattleCard(
-                        song = uiState.matchup.left,
+                        song = matchup.left,
                         accent = MaterialTheme.colorScheme.primary,
-                        onChoose = { viewModel.rankWinner(uiState.matchup.left.id, uiState.matchup.right.id) }
+                        onChoose = { viewModel.rankWinner(matchup.left.id, matchup.right.id) }
                     )
                     Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                         Button(onClick = viewModel::skip) {
@@ -71,9 +72,9 @@ fun RankScreen(viewModel: RankViewModel) {
                         }
                     }
                     SongBattleCard(
-                        song = uiState.matchup.right,
+                        song = matchup.right,
                         accent = MaterialTheme.colorScheme.secondary,
-                        onChoose = { viewModel.rankWinner(uiState.matchup.right.id, uiState.matchup.left.id) }
+                        onChoose = { viewModel.rankWinner(matchup.right.id, matchup.left.id) }
                     )
                 }
             }

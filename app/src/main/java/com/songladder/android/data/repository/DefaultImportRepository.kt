@@ -88,8 +88,8 @@ class DefaultImportRepository(
         val payload = jsonPorter.decode(raw)
         val (songs, stats) = payload.toEntities()
         songDao.clearSongs()
-        songs.forEach(songDao::insertSong)
-        stats.forEach(songDao::insertRankingStats)
+        songs.forEach { song -> songDao.insertSong(song) }
+        stats.forEach { stat -> songDao.insertRankingStats(stat) }
         appStatsDao.upsert(AppStatsEntity(matchCount = payload.matchCount, skipCount = payload.skipCount))
         songs.size
     }

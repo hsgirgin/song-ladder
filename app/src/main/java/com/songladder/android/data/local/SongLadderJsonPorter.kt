@@ -9,7 +9,13 @@ class SongLadderJsonPorter {
         ignoreUnknownKeys = true
     }
 
-    fun encode(payload: ExportPayload): String = json.encodeToString(payload)
+    fun encode(payload: ExportPayload): String = json.encodeToString(
+        serializer = ExportPayload.serializer(),
+        value = payload
+    )
 
-    fun decode(raw: String): ExportPayload = json.decodeFromString(raw)
+    fun decode(raw: String): ExportPayload = json.decodeFromString(
+        deserializer = ExportPayload.serializer(),
+        string = raw
+    )
 }
