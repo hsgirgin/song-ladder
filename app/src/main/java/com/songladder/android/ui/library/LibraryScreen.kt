@@ -11,12 +11,18 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -92,22 +98,25 @@ fun LibraryScreen(viewModel: LibraryViewModel) {
                         "Use iTunes search to find tracks with artwork and add them straight into your ladder.",
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        OutlinedTextField(
-                            value = uiState.searchQuery,
-                            onValueChange = viewModel::updateSearchQuery,
-                            label = { Text("Song or artist") },
-                            modifier = Modifier.weight(1f)
-                        )
-                        Button(onClick = viewModel::searchItunes) {
-                            Text(if (uiState.isSearching) "..." else "Search")
-                        }
-                    }
+                    OutlinedTextField(
+                        value = uiState.searchQuery,
+                        onValueChange = viewModel::updateSearchQuery,
+                        label = { Text("Song or artist") },
+                        supportingText = {
+                            Text(
+                                if (uiState.isSearching) "Searching automatically..." else "Search starts automatically as you type."
+                            )
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    )
                     if (uiState.searchResults.isNotEmpty()) {
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             uiState.searchResults.forEach { track ->
                                 ItunesSearchResultRow(
                                     track = track,
+                                    isAdding = track.externalId in uiState.addingTrackIds,
+                                    isAdded = track.externalId in uiState.addedTrackIds,
+                                    isDuplicate = track.externalId in uiState.duplicateTrackIds,
                                     onAdd = { viewModel.addSearchResult(track) }
                                 )
                             }
@@ -174,9 +183,31 @@ fun LibraryScreen(viewModel: LibraryViewModel) {
 @Composable
 private fun ItunesSearchResultRow(
     track: MusicTrackCandidate,
+    isAdding: Boolean,
+    isAdded: Boolean,
+    isDuplicate: Boolean,
     onAdd: () -> Unit
 ) {
-    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+    val highlighted = isAdded || isDuplicate
+    Card(
+        colors = CardDefaults.cardColors(
+            containerColor = if (isAdded) {
+                MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+            } else if (isDuplicate) {
+                MaterialTheme.colorScheme.secondary.copy(alpha = 0.12f)
+            } else {
+                MaterialTheme.colorScheme.surfaceVariant
+            }
+        ),
+        border = if (highlighted) {
+            BorderStroke(
+                width = 1.dp,
+                color = if (isAdded) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondary
+            )
+        } else {
+            null
+        }
+    ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -190,9 +221,37 @@ private fun ItunesSearchResultRow(
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(track.title, style = MaterialTheme.typography.titleLarge)
                 Text("${track.artist} - ${track.album}", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (isAdded) {
+                    AssistChip(
+                        onClick = {},
+                        enabled = false,
+                        label = { Text("Added to ladder") },
+                        leadingIcon = {
+                            Icon(Icons.Rounded.CheckCircle, contentDescription = null)
+                        },
+                        shape = RoundedCornerShape(999.dp)
+                    )
+                } else if (isDuplicate) {
+                    AssistChip(
+                        onClick = {},
+                        enabled = false,
+                        label = { Text("Already in ladder") },
+                        shape = RoundedCornerShape(999.dp)
+                    )
+                }
             }
-            OutlinedButton(onClick = onAdd) {
-                Text("Add")
+            OutlinedButton(
+                onClick = onAdd,
+                enabled = !isAdding && !isAdded
+            ) {
+                Text(
+                    when {
+                        isAdding -> "Adding..."
+                        isAdded -> "Added"
+                        isDuplicate -> "Added"
+                        else -> "Add"
+                    }
+                )
             }
         }
     }

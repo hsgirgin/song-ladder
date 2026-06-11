@@ -2,7 +2,6 @@ package com.songladder.android.ui.library
 
 import android.content.ContentResolver
 import android.net.Uri
-import com.songladder.android.domain.model.AppStats
 import com.songladder.android.domain.model.MusicTrackCandidate
 import com.songladder.android.domain.model.MusicSourceType
 import com.songladder.android.domain.model.Song
@@ -14,7 +13,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
@@ -60,12 +59,29 @@ class LibraryViewModelTest {
         )
 
         viewModel.updateSearchQuery("Dreams")
-        viewModel.searchItunes()
+        advanceTimeBy(401)
         advanceUntilIdle()
 
         assertEquals(1, viewModel.uiState.value.searchResults.size)
         assertEquals("Found 1 tracks.", viewModel.uiState.value.statusMessage)
         assertTrue(!viewModel.uiState.value.isSearching)
+    }
+
+    @Test
+    fun `short queries do not trigger search`() = runTest {
+        val musicSourceClient = FakeMusicSourceClient(emptyList())
+        val viewModel = LibraryViewModel(
+            songRepository = FakeSongRepository(),
+            importRepository = FakeImportRepository(),
+            musicSourceClient = musicSourceClient
+        )
+
+        viewModel.updateSearchQuery("a")
+        advanceTimeBy(401)
+        advanceUntilIdle()
+
+        assertEquals(0, musicSourceClient.searchCallCount)
+        assertEquals("Keep typing to search iTunes.", viewModel.uiState.value.statusMessage)
     }
 
     @Test
@@ -89,6 +105,7 @@ class LibraryViewModelTest {
 
         assertEquals(1, fakeImportRepository.imported.size)
         assertEquals("Added Nights to your ladder.", viewModel.uiState.value.statusMessage)
+        assertTrue("1" in viewModel.uiState.value.addedTrackIds)
     }
 }
 
@@ -122,5 +139,10 @@ private class FakeImportRepository : ImportRepository {
 private class FakeMusicSourceClient(
     private val results: List<MusicTrackCandidate>
 ) : MusicSourceClient {
-    override suspend fun searchTracks(query: String): Result<List<MusicTrackCandidate>> = Result.success(results)
+    var searchCallCount: Int = 0
+
+    override suspend fun searchTracks(query: String): Result<List<MusicTrackCandidate>> {
+        searchCallCount += 1
+        return Result.success(results)
+    }
 }

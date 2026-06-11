@@ -102,7 +102,9 @@ class ItunesMusicSourceClient(
                 title = title,
                 artist = artist,
                 album = track.collectionName?.trim().orEmpty(),
-                artworkUrl = track.artworkUrl100?.takeIf { it.isNotBlank() },
+                artworkUrl = track.artworkUrl100
+                    ?.takeIf { it.isNotBlank() }
+                    ?.replace("100x100", "600x600"),
                 sourceType = MusicSourceType.ITUNES
             )
         }

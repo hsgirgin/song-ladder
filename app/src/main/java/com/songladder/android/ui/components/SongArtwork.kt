@@ -36,11 +36,18 @@ fun SongArtwork(
             )
         } else {
             AsyncImage(
-                model = artworkUrl,
+                model = artworkUrl.upgradeArtworkUrl(),
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize()
             )
         }
+    }
+}
+
+private fun String.upgradeArtworkUrl(): String {
+    return replace(Regex("""/\d+x\d+bb(-\d+)?\.""")) { match ->
+        val suffix = match.groupValues[1]
+        "/1200x1200bb$suffix."
     }
 }
