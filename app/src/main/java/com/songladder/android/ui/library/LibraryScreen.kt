@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
@@ -22,7 +23,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -32,6 +32,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.songladder.android.domain.model.MusicTrackCandidate
+import com.songladder.android.ui.components.SongArtwork
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -41,8 +42,6 @@ fun LibraryScreen(viewModel: LibraryViewModel) {
     var title by remember { mutableStateOf("") }
     var artist by remember { mutableStateOf("") }
     var album by remember { mutableStateOf("") }
-    var spotifyTokenDraft by remember(uiState.spotifyToken) { mutableStateOf(uiState.spotifyToken) }
-    val selectedSpotifyTracks = remember { mutableStateListOf<String>() }
 
     val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let { viewModel.importJson(contentResolver = context.contentResolver, uri = it) }
@@ -60,7 +59,7 @@ fun LibraryScreen(viewModel: LibraryViewModel) {
         item {
             Spacer(modifier = Modifier.height(16.dp))
             Text("Library", style = MaterialTheme.typography.headlineLarge)
-            Text("Build your pool from scratch, starter packs, or Spotify.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("Build your pool from scratch, starter packs, or iTunes search.", color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
 
         item {
@@ -88,55 +87,29 @@ fun LibraryScreen(viewModel: LibraryViewModel) {
         item {
             Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text("Spotify import", style = MaterialTheme.typography.titleLarge)
+                    Text("Search songs", style = MaterialTheme.typography.titleLarge)
                     Text(
-                        "Paste a Spotify Web API bearer token, search tracks, then import selected results into your local ladder.",
+                        "Use iTunes search to find tracks with artwork and add them straight into your ladder.",
                         color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    OutlinedTextField(
-                        value = spotifyTokenDraft,
-                        onValueChange = { spotifyTokenDraft = it },
-                        label = { Text("Spotify token") },
-                        modifier = Modifier.fillMaxWidth()
                     )
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         OutlinedTextField(
-                            value = uiState.spotifyQuery,
-                            onValueChange = viewModel::updateSpotifyQuery,
-                            label = { Text("Search tracks") },
+                            value = uiState.searchQuery,
+                            onValueChange = viewModel::updateSearchQuery,
+                            label = { Text("Song or artist") },
                             modifier = Modifier.weight(1f)
                         )
-                        Button(onClick = {
-                            viewModel.saveSpotifyToken(spotifyTokenDraft)
-                            viewModel.searchSpotify(spotifyTokenDraft)
-                        }) {
-                            Text("Search")
+                        Button(onClick = viewModel::searchItunes) {
+                            Text(if (uiState.isSearching) "..." else "Search")
                         }
                     }
-                    if (uiState.spotifyResults.isNotEmpty()) {
+                    if (uiState.searchResults.isNotEmpty()) {
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            uiState.spotifyResults.forEach { track ->
-                                SpotifySearchRow(
+                            uiState.searchResults.forEach { track ->
+                                ItunesSearchResultRow(
                                     track = track,
-                                    selected = track.externalId in selectedSpotifyTracks,
-                                    onToggle = {
-                                        if (track.externalId in selectedSpotifyTracks) {
-                                            selectedSpotifyTracks.remove(track.externalId)
-                                        } else {
-                                            selectedSpotifyTracks.add(track.externalId)
-                                        }
-                                    }
+                                    onAdd = { viewModel.addSearchResult(track) }
                                 )
-                            }
-                            OutlinedButton(
-                                onClick = {
-                                    val selection = uiState.spotifyResults.filter { it.externalId in selectedSpotifyTracks }
-                                    viewModel.importSpotifySelection(selection)
-                                    selectedSpotifyTracks.clear()
-                                },
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Text("Import selected tracks")
                             }
                         }
                     }
@@ -199,24 +172,27 @@ fun LibraryScreen(viewModel: LibraryViewModel) {
 }
 
 @Composable
-private fun SpotifySearchRow(
+private fun ItunesSearchResultRow(
     track: MusicTrackCandidate,
-    selected: Boolean,
-    onToggle: () -> Unit
+    onAdd: () -> Unit
 ) {
     Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(14.dp),
-            horizontalArrangement = Arrangement.SpaceBetween
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Column(modifier = Modifier.weight(1f)) {
+            SongArtwork(
+                artworkUrl = track.artworkUrl,
+                modifier = Modifier.size(72.dp)
+            )
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(track.title, style = MaterialTheme.typography.titleLarge)
                 Text("${track.artist} - ${track.album}", color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            OutlinedButton(onClick = onToggle) {
-                Text(if (selected) "Selected" else "Select")
+            OutlinedButton(onClick = onAdd) {
+                Text("Add")
             }
         }
     }

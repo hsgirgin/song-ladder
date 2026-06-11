@@ -2,7 +2,6 @@ package com.songladder.android.data.spotify
 
 import com.songladder.android.BuildConfig
 import com.songladder.android.domain.model.MusicTrackCandidate
-import com.songladder.android.domain.repository.MusicSourceClient
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerialName
@@ -14,10 +13,10 @@ import okhttp3.Request
 
 class SpotifyMusicSourceClient(
     private val httpClient: OkHttpClient
-) : MusicSourceClient {
+) {
     private val json = Json { ignoreUnknownKeys = true }
 
-    override suspend fun searchTracks(query: String, authToken: String): Result<List<MusicTrackCandidate>> {
+    suspend fun searchTracks(query: String, authToken: String): Result<List<MusicTrackCandidate>> {
         return withContext(Dispatchers.IO) {
             runCatching {
                 require(query.isNotBlank()) { "Enter a search query." }

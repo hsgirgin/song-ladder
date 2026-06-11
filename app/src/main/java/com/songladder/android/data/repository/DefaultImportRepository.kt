@@ -63,8 +63,10 @@ class DefaultImportRepository(
                 externalId = candidate.externalId
             )
             val entity = input.toSongEntity()
-            songDao.insertSong(entity)
-            songDao.insertRankingStats(RankingStatsEntity(songId = entity.id))
+            songDao.insertSongWithStats(
+                song = entity,
+                stats = RankingStatsEntity(songId = entity.id)
+            )
             existingKeys += key
             inserted += 1
         }
@@ -88,8 +90,9 @@ class DefaultImportRepository(
         val payload = jsonPorter.decode(raw)
         val (songs, stats) = payload.toEntities()
         songDao.clearSongs()
-        songs.forEach { song -> songDao.insertSong(song) }
-        stats.forEach { stat -> songDao.insertRankingStats(stat) }
+        songs.zip(stats).forEach { (song, stat) ->
+            songDao.insertSongWithStats(song = song, stats = stat)
+        }
         appStatsDao.upsert(AppStatsEntity(matchCount = payload.matchCount, skipCount = payload.skipCount))
         songs.size
     }

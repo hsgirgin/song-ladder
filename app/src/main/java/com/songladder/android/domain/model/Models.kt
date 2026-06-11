@@ -8,6 +8,7 @@ const val K_FACTOR = 32
 enum class MusicSourceType {
     MANUAL,
     SAMPLE,
+    ITUNES,
     SPOTIFY,
     IMPORT
 }
@@ -53,7 +54,7 @@ data class MusicTrackCandidate(
     val artist: String,
     val album: String = "",
     val artworkUrl: String? = null,
-    val sourceType: MusicSourceType = MusicSourceType.SPOTIFY
+    val sourceType: MusicSourceType = MusicSourceType.ITUNES
 )
 
 @Serializable

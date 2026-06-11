@@ -4,7 +4,6 @@ import android.content.ContentResolver
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.songladder.android.data.preferences.SessionPreferencesRepository
 import com.songladder.android.domain.model.MusicTrackCandidate
 import com.songladder.android.domain.model.Song
 import com.songladder.android.domain.model.SongInput
@@ -21,27 +20,24 @@ import kotlinx.coroutines.launch
 
 data class LibraryUiState(
     val songs: List<Song> = emptyList(),
-    val spotifyToken: String = "",
-    val spotifyQuery: String = "",
-    val spotifyResults: List<MusicTrackCandidate> = emptyList(),
+    val searchQuery: String = "",
+    val searchResults: List<MusicTrackCandidate> = emptyList(),
     val statusMessage: String = "",
-    val isLoading: Boolean = false
+    val isSearching: Boolean = false
 )
 
 class LibraryViewModel(
     private val songRepository: SongRepository,
     private val importRepository: ImportRepository,
-    private val musicSourceClient: MusicSourceClient,
-    private val sessionPreferencesRepository: SessionPreferencesRepository
+    private val musicSourceClient: MusicSourceClient
 ) : ViewModel() {
     private val mutableState = MutableStateFlow(LibraryUiState())
 
     val uiState: StateFlow<LibraryUiState> = combine(
         songRepository.observeSongs(),
-        sessionPreferencesRepository.spotifyToken,
         mutableState
-    ) { songs, token, state ->
-        state.copy(songs = songs, spotifyToken = token)
+    ) { songs, state ->
+        state.copy(songs = songs)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), LibraryUiState())
 
     fun addSong(title: String, artist: String, album: String) {
@@ -77,48 +73,61 @@ class LibraryViewModel(
         }
     }
 
-    fun saveSpotifyToken(token: String) {
+    fun updateSearchQuery(query: String) {
+        mutableState.update { it.copy(searchQuery = query) }
+    }
+
+    fun searchItunes() {
         viewModelScope.launch {
-            sessionPreferencesRepository.saveSpotifyToken(token)
-            mutableState.update { it.copy(statusMessage = "Spotify token saved.") }
+            val query = uiState.value.searchQuery
+            mutableState.update {
+                it.copy(
+                    isSearching = true,
+                    searchResults = emptyList(),
+                    statusMessage = "Searching iTunes..."
+                )
+            }
+
+            try {
+                musicSourceClient.searchTracks(query)
+                    .onSuccess { results ->
+                        mutableState.update {
+                            it.copy(
+                                searchResults = results,
+                                statusMessage = if (results.isEmpty()) {
+                                    "No songs found for \"$query\"."
+                                } else {
+                                    "Found ${results.size} tracks."
+                                }
+                            )
+                        }
+                    }
+                    .onFailure { error ->
+                        mutableState.update {
+                            it.copy(
+                                statusMessage = error.message ?: "iTunes search failed."
+                            )
+                        }
+                    }
+            } finally {
+                mutableState.update { it.copy(isSearching = false) }
+            }
         }
     }
 
-    fun updateSpotifyQuery(query: String) {
-        mutableState.update { it.copy(spotifyQuery = query) }
-    }
-
-    fun searchSpotify(tokenOverride: String? = null) {
+    fun addSearchResult(candidate: MusicTrackCandidate) {
         viewModelScope.launch {
-            val query = uiState.value.spotifyQuery
-            val token = tokenOverride ?: uiState.value.spotifyToken
-            mutableState.update { it.copy(isLoading = true, statusMessage = "Searching Spotify...") }
-            musicSourceClient.searchTracks(query, token)
-                .onSuccess { results ->
-                    mutableState.update {
-                        it.copy(
-                            spotifyResults = results,
-                            isLoading = false,
-                            statusMessage = "Found ${results.size} tracks."
-                        )
-                    }
-                }
-                .onFailure { error ->
-                    mutableState.update {
-                        it.copy(
-                            isLoading = false,
-                            statusMessage = error.message ?: "Spotify search failed."
-                        )
-                    }
-                }
-        }
-    }
-
-    fun importSpotifySelection(selection: List<MusicTrackCandidate>) {
-        viewModelScope.launch {
-            importRepository.importTracks(selection, "Spotify import")
+            importRepository.importTracks(listOf(candidate), "iTunes search")
                 .onSuccess { count ->
-                    mutableState.update { it.copy(statusMessage = "Imported $count tracks from Spotify.") }
+                    mutableState.update {
+                        it.copy(
+                            statusMessage = if (count > 0) {
+                                "Added ${candidate.title} to your ladder."
+                            } else {
+                                "${candidate.title} is already in your ladder."
+                            }
+                        )
+                    }
                 }
                 .onFailure { error ->
                     mutableState.update { it.copy(statusMessage = error.message ?: "Import failed.") }

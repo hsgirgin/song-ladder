@@ -20,8 +20,7 @@ class SongLadderViewModelFactory(
                 LibraryViewModel(
                     songRepository = container.songRepository,
                     importRepository = container.importRepository,
-                    musicSourceClient = container.musicSourceClient,
-                    sessionPreferencesRepository = container.sessionPreferencesRepository
+                    musicSourceClient = container.musicSourceClient
                 ) as T
             }
             modelClass.isAssignableFrom(LeaderboardViewModel::class.java) -> {

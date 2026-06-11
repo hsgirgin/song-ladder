@@ -26,8 +26,10 @@ class DefaultSongRepository(
         require(input.title.isNotBlank()) { "Song title is required." }
         require(input.artist.isNotBlank()) { "Artist is required." }
         val songEntity = input.toSongEntity()
-        songDao.insertSong(songEntity)
-        songDao.insertRankingStats(RankingStatsEntity(songId = songEntity.id))
+        songDao.insertSongWithStats(
+            song = songEntity,
+            stats = RankingStatsEntity(songId = songEntity.id)
+        )
     }
 
     override suspend fun removeSong(songId: String) {

@@ -28,6 +28,12 @@ interface SongDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertRankingStats(stats: RankingStatsEntity)
 
+    @Transaction
+    suspend fun insertSongWithStats(song: SongEntity, stats: RankingStatsEntity) {
+        insertSong(song)
+        insertRankingStats(stats)
+    }
+
     @Update
     suspend fun updateRankingStats(stats: RankingStatsEntity)
 

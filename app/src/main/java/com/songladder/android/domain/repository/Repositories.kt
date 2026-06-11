@@ -29,5 +29,5 @@ interface ImportRepository {
 }
 
 interface MusicSourceClient {
-    suspend fun searchTracks(query: String, authToken: String): Result<List<MusicTrackCandidate>>
+    suspend fun searchTracks(query: String): Result<List<MusicTrackCandidate>>
 }
