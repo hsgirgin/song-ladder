@@ -1,0 +1,66 @@
+package com.songladder.android.ui.leaderboard
+
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+
+@Composable
+fun LeaderboardScreen(viewModel: LeaderboardViewModel) {
+    val songs by viewModel.songs.collectAsStateWithLifecycle()
+
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 20.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        item {
+            Spacer(modifier = Modifier.height(16.dp))
+            Text("Leaderboard", style = MaterialTheme.typography.headlineLarge)
+            Text("Track rating movement and list health at a glance.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+
+        if (songs.isEmpty()) {
+            item {
+                Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                    Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("No songs ranked yet", style = MaterialTheme.typography.titleLarge)
+                        Text("Add a few tracks or import a playlist to generate your first standings.")
+                    }
+                }
+            }
+        } else {
+            itemsIndexed(songs, key = { _, song -> song.id }) { index, song ->
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                ) {
+                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text("#${index + 1} ${song.title}", style = MaterialTheme.typography.titleLarge)
+                        Text("${song.artist} - ${song.album.ifBlank { "Single" }}", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("Rating ${song.rating} - ${song.wins}W ${song.losses}L - ${song.skips} skips")
+                    }
+                }
+            }
+        }
+
+        item {
+            Spacer(modifier = Modifier.height(24.dp))
+        }
+    }
+}

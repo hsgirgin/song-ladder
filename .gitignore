@@ -1,1 +1,9 @@
 work/
+.gradle/
+build/
+local.properties
+captures/
+.idea/
+*.iml
+app/build/
+.tmp-chrome-profile/
