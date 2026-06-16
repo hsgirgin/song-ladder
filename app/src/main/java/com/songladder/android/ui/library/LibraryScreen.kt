@@ -2,21 +2,25 @@ package com.songladder.android.ui.library
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -26,25 +30,39 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.songladder.android.domain.model.MusicTrackCandidate
+import com.songladder.android.domain.model.Song
 import com.songladder.android.ui.components.SongArtwork
+
+private enum class LibraryTab(val label: String) {
+    Search("Search"),
+    Add("Add"),
+    Manage("Manage")
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LibraryScreen(viewModel: LibraryViewModel) {
     val context = LocalContext.current
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    var selectedTab by rememberSaveable { mutableStateOf(LibraryTab.Search) }
     var title by remember { mutableStateOf("") }
     var artist by remember { mutableStateOf("") }
     var album by remember { mutableStateOf("") }
@@ -56,126 +74,295 @@ fun LibraryScreen(viewModel: LibraryViewModel) {
         uri?.let { viewModel.exportJson(contentResolver = context.contentResolver, uri = it) }
     }
 
-    LazyColumn(
+    Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(horizontal = 20.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+            .padding(horizontal = 20.dp)
+            .padding(
+                top = WindowInsets.systemBars.asPaddingValues().calculateTopPadding() + 12.dp,
+                bottom = 12.dp
+            ),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        item {
-            Spacer(modifier = Modifier.height(16.dp))
-            Text("Library", style = MaterialTheme.typography.headlineLarge)
-            Text("Build your pool from scratch, starter packs, or iTunes search.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Surface(
+            color = MaterialTheme.colorScheme.surface,
+            shape = RoundedCornerShape(28.dp)
+        ) {
+            Column(
+                modifier = Modifier.padding(horizontal = 18.dp, vertical = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Text("Library", style = MaterialTheme.typography.headlineMedium)
+                Text(
+                    "Search first, add fast, and manage the ladder without digging through one long screen.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
         }
 
-        item {
-            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text("Add a song", style = MaterialTheme.typography.titleLarge)
-                    OutlinedTextField(value = title, onValueChange = { title = it }, label = { Text("Title") }, modifier = Modifier.fillMaxWidth())
-                    OutlinedTextField(value = artist, onValueChange = { artist = it }, label = { Text("Artist") }, modifier = Modifier.fillMaxWidth())
-                    OutlinedTextField(value = album, onValueChange = { album = it }, label = { Text("Album") }, modifier = Modifier.fillMaxWidth())
-                    Button(
-                        onClick = {
-                            viewModel.addSong(title, artist, album)
-                            title = ""
-                            artist = ""
-                            album = ""
-                        },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text("Add to ladder")
-                    }
+        LibraryReadinessBanner(songCount = uiState.songs.size)
+
+        if (uiState.statusMessage.isNotBlank() && !uiState.isSearchMessage()) {
+            LibraryStatusBanner(message = uiState.statusMessage)
+        }
+
+        TabRow(selectedTabIndex = selectedTab.ordinal) {
+            LibraryTab.entries.forEach { tab ->
+                Tab(
+                    selected = selectedTab == tab,
+                    onClick = { selectedTab = tab },
+                    text = { Text(tab.label) }
+                )
+            }
+        }
+
+        Box(modifier = Modifier.weight(1f)) {
+            when (selectedTab) {
+                LibraryTab.Search -> SearchTabContent(
+                    uiState = uiState,
+                    onSearchQueryChange = viewModel::updateSearchQuery,
+                    onAddTrack = viewModel::addSearchResult
+                )
+
+                LibraryTab.Add -> AddTabContent(
+                    title = title,
+                    artist = artist,
+                    album = album,
+                    onTitleChange = { title = it },
+                    onArtistChange = { artist = it },
+                    onAlbumChange = { album = it },
+                    onAddSong = {
+                        viewModel.addSong(title, artist, album)
+                        title = ""
+                        artist = ""
+                        album = ""
+                    },
+                    onLoadSamplePack = viewModel::seedSampleSongs
+                )
+
+                LibraryTab.Manage -> ManageTabContent(
+                    songs = uiState.songs,
+                    onImportJson = { importLauncher.launch(arrayOf("application/json")) },
+                    onExportJson = { exportLauncher.launch("song-ladder-export.json") },
+                    onResetLibrary = viewModel::resetLibrary,
+                    onRemoveSong = viewModel::removeSong
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun LibraryStatusBanner(message: String) {
+    Surface(
+        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+        shape = RoundedCornerShape(20.dp)
+    ) {
+        Text(
+            text = message,
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+            color = MaterialTheme.colorScheme.primary,
+            fontWeight = FontWeight.SemiBold
+        )
+    }
+}
+
+@Composable
+private fun SearchTabContent(
+    uiState: LibraryUiState,
+    onSearchQueryChange: (String) -> Unit,
+    onAddTrack: (MusicTrackCandidate) -> Unit
+) {
+    Column(
+        modifier = Modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("Search songs", style = MaterialTheme.typography.titleLarge)
+                OutlinedTextField(
+                    value = uiState.searchQuery,
+                    onValueChange = onSearchQueryChange,
+                    label = { Text("Song or artist") },
+                    supportingText = {
+                        Text(
+                            if (uiState.isSearching) "Searching automatically..." else "Search starts automatically as you type."
+                        )
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                )
+                val searchStatusMessage = uiState.statusMessage.takeIf { uiState.isSearchMessage() }
+                if (!searchStatusMessage.isNullOrBlank()) {
+                    Text(
+                        text = searchStatusMessage,
+                        color = MaterialTheme.colorScheme.primary,
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.SemiBold
+                    )
                 }
             }
         }
 
-        item {
-            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text("Search songs", style = MaterialTheme.typography.titleLarge)
+        if (uiState.searchResults.isEmpty()) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+            ) {
+                Column(
+                    modifier = Modifier.padding(18.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text("Ready to search", style = MaterialTheme.typography.titleMedium)
                     Text(
-                        "Use iTunes search to find tracks with artwork and add them straight into your ladder.",
+                        "Type a song, artist, or album and results will appear here.",
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    OutlinedTextField(
-                        value = uiState.searchQuery,
-                        onValueChange = viewModel::updateSearchQuery,
-                        label = { Text("Song or artist") },
-                        supportingText = {
-                            Text(
-                                if (uiState.isSearching) "Searching automatically..." else "Search starts automatically as you type."
-                            )
-                        },
-                        modifier = Modifier.fillMaxWidth()
+                }
+            }
+        } else {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(uiState.searchResults, key = { it.externalId }) { track ->
+                    ItunesSearchResultRow(
+                        track = track,
+                        isAdding = track.externalId in uiState.addingTrackIds,
+                        isAdded = track.externalId in uiState.addedTrackIds,
+                        isDuplicate = track.externalId in uiState.duplicateTrackIds,
+                        onAdd = { onAddTrack(track) }
                     )
-                    if (uiState.searchResults.isNotEmpty()) {
-                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            uiState.searchResults.forEach { track ->
-                                ItunesSearchResultRow(
-                                    track = track,
-                                    isAdding = track.externalId in uiState.addingTrackIds,
-                                    isAdded = track.externalId in uiState.addedTrackIds,
-                                    isDuplicate = track.externalId in uiState.duplicateTrackIds,
-                                    onAdd = { viewModel.addSearchResult(track) }
-                                )
-                            }
-                        }
-                    }
+                }
+                item {
+                    Spacer(modifier = Modifier.height(8.dp))
                 }
             }
         }
+    }
+}
 
-        item {
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                OutlinedButton(onClick = viewModel::seedSampleSongs, modifier = Modifier.weight(1f)) {
+@Composable
+private fun AddTabContent(
+    title: String,
+    artist: String,
+    album: String,
+    onTitleChange: (String) -> Unit,
+    onArtistChange: (String) -> Unit,
+    onAlbumChange: (String) -> Unit,
+    onAddSong: () -> Unit,
+    onLoadSamplePack: () -> Unit
+) {
+    Column(
+        modifier = Modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("Quick start your ladder", style = MaterialTheme.typography.titleLarge)
+                Text(
+                    "Add one manually or drop in a sample pack so you can get to ranking fast.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                OutlinedTextField(value = title, onValueChange = onTitleChange, label = { Text("Title") }, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(value = artist, onValueChange = onArtistChange, label = { Text("Artist") }, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(value = album, onValueChange = onAlbumChange, label = { Text("Album") }, modifier = Modifier.fillMaxWidth())
+                Button(onClick = onAddSong, modifier = Modifier.fillMaxWidth()) {
+                    Text("Add to ladder")
+                }
+                OutlinedButton(onClick = onLoadSamplePack, modifier = Modifier.fillMaxWidth()) {
                     Text("Load sample pack")
                 }
-                OutlinedButton(onClick = { importLauncher.launch(arrayOf("application/json")) }, modifier = Modifier.weight(1f)) {
-                    Text("Import JSON")
+            }
+        }
+    }
+}
+
+@Composable
+private fun ManageTabContent(
+    songs: List<Song>,
+    onImportJson: () -> Unit,
+    onExportJson: () -> Unit,
+    onResetLibrary: () -> Unit,
+    onRemoveSong: (String) -> Unit
+) {
+    Column(
+        modifier = Modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Text("Current pool", style = MaterialTheme.typography.titleLarge)
+
+        if (songs.isEmpty()) {
+            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("No songs yet", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        "Search for songs or add one manually to start your ladder.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        } else {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(songs, key = { it.id }) { song ->
+                    LibrarySongRow(song = song, onRemoveSong = { onRemoveSong(song.id) })
+                }
+                item {
+                    Spacer(modifier = Modifier.height(8.dp))
                 }
             }
         }
 
-        item {
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                OutlinedButton(
-                    onClick = { exportLauncher.launch("song-ladder-export.json") },
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Text("Export JSON")
+        Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("Manage library", style = MaterialTheme.typography.titleLarge)
+                Text(
+                    "Backup, restore, or reset after you have the current pool where you want it.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    OutlinedButton(onClick = onImportJson, modifier = Modifier.weight(1f)) {
+                        Text("Import JSON")
+                    }
+                    OutlinedButton(onClick = onExportJson, modifier = Modifier.weight(1f)) {
+                        Text("Export JSON")
+                    }
                 }
-                OutlinedButton(onClick = viewModel::resetLibrary, modifier = Modifier.weight(1f)) {
+                OutlinedButton(onClick = onResetLibrary, modifier = Modifier.fillMaxWidth()) {
                     Text("Reset library")
                 }
             }
         }
+    }
+}
 
-        item {
-            if (uiState.statusMessage.isNotBlank()) {
-                Text(uiState.statusMessage, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
+@Composable
+private fun LibrarySongRow(song: Song, onRemoveSong: () -> Unit) {
+    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            SongArtwork(
+                artworkUrl = song.artworkUrl,
+                modifier = Modifier.size(64.dp)
+            )
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Text(song.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text("${song.artist} - ${song.album.ifBlank { "Single" }}", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Rating ${song.rating} - ${song.wins}W ${song.losses}L")
             }
-        }
-
-        item {
-            Text("Current pool", style = MaterialTheme.typography.titleLarge)
-        }
-
-        items(uiState.songs, key = { it.id }) { song ->
-            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(song.title, style = MaterialTheme.typography.titleLarge)
-                    Text("${song.artist} - ${song.album.ifBlank { "Single" }}", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text("Rating ${song.rating} - ${song.wins}W ${song.losses}L - ${song.sourceType.name.lowercase()}")
-                    OutlinedButton(onClick = { viewModel.removeSong(song.id) }) {
-                        Text("Remove")
-                    }
-                }
+            OutlinedButton(onClick = onRemoveSong) {
+                Text("Remove")
             }
-        }
-
-        item {
-            Spacer(modifier = Modifier.height(24.dp))
         }
     }
 }
@@ -211,16 +398,37 @@ private fun ItunesSearchResultRow(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(14.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
             SongArtwork(
                 artworkUrl = track.artworkUrl,
-                modifier = Modifier.size(72.dp)
+                modifier = Modifier.size(56.dp)
             )
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(track.title, style = MaterialTheme.typography.titleLarge)
-                Text("${track.artist} - ${track.album}", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(
+                    text = track.title,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = track.artist,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                if (track.album.isNotBlank()) {
+                    Text(
+                        text = track.album,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodySmall,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
                 if (isAdded) {
                     AssistChip(
                         onClick = {},
@@ -254,5 +462,40 @@ private fun ItunesSearchResultRow(
                 )
             }
         }
+    }
+}
+
+private fun LibraryUiState.isSearchMessage(): Boolean {
+    return isSearching ||
+        statusMessage.startsWith("Found ") ||
+        statusMessage.startsWith("No songs found") ||
+        statusMessage.startsWith("Keep typing") ||
+        statusMessage.startsWith("Searching iTunes") ||
+        statusMessage.startsWith("iTunes search failed")
+}
+
+@Composable
+private fun LibraryReadinessBanner(songCount: Int) {
+    val ready = songCount >= 2
+    val message = if (ready) {
+        "Ready to rank. $songCount songs in your ladder."
+    } else {
+        "Add ${2 - songCount} more song${if (songCount == 1) "" else "s"} to start ranking."
+    }
+
+    Surface(
+        color = if (ready) {
+            MaterialTheme.colorScheme.secondary.copy(alpha = 0.12f)
+        } else {
+            MaterialTheme.colorScheme.surface
+        },
+        shape = RoundedCornerShape(20.dp)
+    ) {
+        Text(
+            text = message,
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+            color = if (ready) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.onSurface,
+            fontWeight = FontWeight.SemiBold
+        )
     }
 }

@@ -8,11 +8,14 @@ import com.songladder.android.domain.model.Matchup
 import com.songladder.android.domain.model.Song
 import com.songladder.android.domain.repository.RankingRepository
 import com.songladder.android.domain.repository.SongRepository
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 data class RankUiState(
@@ -20,7 +23,15 @@ data class RankUiState(
     val stats: AppStats = AppStats(),
     val matchup: Matchup? = null,
     val message: String = "",
-    val isReady: Boolean = false
+    val isReady: Boolean = false,
+    val sessionFeedback: String? = null,
+    val streakCount: Int = 0
+)
+
+private data class RankSessionState(
+    val previousMatchup: Matchup? = null,
+    val sessionFeedback: String? = null,
+    val streakCount: Int = 0
 )
 
 class RankViewModel(
@@ -28,40 +39,70 @@ class RankViewModel(
     private val rankingRepository: RankingRepository
 ) : ViewModel() {
     private val matchupEngine = EloMatchupEngine()
-    private val previousMatchup = MutableStateFlow<Matchup?>(null)
+    private val sessionState = MutableStateFlow(RankSessionState())
+    private var clearFeedbackJob: Job? = null
 
     val uiState: StateFlow<RankUiState> = combine(
         songRepository.observeSongs(),
         rankingRepository.observeStats(),
-        previousMatchup
-    ) { songs, stats, previous ->
-        val matchup = matchupEngine.pickMatchup(songs, previous)
+        sessionState
+    ) { songs, stats, session ->
+        val matchup = matchupEngine.pickMatchup(songs, session.previousMatchup)
         RankUiState(
             songs = songs,
             stats = stats,
             matchup = matchup,
-            message = if (songs.size < 2) {
-                "Import or add at least two songs to start ranking."
-            } else {
-                "Choose the better track and keep the ladder moving."
+            message = when {
+                songs.size < 2 -> "Add at least two songs to start ranking."
+                session.streakCount >= 3 -> "Hot streak. Keep the ladder moving."
+                else -> "Choose the better track and keep momentum up."
             },
-            isReady = songs.size >= 2
+            isReady = songs.size >= 2,
+            sessionFeedback = session.sessionFeedback,
+            streakCount = session.streakCount
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), RankUiState())
 
     fun rankWinner(winnerId: String, loserId: String) {
         viewModelScope.launch {
+            val currentMatchup = uiState.value.matchup ?: return@launch
+            val winnerTitle = sequenceOf(currentMatchup.left, currentMatchup.right)
+                .firstOrNull { it.id == winnerId }
+                ?.title
+                ?: "Song picked"
+
             rankingRepository.recordBattle(winnerId, loserId)
-            previousMatchup.value = uiState.value.matchup
+            sessionState.update {
+                it.copy(
+                    previousMatchup = currentMatchup,
+                    sessionFeedback = "Picked $winnerTitle",
+                    streakCount = it.streakCount + 1
+                )
+            }
+            scheduleFeedbackClear()
         }
     }
 
     fun skip() {
         viewModelScope.launch {
-            uiState.value.matchup?.left?.id?.let { songId ->
-                rankingRepository.recordSkip(songId)
+            val currentMatchup = uiState.value.matchup ?: return@launch
+            rankingRepository.recordSkip(currentMatchup.left.id)
+            sessionState.update {
+                it.copy(
+                    previousMatchup = currentMatchup,
+                    sessionFeedback = "Matchup skipped",
+                    streakCount = 0
+                )
             }
-            previousMatchup.value = uiState.value.matchup
+            scheduleFeedbackClear()
+        }
+    }
+
+    private fun scheduleFeedbackClear() {
+        clearFeedbackJob?.cancel()
+        clearFeedbackJob = viewModelScope.launch {
+            delay(1_500)
+            sessionState.update { it.copy(sessionFeedback = null) }
         }
     }
 }

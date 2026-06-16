@@ -12,6 +12,7 @@ import com.songladder.android.domain.repository.MusicSourceClient
 import com.songladder.android.domain.repository.SongRepository
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -35,6 +36,7 @@ data class LibraryUiState(
     val duplicateTrackIds: Set<String> = emptySet()
 )
 
+@OptIn(FlowPreview::class)
 class LibraryViewModel(
     private val songRepository: SongRepository,
     private val importRepository: ImportRepository,

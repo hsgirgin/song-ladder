@@ -63,7 +63,15 @@ fun SongLadderApp(
                 modifier = Modifier.padding(innerPadding)
             ) {
                 composable(SongLadderDestination.Rank.route) {
-                    RankScreen(viewModel = rankViewModel)
+                    RankScreen(
+                        viewModel = rankViewModel,
+                        onOpenLibrary = {
+                            navController.navigate(SongLadderDestination.Library.route) {
+                                launchSingleTop = true
+                                restoreState = true
+                            }
+                        }
+                    )
                 }
                 composable(SongLadderDestination.Library.route) {
                     LibraryScreen(viewModel = libraryViewModel)

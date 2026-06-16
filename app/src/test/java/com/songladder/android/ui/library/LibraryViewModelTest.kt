@@ -13,10 +13,12 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.Assert.assertEquals
@@ -57,8 +59,10 @@ class LibraryViewModelTest {
                 )
             )
         )
+        backgroundScope.launch(dispatcher) { viewModel.uiState.collect {} }
 
         viewModel.updateSearchQuery("Dreams")
+        runCurrent()
         advanceTimeBy(401)
         advanceUntilIdle()
 
@@ -75,8 +79,10 @@ class LibraryViewModelTest {
             importRepository = FakeImportRepository(),
             musicSourceClient = musicSourceClient
         )
+        backgroundScope.launch(dispatcher) { viewModel.uiState.collect {} }
 
         viewModel.updateSearchQuery("a")
+        runCurrent()
         advanceTimeBy(401)
         advanceUntilIdle()
 
@@ -92,6 +98,7 @@ class LibraryViewModelTest {
             importRepository = fakeImportRepository,
             musicSourceClient = FakeMusicSourceClient(emptyList())
         )
+        backgroundScope.launch(dispatcher) { viewModel.uiState.collect {} }
         val candidate = MusicTrackCandidate(
             externalId = "1",
             title = "Nights",
@@ -101,7 +108,7 @@ class LibraryViewModelTest {
         )
 
         viewModel.addSearchResult(candidate)
-        advanceUntilIdle()
+        runCurrent()
 
         assertEquals(1, fakeImportRepository.imported.size)
         assertEquals("Added Nights to your ladder.", viewModel.uiState.value.statusMessage)
