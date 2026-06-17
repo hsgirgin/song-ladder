@@ -36,6 +36,7 @@ class YoutubeMusicPlaylistClient(
     private val browserUserAgent =
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
             "(KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36"
+    private val maxBrowsePages = 20
 
     override suspend fun previewPlaylist(url: String): Result<PlaylistImportPreview> {
         return runCatching {
@@ -51,15 +52,22 @@ class YoutubeMusicPlaylistClient(
                     .build()
 
                 val html = executeRequest(request)
-                runCatching { parsePlaylistHtml(normalizedUrl, html) }
-                    .getOrElse {
+                val playlistTitle = extractPlaylistTitle(html) ?: "YouTube Music Playlist"
+                val canUseBrowseApi = extractInnertubeApiKey(html) != null && extractInnertubeContextJson(html) != null
+                if (canUseBrowseApi) {
+                    runCatching {
                         previewPlaylistViaBrowseApi(
                             playlistId = playlistId,
-                            playlistTitle = extractPlaylistTitle(html) ?: "YouTube Music Playlist",
+                            playlistTitle = playlistTitle,
                             pageHtml = html,
                             normalizedUrl = normalizedUrl
                         )
+                    }.getOrElse {
+                        parsePlaylistHtml(normalizedUrl, html)
                     }
+                } else {
+                    parsePlaylistHtml(normalizedUrl, html)
+                }
             }
         }.recoverCatching { throwable ->
             when (throwable) {
@@ -85,42 +93,11 @@ class YoutubeMusicPlaylistClient(
         val initialDataJson = extractInitialDataJson(html)
             ?: error("Could not read this playlist. It may be private, unavailable, or unsupported.")
         val root = json.parseToJsonElement(initialDataJson)
-        val parsedRows = LinkedHashMap<String, ParsedPlaylistRow>()
-        val unsupportedCounter = UnsupportedCounter()
-
-        collectPlaylistRows(root, playlistId, parsedRows, unsupportedCounter)
-
-        if (parsedRows.isEmpty()) {
-            error("Could not find any tracks in this playlist. It may be private, unavailable, or unsupported.")
-        }
-
-        val importable = mutableListOf<MusicTrackCandidate>()
-        val ambiguous = mutableListOf<AmbiguousPlaylistTrack>()
-
-        parsedRows.values.forEach { row ->
-            if (row.title.isBlank() || row.artist.isBlank()) {
-                ambiguous += AmbiguousPlaylistTrack(
-                    rawTitle = row.title,
-                    rawArtist = row.artist,
-                    reason = "Missing title or artist metadata."
-                )
-            } else {
-                importable += MusicTrackCandidate(
-                    externalId = row.externalId,
-                    title = row.title,
-                    artist = row.artist,
-                    album = row.album,
-                    artworkUrl = row.artworkUrl,
-                    sourceType = MusicSourceType.YOUTUBE_MUSIC
-                )
-            }
-        }
-
-        return PlaylistImportPreview(
+        val page = parsePlaylistPage(root, playlistId)
+        return buildPreview(
             playlistTitle = playlistTitle,
-            importableTracks = importable,
-            ambiguousTracks = ambiguous,
-            unsupportedCount = unsupportedCounter.count
+            parsedRows = page.rows,
+            unsupportedCount = page.unsupportedCount
         )
     }
 
@@ -130,42 +107,11 @@ class YoutubeMusicPlaylistClient(
         body: String
     ): PlaylistImportPreview {
         val root = json.parseToJsonElement(body)
-        val parsedRows = LinkedHashMap<String, ParsedPlaylistRow>()
-        val unsupportedCounter = UnsupportedCounter()
-
-        collectPlaylistRows(root, playlistId, parsedRows, unsupportedCounter)
-
-        if (parsedRows.isEmpty()) {
-            error("Could not find any tracks in this playlist. It may be private, unavailable, or unsupported.")
-        }
-
-        val importable = mutableListOf<MusicTrackCandidate>()
-        val ambiguous = mutableListOf<AmbiguousPlaylistTrack>()
-
-        parsedRows.values.forEach { row ->
-            if (row.title.isBlank() || row.artist.isBlank()) {
-                ambiguous += AmbiguousPlaylistTrack(
-                    rawTitle = row.title,
-                    rawArtist = row.artist,
-                    reason = "Missing title or artist metadata."
-                )
-            } else {
-                importable += MusicTrackCandidate(
-                    externalId = row.externalId,
-                    title = row.title,
-                    artist = row.artist,
-                    album = row.album,
-                    artworkUrl = row.artworkUrl,
-                    sourceType = MusicSourceType.YOUTUBE_MUSIC
-                )
-            }
-        }
-
-        return PlaylistImportPreview(
+        val page = parsePlaylistPage(root, playlistId)
+        return buildPreview(
             playlistTitle = playlistTitle,
-            importableTracks = importable,
-            ambiguousTracks = ambiguous,
-            unsupportedCount = unsupportedCounter.count
+            parsedRows = page.rows,
+            unsupportedCount = page.unsupportedCount
         )
     }
 
@@ -179,14 +125,57 @@ class YoutubeMusicPlaylistClient(
             ?: error("Could not read this playlist. It may be private, unavailable, or unsupported.")
         val contextJson = extractInnertubeContextJson(pageHtml)
             ?: error("Could not read this playlist. It may be private, unavailable, or unsupported.")
-        val requestBody = """
+        val mergedRows = LinkedHashMap<String, ParsedPlaylistRow>()
+        var unsupportedCount = 0
+        val seenContinuations = mutableSetOf<String>()
+        var requestBody: String? = """
             {
               "context": $contextJson,
               "browseId": "VL$playlistId"
             }
         """.trimIndent()
+        var pageCount = 0
 
-        val request = Request.Builder()
+        while (requestBody != null && pageCount < maxBrowsePages) {
+            val request = buildBrowseRequest(
+                apiKey = apiKey,
+                normalizedUrl = normalizedUrl,
+                requestBody = requestBody
+            )
+            val responseBody = executeRequest(request)
+            val page = parsePlaylistPage(
+                root = json.parseToJsonElement(responseBody),
+                playlistId = playlistId
+            )
+
+            page.rows.forEach { (id, row) -> mergedRows.putIfAbsent(id, row) }
+            unsupportedCount += page.unsupportedCount
+            pageCount += 1
+
+            val nextContinuation = page.continuations.firstOrNull { seenContinuations.add(it) }
+            requestBody = nextContinuation?.let { continuation ->
+                """
+                    {
+                      "context": $contextJson,
+                      "continuation": "$continuation"
+                    }
+                """.trimIndent()
+            }
+        }
+
+        return buildPreview(
+            playlistTitle = playlistTitle,
+            parsedRows = mergedRows,
+            unsupportedCount = unsupportedCount
+        )
+    }
+
+    private fun buildBrowseRequest(
+        apiKey: String,
+        normalizedUrl: String,
+        requestBody: String
+    ): Request {
+        return Request.Builder()
             .url("https://music.youtube.com/youtubei/v1/browse?prettyPrint=false&key=$apiKey")
             .header("Accept", "application/json")
             .header("Accept-Language", "en-US,en;q=0.9")
@@ -196,13 +185,6 @@ class YoutubeMusicPlaylistClient(
             .header("User-Agent", browserUserAgent)
             .post(requestBody.toRequestBody("application/json; charset=utf-8".toMediaType()))
             .build()
-
-        val responseBody = executeRequest(request)
-        return parseBrowseResponse(
-            playlistId = playlistId,
-            playlistTitle = playlistTitle,
-            body = responseBody
-        )
     }
 
     private suspend fun executeRequest(request: Request): String =
@@ -341,6 +323,61 @@ class YoutubeMusicPlaylistClient(
         return null
     }
 
+    private fun parsePlaylistPage(
+        root: JsonElement,
+        playlistId: String
+    ): ParsedPlaylistPage {
+        val parsedRows = LinkedHashMap<String, ParsedPlaylistRow>()
+        val unsupportedCounter = UnsupportedCounter()
+
+        collectPlaylistRows(root, playlistId, parsedRows, unsupportedCounter)
+
+        return ParsedPlaylistPage(
+            rows = parsedRows,
+            unsupportedCount = unsupportedCounter.count,
+            continuations = extractContinuationTokens(root)
+        )
+    }
+
+    private fun buildPreview(
+        playlistTitle: String,
+        parsedRows: Map<String, ParsedPlaylistRow>,
+        unsupportedCount: Int
+    ): PlaylistImportPreview {
+        if (parsedRows.isEmpty()) {
+            error("Could not find any tracks in this playlist. It may be private, unavailable, or unsupported.")
+        }
+
+        val importable = mutableListOf<MusicTrackCandidate>()
+        val ambiguous = mutableListOf<AmbiguousPlaylistTrack>()
+
+        parsedRows.values.forEach { row ->
+            if (row.title.isBlank() || row.artist.isBlank()) {
+                ambiguous += AmbiguousPlaylistTrack(
+                    rawTitle = row.title,
+                    rawArtist = row.artist,
+                    reason = "Missing title or artist metadata."
+                )
+            } else {
+                importable += MusicTrackCandidate(
+                    externalId = row.externalId,
+                    title = row.title,
+                    artist = row.artist,
+                    album = row.album,
+                    artworkUrl = row.artworkUrl,
+                    sourceType = MusicSourceType.YOUTUBE_MUSIC
+                )
+            }
+        }
+
+        return PlaylistImportPreview(
+            playlistTitle = playlistTitle,
+            importableTracks = importable,
+            ambiguousTracks = ambiguous,
+            unsupportedCount = unsupportedCount
+        )
+    }
+
     private fun collectPlaylistRows(
         element: JsonElement,
         playlistId: String,
@@ -434,6 +471,41 @@ class YoutubeMusicPlaylistClient(
         }
     }
 
+    private fun extractContinuationTokens(element: JsonElement): List<String> {
+        val tokens = linkedSetOf<String>()
+        collectContinuationTokens(element, tokens)
+        return tokens.toList()
+    }
+
+    private fun collectContinuationTokens(element: JsonElement, sink: MutableSet<String>) {
+        when (element) {
+            is JsonObject -> {
+                element["continuationItemRenderer"]
+                    ?.jsonObject
+                    ?.get("continuationEndpoint")
+                    ?.jsonObject
+                    ?.get("continuationCommand")
+                    ?.jsonObject
+                    ?.get("token")
+                    ?.jsonPrimitive
+                    ?.contentOrNull
+                    ?.takeIf { it.isNotBlank() }
+                    ?.let(sink::add)
+                element["nextContinuationData"]
+                    ?.jsonObject
+                    ?.get("continuation")
+                    ?.jsonPrimitive
+                    ?.contentOrNull
+                    ?.takeIf { it.isNotBlank() }
+                    ?.let(sink::add)
+                element.values.forEach { child -> collectContinuationTokens(child, sink) }
+            }
+
+            is JsonArray -> element.forEach { child -> collectContinuationTokens(child, sink) }
+            else -> Unit
+        }
+    }
+
     private fun fallbackExternalId(playlistId: String, title: String, artist: String, album: String): String {
         val base = listOf(playlistId, title.lowercase(), artist.lowercase(), album.lowercase()).joinToString("::")
         return "ytm-${base.hashCode()}"
@@ -446,6 +518,12 @@ private data class ParsedPlaylistRow(
     val artist: String,
     val album: String,
     val artworkUrl: String?
+)
+
+private data class ParsedPlaylistPage(
+    val rows: LinkedHashMap<String, ParsedPlaylistRow>,
+    val unsupportedCount: Int,
+    val continuations: List<String>
 )
 
 private data class UnsupportedCounter(var count: Int = 0)
