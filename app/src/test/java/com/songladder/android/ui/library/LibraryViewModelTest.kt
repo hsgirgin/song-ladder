@@ -4,10 +4,12 @@ import android.content.ContentResolver
 import android.net.Uri
 import com.songladder.android.domain.model.MusicTrackCandidate
 import com.songladder.android.domain.model.MusicSourceType
+import com.songladder.android.domain.model.PlaylistImportPreview
 import com.songladder.android.domain.model.Song
 import com.songladder.android.domain.model.SongInput
 import com.songladder.android.domain.repository.ImportRepository
 import com.songladder.android.domain.repository.MusicSourceClient
+import com.songladder.android.domain.repository.PlaylistSourceClient
 import com.songladder.android.domain.repository.SongRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -57,7 +59,8 @@ class LibraryViewModelTest {
                         sourceType = MusicSourceType.ITUNES
                     )
                 )
-            )
+            ),
+            playlistSourceClient = FakePlaylistSourceClient(Result.success(emptyPreview()))
         )
         backgroundScope.launch(dispatcher) { viewModel.uiState.collect {} }
 
@@ -77,7 +80,8 @@ class LibraryViewModelTest {
         val viewModel = LibraryViewModel(
             songRepository = FakeSongRepository(),
             importRepository = FakeImportRepository(),
-            musicSourceClient = musicSourceClient
+            musicSourceClient = musicSourceClient,
+            playlistSourceClient = FakePlaylistSourceClient(Result.success(emptyPreview()))
         )
         backgroundScope.launch(dispatcher) { viewModel.uiState.collect {} }
 
@@ -96,7 +100,8 @@ class LibraryViewModelTest {
         val viewModel = LibraryViewModel(
             songRepository = FakeSongRepository(),
             importRepository = fakeImportRepository,
-            musicSourceClient = FakeMusicSourceClient(emptyList())
+            musicSourceClient = FakeMusicSourceClient(emptyList()),
+            playlistSourceClient = FakePlaylistSourceClient(Result.success(emptyPreview()))
         )
         backgroundScope.launch(dispatcher) { viewModel.uiState.collect {} }
         val candidate = MusicTrackCandidate(
@@ -113,6 +118,70 @@ class LibraryViewModelTest {
         assertEquals(1, fakeImportRepository.imported.size)
         assertEquals("Added Nights to your ladder.", viewModel.uiState.value.statusMessage)
         assertTrue("1" in viewModel.uiState.value.addedTrackIds)
+    }
+
+    @Test
+    fun `preview youtube music playlist updates preview state`() = runTest {
+        val preview = PlaylistImportPreview(
+            playlistTitle = "Drive Home",
+            importableTracks = listOf(
+                MusicTrackCandidate(
+                    externalId = "ytm-1",
+                    title = "Midnight City",
+                    artist = "M83",
+                    sourceType = MusicSourceType.YOUTUBE_MUSIC
+                )
+            ),
+            ambiguousTracks = emptyList()
+        )
+        val viewModel = LibraryViewModel(
+            songRepository = FakeSongRepository(),
+            importRepository = FakeImportRepository(),
+            musicSourceClient = FakeMusicSourceClient(emptyList()),
+            playlistSourceClient = FakePlaylistSourceClient(Result.success(preview))
+        )
+        backgroundScope.launch(dispatcher) { viewModel.uiState.collect {} }
+
+        viewModel.updateYoutubeMusicPlaylistUrl("https://music.youtube.com/playlist?list=PL123")
+        viewModel.previewYoutubeMusicPlaylist()
+        advanceUntilIdle()
+
+        assertEquals("Drive Home", viewModel.uiState.value.youtubeMusicPreview?.playlistTitle)
+        assertEquals(1, viewModel.uiState.value.youtubeMusicPreview?.importableTracks?.size)
+    }
+
+    @Test
+    fun `confirm youtube music preview imports ready tracks only`() = runTest {
+        val fakeImportRepository = FakeImportRepository()
+        val preview = PlaylistImportPreview(
+            playlistTitle = "Drive Home",
+            importableTracks = listOf(
+                MusicTrackCandidate(
+                    externalId = "ytm-1",
+                    title = "Midnight City",
+                    artist = "M83",
+                    sourceType = MusicSourceType.YOUTUBE_MUSIC
+                )
+            ),
+            ambiguousTracks = emptyList()
+        )
+        val viewModel = LibraryViewModel(
+            songRepository = FakeSongRepository(),
+            importRepository = fakeImportRepository,
+            musicSourceClient = FakeMusicSourceClient(emptyList()),
+            playlistSourceClient = FakePlaylistSourceClient(Result.success(preview))
+        )
+        backgroundScope.launch(dispatcher) { viewModel.uiState.collect {} }
+
+        viewModel.updateYoutubeMusicPlaylistUrl("https://music.youtube.com/playlist?list=PL123")
+        viewModel.previewYoutubeMusicPlaylist()
+        advanceUntilIdle()
+        viewModel.confirmYoutubeMusicPreviewImport()
+        advanceUntilIdle()
+
+        assertEquals(1, fakeImportRepository.imported.size)
+        assertEquals(MusicSourceType.YOUTUBE_MUSIC, fakeImportRepository.imported.single().sourceType)
+        assertEquals("", viewModel.uiState.value.youtubeMusicPlaylistUrl)
     }
 }
 
@@ -153,3 +222,15 @@ private class FakeMusicSourceClient(
         return Result.success(results)
     }
 }
+
+private class FakePlaylistSourceClient(
+    private val result: Result<PlaylistImportPreview>
+) : PlaylistSourceClient {
+    override suspend fun previewPlaylist(url: String): Result<PlaylistImportPreview> = result
+}
+
+private fun emptyPreview(): PlaylistImportPreview = PlaylistImportPreview(
+    playlistTitle = "Empty",
+    importableTracks = emptyList(),
+    ambiguousTracks = emptyList()
+)

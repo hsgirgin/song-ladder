@@ -19,7 +19,6 @@ import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -53,7 +52,7 @@ class RankViewModelTest {
     }
 
     @Test
-    fun `rank winner updates streak and clears transient feedback`() = runTest {
+    fun `rank winner updates streak and emits transient choice feedback`() = runTest {
         val songs = listOf(
             fakeSong(id = "1", title = "Dreams"),
             fakeSong(id = "2", title = "Go Your Own Way")
@@ -68,17 +67,21 @@ class RankViewModelTest {
         viewModel.rankWinner("1", "2")
         runCurrent()
 
-        assertEquals("Picked Dreams", viewModel.uiState.value.sessionFeedback)
+        val feedback = viewModel.uiState.value.visualFeedback
+        assertTrue(feedback is RankVisualFeedback.Choice)
+        feedback as RankVisualFeedback.Choice
+        assertEquals("1", feedback.winnerId)
+        assertEquals("2", feedback.loserId)
         assertEquals(1, viewModel.uiState.value.streakCount)
 
-        advanceTimeBy(1_501)
+        advanceTimeBy(326)
         advanceUntilIdle()
 
-        assertNull(viewModel.uiState.value.sessionFeedback)
+        assertEquals(RankVisualFeedback.None, viewModel.uiState.value.visualFeedback)
     }
 
     @Test
-    fun `skip resets streak`() = runTest {
+    fun `skip resets streak and emits transient skip feedback`() = runTest {
         val songs = listOf(
             fakeSong(id = "1", title = "Dreams"),
             fakeSong(id = "2", title = "Go Your Own Way")
@@ -96,7 +99,12 @@ class RankViewModelTest {
         runCurrent()
 
         assertEquals(0, viewModel.uiState.value.streakCount)
-        assertEquals("Matchup skipped", viewModel.uiState.value.sessionFeedback)
+        assertEquals(RankVisualFeedback.Skip, viewModel.uiState.value.visualFeedback)
+
+        advanceTimeBy(326)
+        advanceUntilIdle()
+
+        assertEquals(RankVisualFeedback.None, viewModel.uiState.value.visualFeedback)
     }
 }
 

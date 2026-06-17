@@ -3,6 +3,7 @@ package com.songladder.android.domain.repository
 import android.content.ContentResolver
 import android.net.Uri
 import com.songladder.android.domain.model.AppStats
+import com.songladder.android.domain.model.PlaylistImportPreview
 import com.songladder.android.domain.model.MusicTrackCandidate
 import com.songladder.android.domain.model.Song
 import com.songladder.android.domain.model.SongInput
@@ -30,4 +31,8 @@ interface ImportRepository {
 
 interface MusicSourceClient {
     suspend fun searchTracks(query: String): Result<List<MusicTrackCandidate>>
+}
+
+interface PlaylistSourceClient {
+    suspend fun previewPlaylist(url: String): Result<PlaylistImportPreview>
 }

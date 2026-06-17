@@ -8,9 +8,11 @@ import com.songladder.android.data.preferences.SessionPreferencesRepository
 import com.songladder.android.data.repository.DefaultImportRepository
 import com.songladder.android.data.repository.DefaultRankingRepository
 import com.songladder.android.data.repository.DefaultSongRepository
+import com.songladder.android.data.youtubemusic.YoutubeMusicPlaylistClient
 import com.songladder.android.domain.engine.EloMatchupEngine
 import com.songladder.android.domain.repository.ImportRepository
 import com.songladder.android.domain.repository.MusicSourceClient
+import com.songladder.android.domain.repository.PlaylistSourceClient
 import com.songladder.android.domain.repository.RankingRepository
 import com.songladder.android.domain.repository.SongRepository
 import okhttp3.OkHttpClient
@@ -29,6 +31,7 @@ class AppContainer(context: Context) {
 
     val sessionPreferencesRepository = SessionPreferencesRepository(appContext)
     val musicSourceClient: MusicSourceClient = ItunesMusicSourceClient(httpClient)
+    val playlistSourceClient: PlaylistSourceClient = YoutubeMusicPlaylistClient(httpClient)
     val songRepository: SongRepository = DefaultSongRepository(
         songDao = database.songDao(),
         appStatsDao = database.appStatsDao()

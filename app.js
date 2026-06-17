@@ -28,10 +28,15 @@ const elements = {
   songCount: document.getElementById("songCount"),
   matchCount: document.getElementById("matchCount"),
   topRating: document.getElementById("topRating"),
-  leaderboardItemTemplate: document.getElementById("leaderboardItemTemplate")
+  installButton: document.getElementById("installButton"),
+  leaderboardItemTemplate: document.getElementById("leaderboardItemTemplate"),
+  tabButtons: Array.from(document.querySelectorAll(".tab-button")),
+  screens: Array.from(document.querySelectorAll(".screen"))
 };
 
 let state = loadState();
+let deferredInstallPrompt = null;
+let activeScreen = "rank";
 
 function loadState() {
   try {
@@ -68,6 +73,16 @@ function saveState() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
 }
 
+function switchScreen(screenName) {
+  activeScreen = screenName;
+  elements.screens.forEach(screen => {
+    screen.classList.toggle("screen-active", screen.id === `screen-${screenName}`);
+  });
+  elements.tabButtons.forEach(button => {
+    button.classList.toggle("tab-button-active", button.dataset.screen === screenName);
+  });
+}
+
 function addSong(songLike) {
   const cleanTitle = songLike.title.trim();
   const cleanArtist = songLike.artist.trim();
@@ -97,7 +112,6 @@ function clearState() {
     songs: [],
     matchCount: 0
   };
-
   saveState();
   render();
 }
@@ -249,7 +263,6 @@ function renderLeaderboard() {
 
   rankedSongs.forEach((song, index) => {
     const fragment = elements.leaderboardItemTemplate.content.cloneNode(true);
-    const item = fragment.querySelector(".leaderboard-item");
     const name = fragment.querySelector(".song-name");
     const meta = fragment.querySelector(".song-meta");
     const score = fragment.querySelector(".song-score");
@@ -260,7 +273,6 @@ function renderLeaderboard() {
     score.textContent = song.rating;
     removeButton.dataset.songId = song.id;
 
-    item.dataset.songId = song.id;
     elements.leaderboard.appendChild(fragment);
   });
 }
@@ -284,9 +296,9 @@ function renderBattle() {
   }
 
   const [leftSong, rightSong] = matchup;
-  elements.battleHelper.textContent = "Choose the song you like more right now. The leaderboard updates instantly.";
-  renderChoice(elements.leftChoice, leftSong, "Pick this one");
-  renderChoice(elements.rightChoice, rightSong, "Or this one");
+  elements.battleHelper.textContent = "Tap the song you prefer. Your list updates immediately.";
+  renderChoice(elements.leftChoice, leftSong, "Tap to win");
+  renderChoice(elements.rightChoice, rightSong, "Tap to win");
   elements.skipButton.disabled = false;
 }
 
@@ -294,6 +306,7 @@ function render() {
   renderStats();
   renderBattle();
   renderLeaderboard();
+  switchScreen(activeScreen);
 }
 
 function escapeHtml(value) {
@@ -303,6 +316,27 @@ function escapeHtml(value) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#39;");
+}
+
+function registerServiceWorker() {
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.register("./sw.js").catch(error => {
+      console.warn("Service worker registration failed", error);
+    });
+  }
+}
+
+function setupInstallPrompt() {
+  window.addEventListener("beforeinstallprompt", event => {
+    event.preventDefault();
+    deferredInstallPrompt = event;
+    elements.installButton.classList.remove("hidden");
+  });
+
+  window.addEventListener("appinstalled", () => {
+    deferredInstallPrompt = null;
+    elements.installButton.classList.add("hidden");
+  });
 }
 
 elements.songForm.addEventListener("submit", event => {
@@ -320,20 +354,28 @@ elements.songForm.addEventListener("submit", event => {
   }
 
   elements.songForm.reset();
-  elements.titleInput.focus();
+  switchScreen("rank");
+  elements.titleInput.blur();
 });
 
-elements.seedButton.addEventListener("click", seedSongs);
+elements.seedButton.addEventListener("click", () => {
+  seedSongs();
+  switchScreen("rank");
+});
+
 elements.clearButton.addEventListener("click", () => {
   const shouldClear = window.confirm("Reset the app and remove all songs?");
   if (shouldClear) {
     clearState();
+    switchScreen("add");
   }
 });
+
 elements.exportButton.addEventListener("click", exportSongs);
 elements.importInput.addEventListener("change", event => {
   const [file] = event.target.files || [];
   importSongs(file);
+  switchScreen("list");
 });
 
 elements.leftChoice.addEventListener("click", () => {
@@ -357,4 +399,23 @@ elements.leaderboard.addEventListener("click", event => {
   }
 });
 
+elements.tabButtons.forEach(button => {
+  button.addEventListener("click", () => {
+    switchScreen(button.dataset.screen);
+  });
+});
+
+elements.installButton.addEventListener("click", async () => {
+  if (!deferredInstallPrompt) {
+    return;
+  }
+
+  deferredInstallPrompt.prompt();
+  await deferredInstallPrompt.userChoice;
+  deferredInstallPrompt = null;
+  elements.installButton.classList.add("hidden");
+});
+
+setupInstallPrompt();
+registerServiceWorker();
 render();

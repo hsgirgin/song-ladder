@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">Song Ladder icon</title>
+  <desc id="desc">A dark rounded square with two colored music bars and a ranking badge.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#121c29"/>
+      <stop offset="100%" stop-color="#081018"/>
+    </linearGradient>
+    <linearGradient id="orange" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ff8c61"/>
+      <stop offset="100%" stop-color="#ff6b35"/>
+    </linearGradient>
+    <linearGradient id="blue" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#7fb0ff"/>
+      <stop offset="100%" stop-color="#4f8dfd"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="128" fill="url(#bg)"/>
+  <circle cx="118" cy="112" r="78" fill="#1a2a3d" opacity="0.95"/>
+  <path d="M156 180c-12 0-22-10-22-22V82l152-34v76c0 12-10 22-22 22s-22-10-22-22V99l-64 14v45c0 12-10 22-22 22Z" fill="url(#orange)"/>
+  <path d="M356 364c-14 0-26-12-26-26V190l114-24v148c0 14-12 26-26 26s-26-12-26-26v-95l-36 8v111c0 14-12 26-26 26Z" fill="url(#blue)"/>
+  <rect x="88" y="320" width="182" height="112" rx="32" fill="#172434"/>
+  <path d="M132 392h94" stroke="#f7f8fb" stroke-width="26" stroke-linecap="round"/>
+  <path d="M132 360h56" stroke="#ff8c61" stroke-width="26" stroke-linecap="round"/>
+</svg>

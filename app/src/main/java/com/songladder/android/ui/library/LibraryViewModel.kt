@@ -4,11 +4,14 @@ import android.content.ContentResolver
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.songladder.android.domain.model.AmbiguousPlaylistTrack
 import com.songladder.android.domain.model.MusicTrackCandidate
+import com.songladder.android.domain.model.PlaylistImportPreview
 import com.songladder.android.domain.model.Song
 import com.songladder.android.domain.model.SongInput
 import com.songladder.android.domain.repository.ImportRepository
 import com.songladder.android.domain.repository.MusicSourceClient
+import com.songladder.android.domain.repository.PlaylistSourceClient
 import com.songladder.android.domain.repository.SongRepository
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -33,14 +36,20 @@ data class LibraryUiState(
     val isSearching: Boolean = false,
     val addingTrackIds: Set<String> = emptySet(),
     val addedTrackIds: Set<String> = emptySet(),
-    val duplicateTrackIds: Set<String> = emptySet()
+    val duplicateTrackIds: Set<String> = emptySet(),
+    val youtubeMusicPlaylistUrl: String = "",
+    val isPreviewLoading: Boolean = false,
+    val youtubeMusicPreview: PlaylistImportPreview? = null,
+    val previewError: String? = null,
+    val isImportingPreview: Boolean = false
 )
 
 @OptIn(FlowPreview::class)
 class LibraryViewModel(
     private val songRepository: SongRepository,
     private val importRepository: ImportRepository,
-    private val musicSourceClient: MusicSourceClient
+    private val musicSourceClient: MusicSourceClient,
+    private val playlistSourceClient: PlaylistSourceClient
 ) : ViewModel() {
     private val mutableState = MutableStateFlow(LibraryUiState())
     private var clearAddedStateJob: Job? = null
@@ -186,6 +195,92 @@ class LibraryViewModel(
                 .onFailure { error ->
                     mutableState.update { it.copy(statusMessage = error.message ?: "Export failed.") }
                 }
+        }
+    }
+
+    fun updateYoutubeMusicPlaylistUrl(url: String) {
+        mutableState.update {
+            it.copy(
+                youtubeMusicPlaylistUrl = url,
+                previewError = null,
+                youtubeMusicPreview = null
+            )
+        }
+    }
+
+    fun previewYoutubeMusicPlaylist() {
+        viewModelScope.launch {
+            val playlistUrl = mutableState.value.youtubeMusicPlaylistUrl.trim()
+            if (playlistUrl.isBlank()) {
+                mutableState.update { it.copy(previewError = "Paste a public YouTube Music playlist link.") }
+                return@launch
+            }
+
+            mutableState.update {
+                it.copy(
+                    isPreviewLoading = true,
+                    previewError = null,
+                    youtubeMusicPreview = null
+                )
+            }
+
+            playlistSourceClient.previewPlaylist(playlistUrl)
+                .onSuccess { preview ->
+                    mutableState.update {
+                        it.copy(
+                            isPreviewLoading = false,
+                            youtubeMusicPreview = preview,
+                            statusMessage = "Previewed ${preview.importableTracks.size} YouTube Music tracks."
+                        )
+                    }
+                }
+                .onFailure { error ->
+                    mutableState.update {
+                        it.copy(
+                            isPreviewLoading = false,
+                            previewError = error.message ?: "Could not preview this YouTube Music playlist."
+                        )
+                    }
+                }
+        }
+    }
+
+    fun confirmYoutubeMusicPreviewImport() {
+        viewModelScope.launch {
+            val preview = mutableState.value.youtubeMusicPreview ?: return@launch
+            mutableState.update { it.copy(isImportingPreview = true, previewError = null) }
+
+            importRepository.importTracks(preview.importableTracks, "YouTube Music Playlist")
+                .onSuccess { count ->
+                    mutableState.update {
+                        it.copy(
+                            isImportingPreview = false,
+                            youtubeMusicPreview = null,
+                            previewError = null,
+                            statusMessage = "Imported $count songs from ${preview.playlistTitle}.",
+                            youtubeMusicPlaylistUrl = ""
+                        )
+                    }
+                }
+                .onFailure { error ->
+                    mutableState.update {
+                        it.copy(
+                            isImportingPreview = false,
+                            previewError = error.message ?: "Could not import this playlist."
+                        )
+                    }
+                }
+        }
+    }
+
+    fun clearYoutubeMusicPreview() {
+        mutableState.update {
+            it.copy(
+                youtubeMusicPreview = null,
+                previewError = null,
+                isPreviewLoading = false,
+                isImportingPreview = false
+            )
         }
     }
 

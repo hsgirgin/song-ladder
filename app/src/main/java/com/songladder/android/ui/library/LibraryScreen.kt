@@ -34,6 +34,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -48,6 +49,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.songladder.android.domain.model.MusicTrackCandidate
+import com.songladder.android.domain.model.PlaylistImportPreview
 import com.songladder.android.domain.model.Song
 import com.songladder.android.ui.components.SongArtwork
 
@@ -142,6 +144,15 @@ fun LibraryScreen(viewModel: LibraryViewModel) {
 
                 LibraryTab.Manage -> ManageTabContent(
                     songs = uiState.songs,
+                    youtubeMusicPlaylistUrl = uiState.youtubeMusicPlaylistUrl,
+                    isPreviewLoading = uiState.isPreviewLoading,
+                    youtubeMusicPreview = uiState.youtubeMusicPreview,
+                    previewError = uiState.previewError,
+                    isImportingPreview = uiState.isImportingPreview,
+                    onYoutubeMusicPlaylistUrlChange = viewModel::updateYoutubeMusicPlaylistUrl,
+                    onPreviewYoutubeMusicPlaylist = viewModel::previewYoutubeMusicPlaylist,
+                    onConfirmYoutubeMusicPreview = viewModel::confirmYoutubeMusicPreviewImport,
+                    onClearYoutubeMusicPreview = viewModel::clearYoutubeMusicPreview,
                     onImportJson = { importLauncher.launch(arrayOf("application/json")) },
                     onExportJson = { exportLauncher.launch("song-ladder-export.json") },
                     onResetLibrary = viewModel::resetLibrary,
@@ -280,59 +291,156 @@ private fun AddTabContent(
 @Composable
 private fun ManageTabContent(
     songs: List<Song>,
+    youtubeMusicPlaylistUrl: String,
+    isPreviewLoading: Boolean,
+    youtubeMusicPreview: PlaylistImportPreview?,
+    previewError: String?,
+    isImportingPreview: Boolean,
+    onYoutubeMusicPlaylistUrlChange: (String) -> Unit,
+    onPreviewYoutubeMusicPlaylist: () -> Unit,
+    onConfirmYoutubeMusicPreview: () -> Unit,
+    onClearYoutubeMusicPreview: () -> Unit,
     onImportJson: () -> Unit,
     onExportJson: () -> Unit,
     onResetLibrary: () -> Unit,
     onRemoveSong: (String) -> Unit
 ) {
-    Column(
+    LazyColumn(
         modifier = Modifier.fillMaxSize(),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Text("Current pool", style = MaterialTheme.typography.titleLarge)
-
-        if (songs.isEmpty()) {
+        item {
             Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-                Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("No songs yet", style = MaterialTheme.typography.titleMedium)
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("Experimental playlist import", style = MaterialTheme.typography.titleLarge)
                     Text(
-                        "Search for songs or add one manually to start your ladder.",
+                        "Paste a public YouTube Music playlist link to preview tracks before import.",
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                }
-            }
-        } else {
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                items(songs, key = { it.id }) { song ->
-                    LibrarySongRow(song = song, onRemoveSong = { onRemoveSong(song.id) })
-                }
-                item {
-                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = youtubeMusicPlaylistUrl,
+                        onValueChange = onYoutubeMusicPlaylistUrlChange,
+                        label = { Text("YouTube Music playlist URL") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Button(
+                            onClick = onPreviewYoutubeMusicPlaylist,
+                            enabled = !isPreviewLoading && !isImportingPreview,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text(if (isPreviewLoading) "Previewing..." else "Preview playlist")
+                        }
+                        if (youtubeMusicPreview != null || previewError != null) {
+                            TextButton(onClick = onClearYoutubeMusicPreview) {
+                                Text("Clear")
+                            }
+                        }
+                    }
+                    if (!previewError.isNullOrBlank()) {
+                        Text(previewError, color = MaterialTheme.colorScheme.error)
+                    }
+                    youtubeMusicPreview?.let { preview ->
+                        YoutubeMusicPreviewCard(
+                            preview = preview,
+                            isImporting = isImportingPreview,
+                            onConfirmImport = onConfirmYoutubeMusicPreview
+                        )
+                    }
                 }
             }
         }
 
-        Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("Manage library", style = MaterialTheme.typography.titleLarge)
+        item {
+            Text("Current pool", style = MaterialTheme.typography.titleLarge)
+        }
+
+        if (songs.isEmpty()) {
+            item {
+                Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                    Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text("No songs yet", style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            "Search for songs or add one manually to start your ladder.",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+        } else {
+            items(songs, key = { it.id }) { song ->
+                LibrarySongRow(song = song, onRemoveSong = { onRemoveSong(song.id) })
+            }
+        }
+
+        item {
+            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("Manage library", style = MaterialTheme.typography.titleLarge)
+                    Text(
+                        "Backup, restore, or reset after you have the current pool where you want it.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        OutlinedButton(onClick = onImportJson, modifier = Modifier.weight(1f)) {
+                            Text("Import JSON")
+                        }
+                        OutlinedButton(onClick = onExportJson, modifier = Modifier.weight(1f)) {
+                            Text("Export JSON")
+                        }
+                    }
+                    OutlinedButton(onClick = onResetLibrary, modifier = Modifier.fillMaxWidth()) {
+                        Text("Reset library")
+                    }
+                }
+            }
+        }
+
+        item {
+            Spacer(modifier = Modifier.height(8.dp))
+        }
+    }
+}
+
+@Composable
+private fun YoutubeMusicPreviewCard(
+    preview: PlaylistImportPreview,
+    isImporting: Boolean,
+    onConfirmImport: () -> Unit
+) {
+    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text(preview.playlistTitle, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text(
+                "${preview.importableTracks.size} ready to import",
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            if (preview.ambiguousTracks.isNotEmpty()) {
                 Text(
-                    "Backup, restore, or reset after you have the current pool where you want it.",
+                    "${preview.ambiguousTracks.size} need review and will be skipped",
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    OutlinedButton(onClick = onImportJson, modifier = Modifier.weight(1f)) {
-                        Text("Import JSON")
-                    }
-                    OutlinedButton(onClick = onExportJson, modifier = Modifier.weight(1f)) {
-                        Text("Export JSON")
-                    }
+                preview.ambiguousTracks.take(3).forEach { track ->
+                    Text(
+                        "• ${track.rawTitle.ifBlank { "Unknown title" }} — ${track.rawArtist.ifBlank { track.reason }}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
-                OutlinedButton(onClick = onResetLibrary, modifier = Modifier.fillMaxWidth()) {
-                    Text("Reset library")
-                }
+            }
+            if (preview.unsupportedCount > 0) {
+                Text(
+                    "${preview.unsupportedCount} unsupported items were ignored",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Button(
+                onClick = onConfirmImport,
+                enabled = preview.importableTracks.isNotEmpty() && !isImporting,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(if (isImporting) "Importing..." else "Import ready tracks")
             }
         }
     }

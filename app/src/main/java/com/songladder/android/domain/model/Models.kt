@@ -9,6 +9,7 @@ enum class MusicSourceType {
     MANUAL,
     SAMPLE,
     ITUNES,
+    YOUTUBE_MUSIC,
     SPOTIFY,
     IMPORT
 }
@@ -55,6 +56,19 @@ data class MusicTrackCandidate(
     val album: String = "",
     val artworkUrl: String? = null,
     val sourceType: MusicSourceType = MusicSourceType.ITUNES
+)
+
+data class PlaylistImportPreview(
+    val playlistTitle: String,
+    val importableTracks: List<MusicTrackCandidate>,
+    val ambiguousTracks: List<AmbiguousPlaylistTrack>,
+    val unsupportedCount: Int = 0
+)
+
+data class AmbiguousPlaylistTrack(
+    val rawTitle: String = "",
+    val rawArtist: String = "",
+    val reason: String
 )
 
 @Serializable
