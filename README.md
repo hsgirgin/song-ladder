@@ -1,6 +1,6 @@
-# Song Ladder Android
+# Song Ladder
 
-Song Ladder is now scaffolded as a native Android app built with Kotlin, Jetpack Compose, Room, DataStore, and a Spotify-ready import layer. The original web prototype is still in the repo as a reference, but the Android code lives under [app](C:\Users\hsgir\Documents\Codex\2026-06-10\i-want-to-make-an-app\app).
+Song Ladder is a native Android app built with Kotlin, Jetpack Compose, Room, DataStore, and a Spotify-ready import layer. The application code lives under [app](app).
 
 ## What is implemented
 
@@ -14,7 +14,7 @@ Song Ladder is now scaffolded as a native Android app built with Kotlin, Jetpack
 ## Opening the project
 
 1. Open the repo root in Android Studio.
-2. Let Android Studio generate the Gradle wrapper or sync using a local Gradle installation.
+2. Sync the project with the checked-in Gradle wrapper.
 3. Build and run the `app` module on an emulator or device.
 
 ## Spotify import
@@ -23,5 +23,4 @@ The current implementation expects a valid Spotify Web API bearer token to be pa
 
 ## Notes
 
-- This repo does not currently include a checked-in Gradle wrapper.
-- The web files at the repo root remain as the original prototype and are not part of the Android app module.
+- The app is local-first today, with Spotify import built around a pasted bearer token while the auth flow remains intentionally simple.

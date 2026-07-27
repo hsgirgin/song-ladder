@@ -14,5 +14,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "SongLadderAndroid"
+rootProject.name = "Song Ladder"
 include(":app")
