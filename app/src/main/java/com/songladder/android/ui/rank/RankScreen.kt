@@ -23,9 +23,13 @@ import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.MusicOff
+import androidx.compose.material.icons.rounded.Pause
+import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -33,6 +37,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -45,7 +50,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.songladder.android.domain.model.Song
 import com.songladder.android.ui.components.SongArtwork
 
@@ -63,6 +71,33 @@ fun RankScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val matchup = uiState.matchup
+    val lifecycleOwner = LocalLifecycleOwner.current
+
+    DisposableEffect(lifecycleOwner, matchup?.left?.id, matchup?.right?.id) {
+        fun updatePrefetchForLifecycle() {
+            if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
+                viewModel.updatePreviewPrefetch(matchup)
+            }
+        }
+
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_START -> updatePrefetchForLifecycle()
+                Lifecycle.Event.ON_STOP -> {
+                    viewModel.stopPreview()
+                    viewModel.clearPreviewPrefetch()
+                }
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        updatePrefetchForLifecycle()
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            viewModel.stopPreview()
+            viewModel.clearPreviewPrefetch()
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -96,6 +131,8 @@ fun RankScreen(
                         song = matchup.left,
                         artworkSize = artworkSize,
                         reaction = leftReaction,
+                        previewState = uiState.previews[matchup.left.id] ?: SongPreviewState.Loading,
+                        onTogglePreview = { viewModel.togglePreview(matchup.left.id) },
                         onChoose = { viewModel.rankWinner(matchup.left.id, matchup.right.id) }
                     )
 
@@ -121,6 +158,8 @@ fun RankScreen(
                         song = matchup.right,
                         artworkSize = artworkSize,
                         reaction = rightReaction,
+                        previewState = uiState.previews[matchup.right.id] ?: SongPreviewState.Loading,
+                        onTogglePreview = { viewModel.togglePreview(matchup.right.id) },
                         onChoose = { viewModel.rankWinner(matchup.right.id, matchup.left.id) }
                     )
                 }
@@ -161,6 +200,8 @@ private fun MinimalSongChoiceCard(
     song: Song,
     artworkSize: androidx.compose.ui.unit.Dp,
     reaction: CardReaction,
+    previewState: SongPreviewState,
+    onTogglePreview: () -> Unit,
     onChoose: () -> Unit
 ) {
     var showStats by rememberSaveable(song.id) { mutableStateOf(false) }
@@ -236,6 +277,11 @@ private fun MinimalSongChoiceCard(
                     horizontalArrangement = Arrangement.End,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+                    PreviewButton(
+                        state = previewState,
+                        songTitle = song.title,
+                        onClick = onTogglePreview
+                    )
                     IconButton(onClick = { showStats = !showStats }) {
                         Icon(
                             imageVector = Icons.Rounded.Info,
@@ -243,6 +289,14 @@ private fun MinimalSongChoiceCard(
                             tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
+                }
+
+                if (previewState == SongPreviewState.Unavailable) {
+                    Text(
+                        text = "Preview unavailable",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
 
                 Column(
@@ -286,6 +340,35 @@ private fun MinimalSongChoiceCard(
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun PreviewButton(
+    state: SongPreviewState,
+    songTitle: String,
+    onClick: () -> Unit
+) {
+    val enabled = state == SongPreviewState.Available || state == SongPreviewState.Playing
+    IconButton(onClick = onClick, enabled = enabled) {
+        when (state) {
+            SongPreviewState.Loading -> CircularProgressIndicator(
+                modifier = Modifier.size(22.dp),
+                strokeWidth = 2.dp
+            )
+            SongPreviewState.Available -> Icon(
+                imageVector = Icons.Rounded.PlayArrow,
+                contentDescription = "Play preview of $songTitle"
+            )
+            SongPreviewState.Playing -> Icon(
+                imageVector = Icons.Rounded.Pause,
+                contentDescription = "Pause preview of $songTitle"
+            )
+            SongPreviewState.Unavailable -> Icon(
+                imageVector = Icons.Rounded.MusicOff,
+                contentDescription = "Preview unavailable for $songTitle"
+            )
         }
     }
 }

@@ -7,6 +7,8 @@ import com.songladder.android.domain.model.AppStats
 import com.songladder.android.domain.model.Matchup
 import com.songladder.android.domain.model.Song
 import com.songladder.android.domain.repository.RankingRepository
+import com.songladder.android.domain.repository.SongPreviewPlayer
+import com.songladder.android.domain.repository.SongPreviewResolver
 import com.songladder.android.domain.repository.SongRepository
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -24,6 +26,13 @@ sealed interface RankVisualFeedback {
     data object Skip : RankVisualFeedback
 }
 
+enum class SongPreviewState {
+    Loading,
+    Available,
+    Playing,
+    Unavailable
+}
+
 data class RankUiState(
     val songs: List<Song> = emptyList(),
     val stats: AppStats = AppStats(),
@@ -31,7 +40,8 @@ data class RankUiState(
     val message: String = "",
     val isReady: Boolean = false,
     val visualFeedback: RankVisualFeedback = RankVisualFeedback.None,
-    val streakCount: Int = 0
+    val streakCount: Int = 0,
+    val previews: Map<String, SongPreviewState> = emptyMap()
 )
 
 private data class RankSessionState(
@@ -42,13 +52,19 @@ private data class RankSessionState(
 
 class RankViewModel(
     private val songRepository: SongRepository,
-    private val rankingRepository: RankingRepository
+    private val rankingRepository: RankingRepository,
+    private val songPreviewResolver: SongPreviewResolver = UnavailablePreviewResolver,
+    private val songPreviewPlayer: SongPreviewPlayer = NoOpPreviewPlayer
 ) : ViewModel() {
     private val matchupEngine = EloMatchupEngine()
     private val sessionState = MutableStateFlow(RankSessionState())
+    private val previewStates = MutableStateFlow<Map<String, SongPreviewState>>(emptyMap())
+    private val previewUrls = mutableMapOf<String, String>()
     private var clearFeedbackJob: Job? = null
+    private var previewPrefetchJob: Job? = null
+    private var previewPrefetchGeneration: Long = 0
 
-    val uiState: StateFlow<RankUiState> = combine(
+    private val rankingUiState: StateFlow<RankUiState> = combine(
         songRepository.observeSongs(),
         rankingRepository.observeStats(),
         sessionState
@@ -73,7 +89,61 @@ class RankViewModel(
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), RankUiState())
 
+    val uiState: StateFlow<RankUiState> = combine(rankingUiState, previewStates) { state, previews ->
+        state.copy(previews = previews)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), RankUiState())
+
+    init {
+        viewModelScope.launch {
+            songPreviewPlayer.events.collect { event ->
+                previewStates.update { states ->
+                    states + (event.songId to if (event.failed) SongPreviewState.Unavailable else SongPreviewState.Available)
+                }
+            }
+        }
+    }
+
+    fun updatePreviewPrefetch(matchup: Matchup?) {
+        if (matchup != null) {
+            prefetchPreviews(matchup)
+        } else {
+            clearPreviewPrefetch()
+        }
+    }
+
+    private fun prefetchPreviews(matchup: Matchup) {
+        val generation = ++previewPrefetchGeneration
+        previewPrefetchJob?.cancel()
+        val songs = listOf(matchup.left, matchup.right)
+        previewStates.value = songs.associate { it.id to SongPreviewState.Loading }
+        previewPrefetchJob = viewModelScope.launch {
+            songs.forEach { song ->
+                launch prefetchSong@{
+                    val url = songPreviewResolver.resolve(song)
+                    if (generation != previewPrefetchGeneration) return@prefetchSong
+                    if (url != null) {
+                        previewUrls[song.id] = url
+                    } else {
+                        previewUrls.remove(song.id)
+                    }
+                    previewStates.update { states ->
+                        if (generation != previewPrefetchGeneration) return@update states
+                        states + (song.id to if (url == null) SongPreviewState.Unavailable else SongPreviewState.Available)
+                    }
+                }
+            }
+        }
+    }
+
+    fun clearPreviewPrefetch() {
+        previewPrefetchGeneration += 1
+        previewPrefetchJob?.cancel()
+        previewPrefetchJob = null
+        previewStates.value = emptyMap()
+    }
+
     fun rankWinner(winnerId: String, loserId: String) {
+        stopPreview()
         viewModelScope.launch {
             val currentMatchup = uiState.value.matchup ?: return@launch
             sessionState.update {
@@ -89,6 +159,7 @@ class RankViewModel(
     }
 
     fun skip() {
+        stopPreview()
         viewModelScope.launch {
             val currentMatchup = uiState.value.matchup ?: return@launch
             sessionState.update {
@@ -103,6 +174,43 @@ class RankViewModel(
         }
     }
 
+    fun togglePreview(songId: String) {
+        when (previewStates.value[songId]) {
+            SongPreviewState.Playing -> {
+                songPreviewPlayer.pause()
+                previewStates.update { it + (songId to SongPreviewState.Available) }
+            }
+            SongPreviewState.Available -> {
+                val url = previewUrls[songId] ?: return
+                runCatching { songPreviewPlayer.play(songId, url) }
+                    .onSuccess {
+                        previewStates.update { states ->
+                            states.mapValues { (id, state) ->
+                                when {
+                                    id == songId -> SongPreviewState.Playing
+                                    state == SongPreviewState.Playing -> SongPreviewState.Available
+                                    else -> state
+                                }
+                            }
+                        }
+                    }
+                    .onFailure {
+                        previewStates.update { it + (songId to SongPreviewState.Available) }
+                    }
+            }
+            else -> Unit
+        }
+    }
+
+    fun stopPreview() {
+        songPreviewPlayer.stop()
+        previewStates.update { states ->
+            states.mapValues { (_, state) ->
+                if (state == SongPreviewState.Playing) SongPreviewState.Available else state
+            }
+        }
+    }
+
     private fun scheduleFeedbackClear() {
         clearFeedbackJob?.cancel()
         clearFeedbackJob = viewModelScope.launch {
@@ -110,4 +218,15 @@ class RankViewModel(
             sessionState.update { it.copy(visualFeedback = RankVisualFeedback.None) }
         }
     }
+}
+
+private data object UnavailablePreviewResolver : SongPreviewResolver {
+    override suspend fun resolve(song: Song): String? = null
+}
+
+private data object NoOpPreviewPlayer : SongPreviewPlayer {
+    override val events = kotlinx.coroutines.flow.emptyFlow<com.songladder.android.domain.repository.SongPreviewPlaybackEvent>()
+    override fun play(songId: String, url: String) = Unit
+    override fun pause() = Unit
+    override fun stop() = Unit
 }
