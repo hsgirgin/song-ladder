@@ -3,12 +3,18 @@ package com.songladder.android.ui.rank
 import com.songladder.android.domain.model.AppStats
 import com.songladder.android.domain.model.Song
 import com.songladder.android.domain.repository.RankingRepository
+import com.songladder.android.domain.repository.SongPreviewPlayer
+import com.songladder.android.domain.repository.SongPreviewResolver
 import com.songladder.android.domain.repository.SongRepository
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -35,6 +41,212 @@ class RankViewModelTest {
     @After
     fun tearDown() {
         Dispatchers.resetMain()
+    }
+
+    @Test
+    fun `playback failure makes the preview unavailable`() = runTest {
+        val songs = listOf(fakeSong("1", "Dreams"), fakeSong("2", "Go Your Own Way"))
+        val player = FakeSongPreviewPlayer()
+        val viewModel = RankViewModel(
+            FakeRankSongRepository(songs),
+            FakeRankingRepository(),
+            FakeSongPreviewResolver(mapOf("1" to "https://audio/1.m4a", "2" to null)),
+            player
+        )
+        backgroundScope.launch(dispatcher) { viewModel.uiState.collect {} }
+        advanceUntilIdle()
+        viewModel.updatePreviewPrefetch(viewModel.uiState.value.matchup)
+        advanceUntilIdle()
+
+        viewModel.togglePreview("1")
+        runCurrent()
+        player.fail("1")
+        runCurrent()
+
+        assertEquals(SongPreviewState.Unavailable, viewModel.uiState.value.previews["1"])
+    }
+
+    @Test
+    fun `preview controls switch playback and ranking stops it`() = runTest {
+        val songs = listOf(
+            fakeSong(id = "1", title = "Dreams"),
+            fakeSong(id = "2", title = "Go Your Own Way")
+        )
+        val player = FakeSongPreviewPlayer()
+        val viewModel = RankViewModel(
+            songRepository = FakeRankSongRepository(songs),
+            rankingRepository = FakeRankingRepository(),
+            songPreviewResolver = FakeSongPreviewResolver(
+                mapOf("1" to "https://audio/1.m4a", "2" to "https://audio/2.m4a")
+            ),
+            songPreviewPlayer = player
+        )
+        backgroundScope.launch(dispatcher) { viewModel.uiState.collect {} }
+        advanceUntilIdle()
+        viewModel.updatePreviewPrefetch(viewModel.uiState.value.matchup)
+        advanceUntilIdle()
+
+        viewModel.togglePreview("1")
+        runCurrent()
+        assertEquals(SongPreviewState.Playing, viewModel.uiState.value.previews["1"])
+
+        viewModel.togglePreview("2")
+        runCurrent()
+        assertEquals(SongPreviewState.Available, viewModel.uiState.value.previews["1"])
+        assertEquals(SongPreviewState.Playing, viewModel.uiState.value.previews["2"])
+
+        viewModel.rankWinner("1", "2")
+        runCurrent()
+        assertEquals(1, player.stopCount)
+        assertEquals(SongPreviewState.Available, viewModel.uiState.value.previews["2"])
+    }
+
+    @Test
+    fun `stop preview releases paused playback`() = runTest {
+        val songs = listOf(
+            fakeSong(id = "1", title = "Dreams"),
+            fakeSong(id = "2", title = "Go Your Own Way")
+        )
+        val player = FakeSongPreviewPlayer()
+        val viewModel = RankViewModel(
+            songRepository = FakeRankSongRepository(songs),
+            rankingRepository = FakeRankingRepository(),
+            songPreviewResolver = FakeSongPreviewResolver(
+                mapOf("1" to "https://audio/1.m4a", "2" to "https://audio/2.m4a")
+            ),
+            songPreviewPlayer = player
+        )
+        backgroundScope.launch(dispatcher) { viewModel.uiState.collect {} }
+        advanceUntilIdle()
+        viewModel.updatePreviewPrefetch(viewModel.uiState.value.matchup)
+        advanceUntilIdle()
+
+        viewModel.togglePreview("1")
+        runCurrent()
+        viewModel.togglePreview("1")
+        runCurrent()
+
+        assertEquals(SongPreviewState.Available, viewModel.uiState.value.previews["1"])
+
+        viewModel.stopPreview()
+        runCurrent()
+
+        assertEquals(1, player.stopCount)
+    }
+
+    @Test
+    fun `transient playback start failure leaves preview retryable`() = runTest {
+        val songs = listOf(
+            fakeSong(id = "1", title = "Dreams"),
+            fakeSong(id = "2", title = "Go Your Own Way")
+        )
+        val viewModel = RankViewModel(
+            songRepository = FakeRankSongRepository(songs),
+            rankingRepository = FakeRankingRepository(),
+            songPreviewResolver = FakeSongPreviewResolver(
+                mapOf("1" to "https://audio/1.m4a", "2" to "https://audio/2.m4a")
+            ),
+            songPreviewPlayer = ThrowingSongPreviewPlayer()
+        )
+        backgroundScope.launch(dispatcher) { viewModel.uiState.collect {} }
+        advanceUntilIdle()
+        viewModel.updatePreviewPrefetch(viewModel.uiState.value.matchup)
+        advanceUntilIdle()
+
+        viewModel.togglePreview("1")
+        runCurrent()
+
+        assertEquals(SongPreviewState.Available, viewModel.uiState.value.previews["1"])
+    }
+
+    @Test
+    fun `observing ui state does not prefetch previews until activated`() = runTest {
+        val songs = listOf(
+            fakeSong(id = "1", title = "Dreams"),
+            fakeSong(id = "2", title = "Go Your Own Way")
+        )
+        val resolver = FakeSongPreviewResolver(
+            mapOf("1" to "https://audio/1.m4a", "2" to "https://audio/2.m4a")
+        )
+        val viewModel = RankViewModel(
+            songRepository = FakeRankSongRepository(songs),
+            rankingRepository = FakeRankingRepository(),
+            songPreviewResolver = resolver,
+            songPreviewPlayer = FakeSongPreviewPlayer()
+        )
+        backgroundScope.launch(dispatcher) { viewModel.uiState.collect {} }
+
+        advanceUntilIdle()
+        assertEquals(emptyList<String>(), resolver.calls)
+
+        viewModel.updatePreviewPrefetch(viewModel.uiState.value.matchup)
+        advanceUntilIdle()
+
+        assertEquals(listOf("1", "2"), resolver.calls.sorted())
+    }
+
+    @Test
+    fun `matchup previews are prefetched and expose availability`() = runTest {
+        val songs = listOf(
+            fakeSong(id = "1", title = "Dreams"),
+            fakeSong(id = "2", title = "Go Your Own Way")
+        )
+        val viewModel = RankViewModel(
+            songRepository = FakeRankSongRepository(songs),
+            rankingRepository = FakeRankingRepository(),
+            songPreviewResolver = FakeSongPreviewResolver(mapOf("1" to "https://audio/1.m4a")),
+            songPreviewPlayer = FakeSongPreviewPlayer()
+        )
+        backgroundScope.launch(dispatcher) { viewModel.uiState.collect {} }
+        advanceUntilIdle()
+        viewModel.updatePreviewPrefetch(viewModel.uiState.value.matchup)
+
+        advanceUntilIdle()
+
+        assertEquals(SongPreviewState.Available, viewModel.uiState.value.previews["1"])
+        assertEquals(SongPreviewState.Unavailable, viewModel.uiState.value.previews["2"])
+    }
+
+    @Test
+    fun `stale preview prefetch results are ignored after matchup changes`() = runTest {
+        val one = fakeSong(id = "1", title = "Dreams")
+        val two = fakeSong(id = "2", title = "Go Your Own Way")
+        val three = fakeSong(id = "3", title = "Rhiannon")
+        val songRepository = FakeRankSongRepository(listOf(one, two))
+        val resolver = DeferredSongPreviewResolver()
+        val viewModel = RankViewModel(
+            songRepository = songRepository,
+            rankingRepository = FakeRankingRepository(),
+            songPreviewResolver = resolver,
+            songPreviewPlayer = FakeSongPreviewPlayer()
+        )
+        backgroundScope.launch(dispatcher) { viewModel.uiState.collect {} }
+        runCurrent()
+        viewModel.updatePreviewPrefetch(viewModel.uiState.value.matchup)
+        runCurrent()
+
+        val staleOneCall = resolver.calls.first { it.songId == "1" }
+        val staleTwoCall = resolver.calls.first { it.songId == "2" }
+
+        songRepository.setSongs(listOf(one, three))
+        runCurrent()
+        viewModel.updatePreviewPrefetch(viewModel.uiState.value.matchup)
+        runCurrent()
+
+        assertEquals(2, resolver.calls.count { it.songId == "1" })
+        val currentOneCall = resolver.calls.last { it.songId == "1" }
+        val currentThreeCall = resolver.calls.first { it.songId == "3" }
+
+        currentOneCall.complete("https://audio/1.m4a")
+        currentThreeCall.complete("https://audio/3.m4a")
+        runCurrent()
+        assertEquals(SongPreviewState.Available, viewModel.uiState.value.previews["1"])
+
+        staleOneCall.complete(null)
+        staleTwoCall.complete(null)
+        runCurrent()
+
+        assertEquals(SongPreviewState.Available, viewModel.uiState.value.previews["1"])
     }
 
     @Test
@@ -108,12 +320,66 @@ class RankViewModelTest {
     }
 }
 
+private class FakeSongPreviewResolver(
+    private val urls: Map<String, String?>
+) : SongPreviewResolver {
+    val calls = mutableListOf<String>()
+
+    override suspend fun resolve(song: Song): String? {
+        calls += song.id
+        return urls[song.id]
+    }
+}
+
+private class DeferredSongPreviewResolver : SongPreviewResolver {
+    val calls = mutableListOf<PreviewCall>()
+
+    override suspend fun resolve(song: Song): String? {
+        val call = PreviewCall(song.id)
+        calls += call
+        return withContext(NonCancellable) { call.result.await() }
+    }
+}
+
+private class PreviewCall(val songId: String) {
+    val result = CompletableDeferred<String?>()
+
+    fun complete(url: String?) {
+        result.complete(url)
+    }
+}
+
+private class FakeSongPreviewPlayer : SongPreviewPlayer {
+    private val mutableEvents = MutableSharedFlow<com.songladder.android.domain.repository.SongPreviewPlaybackEvent>(extraBufferCapacity = 1)
+    override val events = mutableEvents
+    var stopCount = 0
+    override fun play(songId: String, url: String) = Unit
+    override fun pause() = Unit
+    override fun stop() { stopCount += 1 }
+    fun fail(songId: String) {
+        mutableEvents.tryEmit(com.songladder.android.domain.repository.SongPreviewPlaybackEvent(songId, failed = true))
+    }
+}
+
+private class ThrowingSongPreviewPlayer : SongPreviewPlayer {
+    override val events = kotlinx.coroutines.flow.emptyFlow<com.songladder.android.domain.repository.SongPreviewPlaybackEvent>()
+    override fun play(songId: String, url: String) {
+        error("Audio focus is unavailable.")
+    }
+    override fun pause() = Unit
+    override fun stop() = Unit
+}
+
 private class FakeRankSongRepository(
     songs: List<Song>
 ) : SongRepository {
     private val songFlow = MutableStateFlow(songs)
 
     override fun observeSongs(): Flow<List<Song>> = songFlow
+
+    fun setSongs(songs: List<Song>) {
+        songFlow.value = songs
+    }
 
     override suspend fun addSong(input: com.songladder.android.domain.model.SongInput): Result<Unit> = Result.success(Unit)
 

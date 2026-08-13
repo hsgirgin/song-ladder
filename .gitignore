@@ -7,3 +7,5 @@ captures/
 *.iml
 app/build/
 .tmp-chrome-profile/
+.android-sdk/
+.x86-root/

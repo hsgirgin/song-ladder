@@ -2,9 +2,11 @@ package com.songladder.android.data
 
 import android.content.Context
 import com.songladder.android.data.itunes.ItunesMusicSourceClient
+import com.songladder.android.data.itunes.ItunesSongPreviewResolver
 import com.songladder.android.data.local.SongLadderDatabase
 import com.songladder.android.data.local.SongLadderJsonPorter
 import com.songladder.android.data.preferences.SessionPreferencesRepository
+import com.songladder.android.data.preview.AndroidSongPreviewPlayer
 import com.songladder.android.data.repository.DefaultImportRepository
 import com.songladder.android.data.repository.DefaultRankingRepository
 import com.songladder.android.data.repository.DefaultSongRepository
@@ -31,6 +33,8 @@ class AppContainer(context: Context) {
 
     val sessionPreferencesRepository = SessionPreferencesRepository(appContext)
     val musicSourceClient: MusicSourceClient = ItunesMusicSourceClient(httpClient)
+    val songPreviewResolver = ItunesSongPreviewResolver(httpClient)
+    val songPreviewPlayer = AndroidSongPreviewPlayer(appContext)
     val playlistSourceClient: PlaylistSourceClient = YoutubeMusicPlaylistClient(httpClient)
     val songRepository: SongRepository = DefaultSongRepository(
         songDao = database.songDao(),

@@ -14,7 +14,12 @@ class SongLadderViewModelFactory(
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         return when {
             modelClass.isAssignableFrom(RankViewModel::class.java) -> {
-                RankViewModel(container.songRepository, container.rankingRepository) as T
+                RankViewModel(
+                    container.songRepository,
+                    container.rankingRepository,
+                    container.songPreviewResolver,
+                    container.songPreviewPlayer
+                ) as T
             }
             modelClass.isAssignableFrom(LibraryViewModel::class.java) -> {
                 LibraryViewModel(
