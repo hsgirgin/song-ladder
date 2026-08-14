@@ -8,14 +8,12 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -66,9 +64,9 @@ fun LibraryScreen(viewModel: LibraryViewModel) {
     val context = LocalContext.current
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     var selectedTab by rememberSaveable { mutableStateOf(LibraryTab.Search) }
-    var title by remember { mutableStateOf("") }
-    var artist by remember { mutableStateOf("") }
-    var album by remember { mutableStateOf("") }
+    var title by rememberSaveable { mutableStateOf("") }
+    var artist by rememberSaveable { mutableStateOf("") }
+    var album by rememberSaveable { mutableStateOf("") }
     var showImportConfirm by rememberSaveable { mutableStateOf(false) }
     var showResetConfirm by rememberSaveable { mutableStateOf(false) }
     var songPendingRemoval by remember { mutableStateOf<Song?>(null) }
@@ -84,10 +82,7 @@ fun LibraryScreen(viewModel: LibraryViewModel) {
         modifier = Modifier
             .fillMaxSize()
             .padding(horizontal = 20.dp)
-            .padding(
-                top = WindowInsets.systemBars.asPaddingValues().calculateTopPadding() + 12.dp,
-                bottom = 12.dp
-            ),
+            .padding(top = 12.dp, bottom = 12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Surface(
@@ -122,7 +117,11 @@ fun LibraryScreen(viewModel: LibraryViewModel) {
             }
         }
 
-        Box(modifier = Modifier.weight(1f)) {
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .imePadding()
+        ) {
             when (selectedTab) {
                 LibraryTab.Search -> SearchTabContent(
                     uiState = uiState,
@@ -325,38 +324,42 @@ private fun SearchTabContent(
 }
 
 @Composable
-private fun AddTabContent(
+internal fun AddTabContent(
     title: String,
     artist: String,
     album: String,
+    modifier: Modifier = Modifier,
     onTitleChange: (String) -> Unit,
     onArtistChange: (String) -> Unit,
     onAlbumChange: (String) -> Unit,
     onAddSong: () -> Unit,
     onLoadSamplePack: () -> Unit
 ) {
-    Column(
-        modifier = Modifier.fillMaxSize(),
+    LazyColumn(
+        modifier = modifier.fillMaxSize(),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("Quick start your ladder", style = MaterialTheme.typography.titleLarge)
-                Text(
-                    "Add one manually or drop in a sample pack so you can get to ranking fast.",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                OutlinedTextField(value = title, onValueChange = onTitleChange, label = { Text("Title") }, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(value = artist, onValueChange = onArtistChange, label = { Text("Artist") }, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(value = album, onValueChange = onAlbumChange, label = { Text("Album") }, modifier = Modifier.fillMaxWidth())
-                Button(onClick = onAddSong, modifier = Modifier.fillMaxWidth()) {
-                    Text("Add to ladder")
-                }
-                OutlinedButton(onClick = onLoadSamplePack, modifier = Modifier.fillMaxWidth()) {
-                    Text("Load sample pack")
+        item {
+            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("Quick start your ladder", style = MaterialTheme.typography.titleLarge)
+                    Text(
+                        "Add one manually or drop in a sample pack so you can get to ranking fast.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    OutlinedTextField(value = title, onValueChange = onTitleChange, label = { Text("Title") }, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(value = artist, onValueChange = onArtistChange, label = { Text("Artist") }, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(value = album, onValueChange = onAlbumChange, label = { Text("Album") }, modifier = Modifier.fillMaxWidth())
+                    Button(onClick = onAddSong, modifier = Modifier.fillMaxWidth()) {
+                        Text("Add to ladder")
+                    }
+                    OutlinedButton(onClick = onLoadSamplePack, modifier = Modifier.fillMaxWidth()) {
+                        Text("Load sample pack")
+                    }
                 }
             }
         }
+        item { Spacer(modifier = Modifier.height(8.dp)) }
     }
 }
 
