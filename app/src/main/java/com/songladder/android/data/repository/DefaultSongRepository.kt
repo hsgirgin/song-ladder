@@ -1,9 +1,11 @@
 package com.songladder.android.data.repository
 
+import androidx.room.withTransaction
 import com.songladder.android.data.local.AppStatsDao
 import com.songladder.android.data.local.AppStatsEntity
 import com.songladder.android.data.local.RankingStatsEntity
 import com.songladder.android.data.local.SongDao
+import com.songladder.android.data.local.SongLadderDatabase
 import com.songladder.android.data.local.toDomain
 import com.songladder.android.data.local.toSongEntity
 import com.songladder.android.domain.model.Song
@@ -13,6 +15,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
 class DefaultSongRepository(
+    private val database: SongLadderDatabase,
     private val songDao: SongDao,
     private val appStatsDao: AppStatsDao? = null
 ) : SongRepository {
@@ -32,12 +35,14 @@ class DefaultSongRepository(
         )
     }
 
-    override suspend fun removeSong(songId: String) {
+    override suspend fun removeSong(songId: String): Result<Unit> = runCatching {
         songDao.deleteSong(songId)
     }
 
-    override suspend fun resetLibrary() {
-        songDao.clearSongs()
-        appStatsDao?.upsert(AppStatsEntity())
+    override suspend fun resetLibrary(): Result<Unit> = runCatching {
+        database.withTransaction {
+            songDao.clearSongs()
+            appStatsDao?.upsert(AppStatsEntity())
+        }
     }
 }

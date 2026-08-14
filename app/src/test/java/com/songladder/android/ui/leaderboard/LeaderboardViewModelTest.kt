@@ -78,9 +78,9 @@ private class FakeLeaderboardSongRepository(
 
     override suspend fun addSong(input: SongInput): Result<Unit> = Result.success(Unit)
 
-    override suspend fun removeSong(songId: String) = Unit
+    override suspend fun removeSong(songId: String): Result<Unit> = Result.success(Unit)
 
-    override suspend fun resetLibrary() = Unit
+    override suspend fun resetLibrary(): Result<Unit> = Result.success(Unit)
 }
 
 private fun leaderboardSong(id: String, rating: Int, wins: Int, losses: Int, skips: Int): Song {

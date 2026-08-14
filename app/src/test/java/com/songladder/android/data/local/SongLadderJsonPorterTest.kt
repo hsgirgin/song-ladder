@@ -15,7 +15,7 @@ class SongLadderJsonPorterTest {
             songs = listOf(
                 SongExport(
                     id = "song-1",
-                    externalId = "spotify-1",
+                    externalId = "source-1",
                     sourceType = "SPOTIFY",
                     title = "Nights",
                     artist = "Frank Ocean",
@@ -62,5 +62,27 @@ class SongLadderJsonPorterTest {
         assertEquals("Untitled track", songs.single().title)
         assertEquals("Unknown artist", songs.single().artist)
         assertEquals("song-2", stats.single().songId)
+    }
+
+    @Test
+    fun `normalizes unknown imported source types to import`() {
+        val payload = ExportPayload(
+            songs = listOf(
+                SongExport(
+                    id = "song-3",
+                    externalId = null,
+                    sourceType = "APPLE_MUSIC",
+                    title = "Song",
+                    artist = "Artist",
+                    album = "",
+                    artworkUrl = null,
+                    createdAt = 0L
+                )
+            )
+        )
+
+        val (songs, _) = payload.toEntities()
+
+        assertEquals("IMPORT", songs.single().sourceType)
     }
 }

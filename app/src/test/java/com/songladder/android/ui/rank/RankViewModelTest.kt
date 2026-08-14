@@ -293,18 +293,41 @@ class RankViewModelTest {
     }
 
     @Test
-    fun `skip resets streak and emits transient skip feedback`() = runTest {
+    fun `failed rank save does not emit successful choice feedback`() = runTest {
         val songs = listOf(
             fakeSong(id = "1", title = "Dreams"),
             fakeSong(id = "2", title = "Go Your Own Way")
         )
         val viewModel = RankViewModel(
             songRepository = FakeRankSongRepository(songs),
-            rankingRepository = FakeRankingRepository()
+            rankingRepository = FakeRankingRepository(battleResult = Result.failure(IllegalStateException("db failed")))
         )
         backgroundScope.launch(dispatcher) { viewModel.uiState.collect {} }
 
         advanceUntilIdle()
+        viewModel.rankWinner("1", "2")
+        runCurrent()
+
+        assertEquals(RankVisualFeedback.None, viewModel.uiState.value.visualFeedback)
+        assertEquals(0, viewModel.uiState.value.streakCount)
+        assertEquals("Could not save ranking. Try again.", viewModel.uiState.value.message)
+    }
+
+    @Test
+    fun `skip resets streak and emits transient skip feedback`() = runTest {
+        val songs = listOf(
+            fakeSong(id = "1", title = "Dreams"),
+            fakeSong(id = "2", title = "Go Your Own Way")
+        )
+        val rankingRepository = FakeRankingRepository()
+        val viewModel = RankViewModel(
+            songRepository = FakeRankSongRepository(songs),
+            rankingRepository = rankingRepository
+        )
+        backgroundScope.launch(dispatcher) { viewModel.uiState.collect {} }
+
+        advanceUntilIdle()
+        val matchup = checkNotNull(viewModel.uiState.value.matchup)
         viewModel.rankWinner("1", "2")
         runCurrent()
         viewModel.skip()
@@ -312,6 +335,7 @@ class RankViewModelTest {
 
         assertEquals(0, viewModel.uiState.value.streakCount)
         assertEquals(RankVisualFeedback.Skip, viewModel.uiState.value.visualFeedback)
+        assertEquals(setOf(matchup.left.id, matchup.right.id), rankingRepository.skippedSongIds.toSet())
 
         advanceTimeBy(326)
         advanceUntilIdle()
@@ -383,23 +407,33 @@ private class FakeRankSongRepository(
 
     override suspend fun addSong(input: com.songladder.android.domain.model.SongInput): Result<Unit> = Result.success(Unit)
 
-    override suspend fun removeSong(songId: String) = Unit
+    override suspend fun removeSong(songId: String): Result<Unit> = Result.success(Unit)
 
-    override suspend fun resetLibrary() = Unit
+    override suspend fun resetLibrary(): Result<Unit> = Result.success(Unit)
 }
 
-private class FakeRankingRepository : RankingRepository {
+private class FakeRankingRepository(
+    private val battleResult: Result<Unit> = Result.success(Unit),
+    private val skipResult: Result<Unit> = Result.success(Unit)
+) : RankingRepository {
     private val stats = MutableStateFlow(AppStats())
+    val skippedSongIds = mutableListOf<String>()
 
     override fun observeStats(): Flow<AppStats> = stats
 
     override suspend fun recordBattle(winnerId: String, loserId: String): Result<Unit> {
-        stats.value = stats.value.copy(matchCount = stats.value.matchCount + 1)
-        return Result.success(Unit)
+        if (battleResult.isSuccess) {
+            stats.value = stats.value.copy(matchCount = stats.value.matchCount + 1)
+        }
+        return battleResult
     }
 
-    override suspend fun recordSkip(songId: String) {
-        stats.value = stats.value.copy(skipCount = stats.value.skipCount + 1)
+    override suspend fun recordSkip(songIds: List<String>): Result<Unit> {
+        if (skipResult.isSuccess) {
+            skippedSongIds += songIds
+            stats.value = stats.value.copy(skipCount = stats.value.skipCount + 1)
+        }
+        return skipResult
     }
 }
 

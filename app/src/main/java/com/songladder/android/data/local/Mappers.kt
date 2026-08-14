@@ -12,7 +12,7 @@ fun SongWithStatsEntity.toDomain(): Song {
     return Song(
         id = song.id,
         externalId = song.externalId,
-        sourceType = MusicSourceType.valueOf(song.sourceType),
+        sourceType = song.sourceType.toMusicSourceType(),
         title = song.title,
         artist = song.artist,
         album = song.album,
@@ -63,7 +63,7 @@ fun ExportPayload.toEntities(): Pair<List<SongEntity>, List<RankingStatsEntity>>
         SongEntity(
             id = it.id,
             externalId = it.externalId,
-            sourceType = it.sourceType,
+            sourceType = it.sourceType.toMusicSourceType().name,
             title = it.title.ifBlank { "Untitled track" },
             artist = it.artist.ifBlank { "Unknown artist" },
             album = it.album,
@@ -90,3 +90,7 @@ fun AppStatsEntity?.toDomain(): AppStats = AppStats(
     matchCount = this?.matchCount ?: 0,
     skipCount = this?.skipCount ?: 0
 )
+
+private fun String.toMusicSourceType(): MusicSourceType =
+    runCatching { MusicSourceType.valueOf(trim().uppercase()) }
+        .getOrDefault(MusicSourceType.IMPORT)
