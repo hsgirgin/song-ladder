@@ -8,7 +8,6 @@ import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
-import androidx.compose.ui.test.onNode
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -80,7 +79,7 @@ class RankScreenTest {
                 androidx.compose.ui.semantics.SemanticsProperties.Role,
                 Role.Button
             ) and SemanticsMatcher("has labeled choose action") { node ->
-                node.config.getOrNull(androidx.compose.ui.semantics.SemanticsActions.OnClick)
+                node.config.getOrElseNullable(androidx.compose.ui.semantics.SemanticsActions.OnClick) { null }
                     ?.label == "Choose Dreams by Fleetwood Mac as the winner"
             }
         ).assertHasClickAction().performClick()
@@ -91,8 +90,20 @@ class RankScreenTest {
 
     @Test
     fun matchup_keepsBothChoicesReachableAtCompactHeight() {
-        val left = Song(id = "left", title = "Left song", artist = "Artist", createdAt = 1L)
-        val right = Song(id = "right", title = "Right song", artist = "Artist", createdAt = 2L)
+        val left = Song(
+            id = "left",
+            title = "Left song",
+            artist = "Left artist",
+            album = "Left album",
+            createdAt = 1L
+        )
+        val right = Song(
+            id = "right",
+            title = "Right song",
+            artist = "Right artist",
+            album = "Right album",
+            createdAt = 2L
+        )
 
         composeRule.setContent {
             SongLadderTheme {
@@ -121,8 +132,17 @@ class RankScreenTest {
         composeRule.onNodeWithText("Right song")
             .performScrollTo()
             .assertIsDisplayed()
+        composeRule.onNodeWithText("Left artist")
+            .performScrollTo()
+            .assertIsDisplayed()
+        composeRule.onNodeWithText("Left album")
+            .performScrollTo()
+            .assertIsDisplayed()
+        composeRule.onNodeWithText("Right artist")
+            .performScrollTo()
+            .assertIsDisplayed()
+        composeRule.onNodeWithText("Right album")
+            .performScrollTo()
+            .assertIsDisplayed()
     }
 }
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.width
-import androidx.compose.ui.Modifier
