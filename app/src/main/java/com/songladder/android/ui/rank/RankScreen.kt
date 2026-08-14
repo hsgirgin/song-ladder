@@ -161,6 +161,7 @@ internal fun RankMatchupContent(
                 modifier = if (compact) Modifier.heightIn(min = 180.dp) else Modifier.weight(1f),
                 song = matchup.left,
                 artworkSize = artworkSize,
+                compact = compact,
                 reaction = uiState.visualFeedback.reactionFor(matchup.left.id),
                 previewState = uiState.previews[matchup.left.id] ?: SongPreviewState.Loading,
                 onTogglePreview = { onTogglePreview(matchup.left.id) },
@@ -185,6 +186,7 @@ internal fun RankMatchupContent(
                 modifier = if (compact) Modifier.heightIn(min = 180.dp) else Modifier.weight(1f),
                 song = matchup.right,
                 artworkSize = artworkSize,
+                compact = compact,
                 reaction = uiState.visualFeedback.reactionFor(matchup.right.id),
                 previewState = uiState.previews[matchup.right.id] ?: SongPreviewState.Loading,
                 onTogglePreview = { onTogglePreview(matchup.right.id) },
@@ -249,6 +251,7 @@ internal fun MinimalSongChoiceCard(
     modifier: Modifier = Modifier,
     song: Song,
     artworkSize: androidx.compose.ui.unit.Dp,
+    compact: Boolean = false,
     reaction: CardReaction,
     previewState: SongPreviewState,
     onTogglePreview: () -> Unit,
@@ -359,7 +362,7 @@ internal fun MinimalSongChoiceCard(
                 }
 
                 Column(
-                    modifier = Modifier.weight(1f, fill = false),
+                    modifier = if (compact) Modifier else Modifier.weight(1f, fill = false),
                     verticalArrangement = Arrangement.Center
                 ) {
                     Text(
