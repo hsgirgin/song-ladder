@@ -3,22 +3,21 @@ package com.songladder.android.ui.leaderboard
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -40,7 +39,7 @@ fun LeaderboardScreen(viewModel: LeaderboardViewModel) {
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
             .padding(horizontal = 20.dp)
-            .padding(top = WindowInsets.systemBars.asPaddingValues().calculateTopPadding() + 8.dp),
+            .padding(top = 8.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item {
@@ -50,30 +49,10 @@ fun LeaderboardScreen(viewModel: LeaderboardViewModel) {
         }
 
         item {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                LeaderboardSortMode.entries.forEach { mode ->
-                    AssistChip(
-                        onClick = { viewModel.updateSortMode(mode) },
-                        label = {
-                            Text(
-                                when (mode) {
-                                    LeaderboardSortMode.TOP_RATED -> "Top rated"
-                                    LeaderboardSortMode.MOST_PLAYED -> "Most played"
-                                    LeaderboardSortMode.MOST_SKIPPED -> "Most skipped"
-                                }
-                            )
-                        },
-                        colors = if (uiState.sortMode == mode) {
-                            androidx.compose.material3.AssistChipDefaults.assistChipColors(
-                                containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.14f),
-                                labelColor = MaterialTheme.colorScheme.primary
-                            )
-                        } else {
-                            androidx.compose.material3.AssistChipDefaults.assistChipColors()
-                        }
-                    )
-                }
-            }
+            LeaderboardSortControls(
+                selectedMode = uiState.sortMode,
+                onModeSelected = viewModel::updateSortMode
+            )
         }
 
         if (uiState.songs.isEmpty()) {
@@ -98,9 +77,40 @@ fun LeaderboardScreen(viewModel: LeaderboardViewModel) {
 }
 
 @Composable
-private fun LeaderboardRow(index: Int, song: Song) {
+@OptIn(ExperimentalLayoutApi::class)
+internal fun LeaderboardSortControls(
+    selectedMode: LeaderboardSortMode,
+    onModeSelected: (LeaderboardSortMode) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    FlowRow(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        LeaderboardSortMode.entries.forEach { mode ->
+            FilterChip(
+                selected = selectedMode == mode,
+                onClick = { onModeSelected(mode) },
+                label = {
+                    Text(
+                        when (mode) {
+                            LeaderboardSortMode.TOP_RATED -> "Top rated"
+                            LeaderboardSortMode.MOST_PLAYED -> "Most played"
+                            LeaderboardSortMode.MOST_SKIPPED -> "Most skipped"
+                        }
+                    )
+                }
+            )
+        }
+    }
+}
+
+@Composable
+@OptIn(ExperimentalLayoutApi::class)
+internal fun LeaderboardRow(index: Int, song: Song, modifier: Modifier = Modifier) {
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
     ) {
         Row(
@@ -130,7 +140,10 @@ private fun LeaderboardRow(index: Int, song: Song) {
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
                     LeaderboardStatChip("Rating ${song.rating}")
                     LeaderboardStatChip("${song.wins}W ${song.losses}L")
                     if (song.skips > 0) {
