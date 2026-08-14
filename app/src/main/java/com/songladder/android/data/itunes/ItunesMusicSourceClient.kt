@@ -120,6 +120,7 @@ internal data class ItunesSearchResponse(
 @Serializable
 internal data class ItunesTrackResult(
     @SerialName("trackId") val trackId: Long? = null,
+    @SerialName("collectionId") val collectionId: Long? = null,
     @SerialName("trackName") val trackName: String? = null,
     @SerialName("artistName") val artistName: String? = null,
     @SerialName("collectionName") val collectionName: String? = null,
