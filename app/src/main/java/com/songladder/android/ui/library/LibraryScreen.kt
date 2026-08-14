@@ -21,6 +21,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -68,6 +69,9 @@ fun LibraryScreen(viewModel: LibraryViewModel) {
     var title by remember { mutableStateOf("") }
     var artist by remember { mutableStateOf("") }
     var album by remember { mutableStateOf("") }
+    var showImportConfirm by rememberSaveable { mutableStateOf(false) }
+    var showResetConfirm by rememberSaveable { mutableStateOf(false) }
+    var songPendingRemoval by remember { mutableStateOf<Song?>(null) }
 
     val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let { viewModel.importJson(contentResolver = context.contentResolver, uri = it) }
@@ -135,9 +139,6 @@ fun LibraryScreen(viewModel: LibraryViewModel) {
                     onAlbumChange = { album = it },
                     onAddSong = {
                         viewModel.addSong(title, artist, album)
-                        title = ""
-                        artist = ""
-                        album = ""
                     },
                     onLoadSamplePack = viewModel::seedSampleSongs
                 )
@@ -153,13 +154,84 @@ fun LibraryScreen(viewModel: LibraryViewModel) {
                     onPreviewYoutubeMusicPlaylist = viewModel::previewYoutubeMusicPlaylist,
                     onConfirmYoutubeMusicPreview = viewModel::confirmYoutubeMusicPreviewImport,
                     onClearYoutubeMusicPreview = viewModel::clearYoutubeMusicPreview,
-                    onImportJson = { importLauncher.launch(arrayOf("application/json")) },
+                    onImportJson = { showImportConfirm = true },
                     onExportJson = { exportLauncher.launch("song-ladder-export.json") },
-                    onResetLibrary = viewModel::resetLibrary,
-                    onRemoveSong = viewModel::removeSong
+                    onResetLibrary = { showResetConfirm = true },
+                    onRemoveSong = { songId ->
+                        songPendingRemoval = uiState.songs.firstOrNull { it.id == songId }
+                    }
                 )
             }
         }
+    }
+
+    if (showImportConfirm) {
+        AlertDialog(
+            onDismissRequest = { showImportConfirm = false },
+            title = { Text("Replace library?") },
+            text = { Text("Importing JSON replaces the current library and ranking history with the selected file.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showImportConfirm = false
+                        importLauncher.launch(arrayOf("application/json"))
+                    }
+                ) {
+                    Text("Import")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showImportConfirm = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    if (showResetConfirm) {
+        AlertDialog(
+            onDismissRequest = { showResetConfirm = false },
+            title = { Text("Reset library?") },
+            text = { Text("This removes every song and clears ranking progress.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showResetConfirm = false
+                        viewModel.resetLibrary()
+                    }
+                ) {
+                    Text("Reset")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showResetConfirm = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    songPendingRemoval?.let { song ->
+        AlertDialog(
+            onDismissRequest = { songPendingRemoval = null },
+            title = { Text("Remove song?") },
+            text = { Text("${song.title} will be removed from your ladder and rankings.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        songPendingRemoval = null
+                        viewModel.removeSong(song.id)
+                    }
+                ) {
+                    Text("Remove")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { songPendingRemoval = null }) {
+                    Text("Cancel")
+                }
+            }
+        )
     }
 }
 

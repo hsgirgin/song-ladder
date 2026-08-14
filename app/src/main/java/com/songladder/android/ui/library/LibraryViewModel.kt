@@ -116,21 +116,44 @@ class LibraryViewModel(
     fun removeSong(songId: String) {
         viewModelScope.launch {
             songRepository.removeSong(songId)
-            mutableState.update { it.copy(statusMessage = "Song removed.") }
+                .onSuccess {
+                    mutableState.update { it.copy(statusMessage = "Song removed.") }
+                }
+                .onFailure { error ->
+                    mutableState.update { it.copy(statusMessage = error.message ?: "Could not remove song.") }
+                }
         }
     }
 
     fun resetLibrary() {
         viewModelScope.launch {
             songRepository.resetLibrary()
-            mutableState.update { it.copy(statusMessage = "Library reset.") }
+                .onSuccess {
+                    mutableState.update { it.copy(statusMessage = "Library reset.") }
+                }
+                .onFailure { error ->
+                    mutableState.update { it.copy(statusMessage = error.message ?: "Could not reset library.") }
+                }
         }
     }
 
     fun seedSampleSongs() {
         viewModelScope.launch {
             importRepository.seedSampleSongs()
-            mutableState.update { it.copy(statusMessage = "Sample pack imported.") }
+                .onSuccess { count ->
+                    mutableState.update {
+                        it.copy(
+                            statusMessage = if (count > 0) {
+                                "Sample pack imported."
+                            } else {
+                                "Sample pack is already in your ladder."
+                            }
+                        )
+                    }
+                }
+                .onFailure { error ->
+                    mutableState.update { it.copy(statusMessage = error.message ?: "Sample pack import failed.") }
+                }
         }
     }
 

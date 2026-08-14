@@ -192,15 +192,15 @@ private class FakeSongRepository : SongRepository {
 
     override suspend fun addSong(input: SongInput): Result<Unit> = Result.success(Unit)
 
-    override suspend fun removeSong(songId: String) = Unit
+    override suspend fun removeSong(songId: String): Result<Unit> = Result.success(Unit)
 
-    override suspend fun resetLibrary() = Unit
+    override suspend fun resetLibrary(): Result<Unit> = Result.success(Unit)
 }
 
 private class FakeImportRepository : ImportRepository {
     val imported = mutableListOf<MusicTrackCandidate>()
 
-    override suspend fun seedSampleSongs() = Unit
+    override suspend fun seedSampleSongs(): Result<Int> = Result.success(0)
 
     override suspend fun importTracks(candidates: List<MusicTrackCandidate>, sourceLabel: String): Result<Int> {
         imported += candidates

@@ -47,7 +47,8 @@ data class RankUiState(
 private data class RankSessionState(
     val previousMatchup: Matchup? = null,
     val visualFeedback: RankVisualFeedback = RankVisualFeedback.None,
-    val streakCount: Int = 0
+    val streakCount: Int = 0,
+    val transientMessage: String = ""
 )
 
 class RankViewModel(
@@ -79,6 +80,7 @@ class RankViewModel(
             stats = stats,
             matchup = matchup,
             message = when {
+                session.transientMessage.isNotBlank() -> session.transientMessage
                 songs.size < 2 -> "Add at least two songs to start ranking."
                 session.streakCount >= 3 -> "Hot streak. Keep the ladder moving."
                 else -> ""
@@ -146,15 +148,24 @@ class RankViewModel(
         stopPreview()
         viewModelScope.launch {
             val currentMatchup = uiState.value.matchup ?: return@launch
-            sessionState.update {
-                it.copy(
-                    previousMatchup = currentMatchup,
-                    visualFeedback = RankVisualFeedback.Choice(winnerId, loserId),
-                    streakCount = it.streakCount + 1
-                )
-            }
             rankingRepository.recordBattle(winnerId, loserId)
-            scheduleFeedbackClear()
+                .onSuccess {
+                    sessionState.update {
+                        it.copy(
+                            previousMatchup = currentMatchup,
+                            visualFeedback = RankVisualFeedback.Choice(winnerId, loserId),
+                            streakCount = it.streakCount + 1,
+                            transientMessage = ""
+                        )
+                    }
+                    scheduleFeedbackClear()
+                }
+                .onFailure {
+                    sessionState.update { state ->
+                        state.copy(transientMessage = "Could not save ranking. Try again.")
+                    }
+                    scheduleFeedbackClear(delayMillis = 2_500)
+                }
         }
     }
 
@@ -162,15 +173,24 @@ class RankViewModel(
         stopPreview()
         viewModelScope.launch {
             val currentMatchup = uiState.value.matchup ?: return@launch
-            sessionState.update {
-                it.copy(
-                    previousMatchup = currentMatchup,
-                    visualFeedback = RankVisualFeedback.Skip,
-                    streakCount = 0
-                )
-            }
-            rankingRepository.recordSkip(currentMatchup.left.id)
-            scheduleFeedbackClear()
+            rankingRepository.recordSkip(listOf(currentMatchup.left.id, currentMatchup.right.id))
+                .onSuccess {
+                    sessionState.update {
+                        it.copy(
+                            previousMatchup = currentMatchup,
+                            visualFeedback = RankVisualFeedback.Skip,
+                            streakCount = 0,
+                            transientMessage = ""
+                        )
+                    }
+                    scheduleFeedbackClear()
+                }
+                .onFailure {
+                    sessionState.update { state ->
+                        state.copy(transientMessage = "Could not save skip. Try again.")
+                    }
+                    scheduleFeedbackClear(delayMillis = 2_500)
+                }
         }
     }
 
@@ -211,11 +231,11 @@ class RankViewModel(
         }
     }
 
-    private fun scheduleFeedbackClear() {
+    private fun scheduleFeedbackClear(delayMillis: Long = 325) {
         clearFeedbackJob?.cancel()
         clearFeedbackJob = viewModelScope.launch {
-            delay(325)
-            sessionState.update { it.copy(visualFeedback = RankVisualFeedback.None) }
+            delay(delayMillis)
+            sessionState.update { it.copy(visualFeedback = RankVisualFeedback.None, transientMessage = "") }
         }
     }
 }

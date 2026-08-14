@@ -37,15 +37,18 @@ class AppContainer(context: Context) {
     val songPreviewPlayer = AndroidSongPreviewPlayer(appContext)
     val playlistSourceClient: PlaylistSourceClient = YoutubeMusicPlaylistClient(httpClient)
     val songRepository: SongRepository = DefaultSongRepository(
+        database = database,
         songDao = database.songDao(),
         appStatsDao = database.appStatsDao()
     )
     val rankingRepository: RankingRepository = DefaultRankingRepository(
+        database = database,
         songDao = database.songDao(),
         matchupEngine = matchupEngine,
         appStatsDao = database.appStatsDao()
     )
     val importRepository: ImportRepository = DefaultImportRepository(
+        database = database,
         songDao = database.songDao(),
         importBatchDao = database.importBatchDao(),
         appStatsDao = database.appStatsDao(),
