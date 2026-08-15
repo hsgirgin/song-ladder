@@ -2,6 +2,7 @@ package com.songladder.android.ui.rank
 
 import com.songladder.android.domain.model.AppStats
 import com.songladder.android.domain.model.Song
+import com.songladder.android.domain.engine.EloMatchupEngine
 import com.songladder.android.domain.repository.RankingRepository
 import com.songladder.android.domain.repository.SongPreviewPlayer
 import com.songladder.android.domain.repository.SongPreviewResolver
@@ -15,7 +16,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.random.Random
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
@@ -260,7 +263,7 @@ class RankViewModelTest {
         advanceUntilIdle()
 
         assertFalse(viewModel.uiState.value.isReady)
-        assertEquals("Add at least two songs to start ranking.", viewModel.uiState.value.message)
+        assertEquals(RankMessage.NeedTwoSongs, viewModel.uiState.value.message)
     }
 
     @Test
@@ -284,6 +287,8 @@ class RankViewModelTest {
         feedback as RankVisualFeedback.Choice
         assertEquals("1", feedback.winnerId)
         assertEquals("2", feedback.loserId)
+        assertEquals(16, feedback.winnerRatingChange)
+        assertEquals(-16, feedback.loserRatingChange)
         assertEquals(1, viewModel.uiState.value.streakCount)
 
         advanceTimeBy(326)
@@ -310,7 +315,156 @@ class RankViewModelTest {
 
         assertEquals(RankVisualFeedback.None, viewModel.uiState.value.visualFeedback)
         assertEquals(0, viewModel.uiState.value.streakCount)
-        assertEquals("Could not save ranking. Try again.", viewModel.uiState.value.message)
+        assertEquals(RankMessage.BattleSaveFailed, viewModel.uiState.value.message)
+    }
+
+    @Test
+    fun `rapid ranking actions submit only the first operation`() = runTest {
+        val songs = listOf(fakeSong("1", "Dreams"), fakeSong("2", "Go Your Own Way"))
+        val repository = BlockingRankingRepository()
+        val viewModel = RankViewModel(FakeRankSongRepository(songs), repository)
+        backgroundScope.launch(dispatcher) { viewModel.uiState.collect {} }
+        advanceUntilIdle()
+
+        viewModel.rankWinner("1", "2")
+        runCurrent()
+        viewModel.rankWinner("1", "2")
+        viewModel.skip()
+        runCurrent()
+
+        assertTrue(viewModel.uiState.value.isSaving)
+        assertEquals(1, repository.battleCalls)
+        assertEquals(0, repository.skipCalls)
+
+        repository.completeBattle(Result.success(Unit))
+        runCurrent()
+
+        assertFalse(viewModel.uiState.value.isSaving)
+        assertTrue(viewModel.uiState.value.visualFeedback is RankVisualFeedback.Choice)
+    }
+
+    @Test
+    fun `pending save keeps the displayed matchup stable`() = runTest {
+        val songs = listOf(
+            fakeSong("1", "Dreams"),
+            fakeSong("2", "Go Your Own Way"),
+            fakeSong("3", "Rhiannon")
+        )
+        val repository = BlockingRankingRepository()
+        val viewModel = RankViewModel(
+            songRepository = FakeRankSongRepository(songs),
+            rankingRepository = repository,
+            matchupEngine = EloMatchupEngine(AlternatingMatchupRandom())
+        )
+        backgroundScope.launch(dispatcher) { viewModel.uiState.collect {} }
+        advanceUntilIdle()
+        val displayedMatchup = checkNotNull(viewModel.uiState.value.matchup)
+
+        viewModel.rankWinner(displayedMatchup.left.id, displayedMatchup.right.id)
+        runCurrent()
+
+        assertTrue(viewModel.uiState.value.isSaving)
+        assertEquals(displayedMatchup, viewModel.uiState.value.matchup)
+
+        repository.completeBattle(Result.success(Unit))
+        runCurrent()
+    }
+
+    @Test
+    fun `skip records the matchup that was visible before saving state changes`() = runTest {
+        val mainDispatcher = UnconfinedTestDispatcher(testScheduler)
+        Dispatchers.setMain(mainDispatcher)
+        val songs = listOf(
+            fakeSong("1", "Dreams"),
+            fakeSong("2", "Go Your Own Way"),
+            fakeSong("3", "Rhiannon")
+        )
+        val repository = FakeRankingRepository()
+        val viewModel = RankViewModel(
+            songRepository = FakeRankSongRepository(songs),
+            rankingRepository = repository,
+            matchupEngine = EloMatchupEngine(AlternatingMatchupRandom())
+        )
+        backgroundScope.launch(mainDispatcher) { viewModel.uiState.collect {} }
+        advanceUntilIdle()
+        val displayedMatchup = checkNotNull(viewModel.uiState.value.matchup)
+
+        viewModel.skip()
+        runCurrent()
+
+        assertEquals(
+            setOf(displayedMatchup.left.id, displayedMatchup.right.id),
+            repository.skippedSongIds.toSet()
+        )
+    }
+
+    @Test
+    fun `successful save ignores duplicate actions until feedback clears`() = runTest {
+        val songs = listOf(fakeSong("1", "Dreams"), fakeSong("2", "Go Your Own Way"))
+        val repository = FakeRankingRepository()
+        val viewModel = RankViewModel(FakeRankSongRepository(songs), repository)
+        backgroundScope.launch(dispatcher) { viewModel.uiState.collect {} }
+        advanceUntilIdle()
+
+        viewModel.rankWinner("1", "2")
+        runCurrent()
+        assertTrue(viewModel.uiState.value.visualFeedback is RankVisualFeedback.Choice)
+
+        viewModel.rankWinner("1", "2")
+        viewModel.skip()
+        runCurrent()
+
+        assertEquals(1, repository.battleCalls)
+        assertTrue(repository.skippedSongIds.isEmpty())
+
+        advanceTimeBy(326)
+        runCurrent()
+        viewModel.rankWinner("1", "2")
+        runCurrent()
+
+        assertEquals(2, repository.battleCalls)
+    }
+
+    @Test
+    fun `failed save clears guard so ranking can be retried`() = runTest {
+        val songs = listOf(fakeSong("1", "Dreams"), fakeSong("2", "Go Your Own Way"))
+        val repository = RetryableRankingRepository()
+        val viewModel = RankViewModel(FakeRankSongRepository(songs), repository)
+        backgroundScope.launch(dispatcher) { viewModel.uiState.collect {} }
+        advanceUntilIdle()
+
+        viewModel.rankWinner("1", "2")
+        advanceUntilIdle()
+        assertFalse(viewModel.uiState.value.isSaving)
+        assertEquals(RankVisualFeedback.None, viewModel.uiState.value.visualFeedback)
+
+        viewModel.rankWinner("1", "2")
+        runCurrent()
+
+        assertEquals(2, repository.battleCalls)
+        assertTrue(viewModel.uiState.value.visualFeedback is RankVisualFeedback.Choice)
+    }
+
+    @Test
+    fun `failed follow-up save clears earlier success feedback`() = runTest {
+        val songs = listOf(fakeSong("1", "Dreams"), fakeSong("2", "Go Your Own Way"))
+        val repository = SucceedsThenFailsRankingRepository()
+        val viewModel = RankViewModel(FakeRankSongRepository(songs), repository)
+        backgroundScope.launch(dispatcher) { viewModel.uiState.collect {} }
+        advanceUntilIdle()
+
+        viewModel.rankWinner("1", "2")
+        runCurrent()
+        assertTrue(viewModel.uiState.value.visualFeedback is RankVisualFeedback.Choice)
+
+        advanceTimeBy(326)
+        runCurrent()
+        viewModel.rankWinner("1", "2")
+        runCurrent()
+
+        assertFalse(viewModel.uiState.value.isSaving)
+        assertEquals(RankVisualFeedback.None, viewModel.uiState.value.visualFeedback)
+        assertEquals(RankMessage.BattleSaveFailed, viewModel.uiState.value.message)
     }
 
     @Test
@@ -330,6 +484,10 @@ class RankViewModelTest {
         val matchup = checkNotNull(viewModel.uiState.value.matchup)
         viewModel.rankWinner("1", "2")
         runCurrent()
+
+        advanceTimeBy(326)
+        runCurrent()
+
         viewModel.skip()
         runCurrent()
 
@@ -352,6 +510,18 @@ private class FakeSongPreviewResolver(
     override suspend fun resolve(song: Song): String? {
         calls += song.id
         return urls[song.id]
+    }
+}
+
+private class AlternatingMatchupRandom : Random() {
+    private var nextLeftIndex = 0
+
+    override fun nextBits(bitCount: Int): Int = 0
+
+    override fun nextInt(until: Int): Int = when (until) {
+        3 -> nextLeftIndex.also { nextLeftIndex = if (nextLeftIndex == 0) 2 else 0 }
+        2 -> 0
+        else -> 0
     }
 }
 
@@ -418,10 +588,12 @@ private class FakeRankingRepository(
 ) : RankingRepository {
     private val stats = MutableStateFlow(AppStats())
     val skippedSongIds = mutableListOf<String>()
+    var battleCalls = 0
 
     override fun observeStats(): Flow<AppStats> = stats
 
     override suspend fun recordBattle(winnerId: String, loserId: String): Result<Unit> {
+        battleCalls += 1
         if (battleResult.isSuccess) {
             stats.value = stats.value.copy(matchCount = stats.value.matchCount + 1)
         }
@@ -435,6 +607,65 @@ private class FakeRankingRepository(
         }
         return skipResult
     }
+}
+
+private class BlockingRankingRepository : RankingRepository {
+    private val stats = MutableStateFlow(AppStats())
+    private var battleResult = CompletableDeferred<Result<Unit>>()
+    var battleCalls = 0
+    var skipCalls = 0
+
+    override fun observeStats(): Flow<AppStats> = stats
+
+    override suspend fun recordBattle(winnerId: String, loserId: String): Result<Unit> {
+        battleCalls += 1
+        return battleResult.await()
+    }
+
+    override suspend fun recordSkip(songIds: List<String>): Result<Unit> {
+        skipCalls += 1
+        return Result.success(Unit)
+    }
+
+    fun completeBattle(result: Result<Unit>) {
+        battleResult.complete(result)
+    }
+}
+
+private class RetryableRankingRepository : RankingRepository {
+    private val stats = MutableStateFlow(AppStats())
+    var battleCalls = 0
+
+    override fun observeStats(): Flow<AppStats> = stats
+
+    override suspend fun recordBattle(winnerId: String, loserId: String): Result<Unit> {
+        battleCalls += 1
+        return if (battleCalls == 1) {
+            Result.failure(IllegalStateException("db failed"))
+        } else {
+            Result.success(Unit)
+        }
+    }
+
+    override suspend fun recordSkip(songIds: List<String>): Result<Unit> = Result.success(Unit)
+}
+
+private class SucceedsThenFailsRankingRepository : RankingRepository {
+    private val stats = MutableStateFlow(AppStats())
+    var battleCalls = 0
+
+    override fun observeStats(): Flow<AppStats> = stats
+
+    override suspend fun recordBattle(winnerId: String, loserId: String): Result<Unit> {
+        battleCalls += 1
+        return if (battleCalls == 1) {
+            Result.success(Unit)
+        } else {
+            Result.failure(IllegalStateException("db failed"))
+        }
+    }
+
+    override suspend fun recordSkip(songIds: List<String>): Result<Unit> = Result.success(Unit)
 }
 
 private fun fakeSong(id: String, title: String): Song {

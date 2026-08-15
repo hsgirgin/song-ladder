@@ -22,8 +22,21 @@ import kotlinx.coroutines.launch
 
 sealed interface RankVisualFeedback {
     data object None : RankVisualFeedback
-    data class Choice(val winnerId: String, val loserId: String) : RankVisualFeedback
+    data class Choice(
+        val winnerId: String,
+        val loserId: String,
+        val winnerRatingChange: Int = 0,
+        val loserRatingChange: Int = 0
+    ) : RankVisualFeedback
     data object Skip : RankVisualFeedback
+}
+
+enum class RankMessage {
+    None,
+    NeedTwoSongs,
+    HotStreak,
+    BattleSaveFailed,
+    SkipSaveFailed
 }
 
 enum class SongPreviewState {
@@ -37,28 +50,31 @@ data class RankUiState(
     val songs: List<Song> = emptyList(),
     val stats: AppStats = AppStats(),
     val matchup: Matchup? = null,
-    val message: String = "",
+    val message: RankMessage = RankMessage.None,
     val isReady: Boolean = false,
     val visualFeedback: RankVisualFeedback = RankVisualFeedback.None,
     val streakCount: Int = 0,
-    val previews: Map<String, SongPreviewState> = emptyMap()
+    val previews: Map<String, SongPreviewState> = emptyMap(),
+    val isSaving: Boolean = false,
+    val isFirstMatchupReady: Boolean = false
 )
 
 private data class RankSessionState(
     val previousMatchup: Matchup? = null,
     val visualFeedback: RankVisualFeedback = RankVisualFeedback.None,
     val streakCount: Int = 0,
-    val transientMessage: String = ""
+    val transientMessage: RankMessage = RankMessage.None
 )
 
 class RankViewModel(
     private val songRepository: SongRepository,
     private val rankingRepository: RankingRepository,
     private val songPreviewResolver: SongPreviewResolver = UnavailablePreviewResolver,
-    private val songPreviewPlayer: SongPreviewPlayer = NoOpPreviewPlayer
+    private val songPreviewPlayer: SongPreviewPlayer = NoOpPreviewPlayer,
+    private val matchupEngine: EloMatchupEngine = EloMatchupEngine()
 ) : ViewModel() {
-    private val matchupEngine = EloMatchupEngine()
     private val sessionState = MutableStateFlow(RankSessionState())
+    private val pendingMatchup = MutableStateFlow<Matchup?>(null)
     private val previewStates = MutableStateFlow<Map<String, SongPreviewState>>(emptyMap())
     private val previewUrls = mutableMapOf<String, String>()
     private var clearFeedbackJob: Job? = null
@@ -68,9 +84,10 @@ class RankViewModel(
     private val rankingUiState: StateFlow<RankUiState> = combine(
         songRepository.observeSongs(),
         rankingRepository.observeStats(),
-        sessionState
-    ) { songs, stats, session ->
-        val matchup = if (session.visualFeedback == RankVisualFeedback.None) {
+        sessionState,
+        pendingMatchup
+    ) { songs, stats, session, pending ->
+        val matchup = pending ?: if (session.visualFeedback == RankVisualFeedback.None) {
             matchupEngine.pickMatchup(songs, session.previousMatchup)
         } else {
             session.previousMatchup
@@ -80,14 +97,16 @@ class RankViewModel(
             stats = stats,
             matchup = matchup,
             message = when {
-                session.transientMessage.isNotBlank() -> session.transientMessage
-                songs.size < 2 -> "Add at least two songs to start ranking."
-                session.streakCount >= 3 -> "Hot streak. Keep the ladder moving."
-                else -> ""
+                session.transientMessage != RankMessage.None -> session.transientMessage
+                songs.size < 2 -> RankMessage.NeedTwoSongs
+                session.streakCount >= 3 -> RankMessage.HotStreak
+                else -> RankMessage.None
             },
             isReady = songs.size >= 2,
             visualFeedback = session.visualFeedback,
-            streakCount = session.streakCount
+            streakCount = session.streakCount,
+            isSaving = pending != null,
+            isFirstMatchupReady = songs.size >= 2 && stats.matchCount == 0 && matchup != null
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), RankUiState())
 
@@ -145,53 +164,82 @@ class RankViewModel(
     }
 
     fun rankWinner(winnerId: String, loserId: String) {
+        val currentMatchup = uiState.value.matchup ?: return
+        if (!tryStartSaveOperation(currentMatchup)) return
         stopPreview()
         viewModelScope.launch {
-            val currentMatchup = uiState.value.matchup ?: return@launch
-            rankingRepository.recordBattle(winnerId, loserId)
-                .onSuccess {
-                    sessionState.update {
-                        it.copy(
-                            previousMatchup = currentMatchup,
-                            visualFeedback = RankVisualFeedback.Choice(winnerId, loserId),
-                            streakCount = it.streakCount + 1,
-                            transientMessage = ""
-                        )
+            try {
+                rankingRepository.recordBattle(winnerId, loserId)
+                    .onSuccess {
+                        val winner = currentMatchup.songForId(winnerId) ?: return@onSuccess
+                        val loser = currentMatchup.songForId(loserId) ?: return@onSuccess
+                        val (winnerUpdate, loserUpdate) = matchupEngine.updateRatings(winner, loser)
+                        sessionState.update {
+                            it.copy(
+                                previousMatchup = currentMatchup,
+                                visualFeedback = RankVisualFeedback.Choice(
+                                    winnerId = winnerId,
+                                    loserId = loserId,
+                                    winnerRatingChange = winnerUpdate.rating - winner.rating,
+                                    loserRatingChange = loserUpdate.rating - loser.rating
+                                ),
+                                streakCount = it.streakCount + 1,
+                                transientMessage = RankMessage.None
+                            )
+                        }
+                        scheduleFeedbackClear()
                     }
-                    scheduleFeedbackClear()
-                }
-                .onFailure {
-                    sessionState.update { state ->
-                        state.copy(transientMessage = "Could not save ranking. Try again.")
+                    .onFailure {
+                        sessionState.update { state ->
+                            state.copy(
+                                visualFeedback = RankVisualFeedback.None,
+                                transientMessage = RankMessage.BattleSaveFailed
+                            )
+                        }
+                        scheduleFeedbackClear(delayMillis = 2_500)
                     }
-                    scheduleFeedbackClear(delayMillis = 2_500)
-                }
+            } finally {
+                pendingMatchup.value = null
+            }
         }
     }
 
     fun skip() {
+        val currentMatchup = uiState.value.matchup ?: return
+        if (!tryStartSaveOperation(currentMatchup)) return
         stopPreview()
         viewModelScope.launch {
-            val currentMatchup = uiState.value.matchup ?: return@launch
-            rankingRepository.recordSkip(listOf(currentMatchup.left.id, currentMatchup.right.id))
-                .onSuccess {
-                    sessionState.update {
-                        it.copy(
-                            previousMatchup = currentMatchup,
-                            visualFeedback = RankVisualFeedback.Skip,
-                            streakCount = 0,
-                            transientMessage = ""
-                        )
+            try {
+                rankingRepository.recordSkip(listOf(currentMatchup.left.id, currentMatchup.right.id))
+                    .onSuccess {
+                        sessionState.update {
+                            it.copy(
+                                previousMatchup = currentMatchup,
+                                visualFeedback = RankVisualFeedback.Skip,
+                                streakCount = 0,
+                                transientMessage = RankMessage.None
+                            )
+                        }
+                        scheduleFeedbackClear()
                     }
-                    scheduleFeedbackClear()
-                }
-                .onFailure {
-                    sessionState.update { state ->
-                        state.copy(transientMessage = "Could not save skip. Try again.")
+                    .onFailure {
+                        sessionState.update { state ->
+                            state.copy(
+                                visualFeedback = RankVisualFeedback.None,
+                                transientMessage = RankMessage.SkipSaveFailed
+                            )
+                        }
+                        scheduleFeedbackClear(delayMillis = 2_500)
                     }
-                    scheduleFeedbackClear(delayMillis = 2_500)
-                }
+            } finally {
+                pendingMatchup.value = null
+            }
         }
+    }
+
+    private fun tryStartSaveOperation(matchup: Matchup): Boolean {
+        if (sessionState.value.visualFeedback != RankVisualFeedback.None) return false
+        return pendingMatchup.compareAndSet(null, matchup)
     }
 
     fun togglePreview(songId: String) {
@@ -235,8 +283,16 @@ class RankViewModel(
         clearFeedbackJob?.cancel()
         clearFeedbackJob = viewModelScope.launch {
             delay(delayMillis)
-            sessionState.update { it.copy(visualFeedback = RankVisualFeedback.None, transientMessage = "") }
+            sessionState.update { it.copy(visualFeedback = RankVisualFeedback.None, transientMessage = RankMessage.None) }
         }
+    }
+}
+
+private fun Matchup.songForId(songId: String): Song? {
+    return when (songId) {
+        left.id -> left
+        right.id -> right
+        else -> null
     }
 }
 

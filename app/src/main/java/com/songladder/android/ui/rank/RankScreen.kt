@@ -71,7 +71,8 @@ internal enum class CardReaction {
 @Composable
 fun RankScreen(
     viewModel: RankViewModel,
-    onOpenLibrary: () -> Unit = {}
+    onOpenLibrary: () -> Unit = {},
+    onTrySampleSongs: () -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val matchup = uiState.matchup
@@ -114,7 +115,10 @@ fun RankScreen(
         MinimalRankHeader(uiState = uiState)
 
         if (!uiState.isReady || matchup == null) {
-            EmptyRankState(onOpenLibrary = onOpenLibrary)
+            EmptyRankState(
+                onTrySampleSongs = onTrySampleSongs,
+                onOpenLibrary = onOpenLibrary
+            )
         } else {
             RankMatchupContent(
                 uiState = uiState,
@@ -156,6 +160,24 @@ internal fun RankMatchupContent(
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold
             )
+
+            Text(
+                text = stringResource(com.songladder.android.R.string.rank_model_explanation),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            AnimatedVisibility(visible = uiState.visualFeedback is RankVisualFeedback.Choice) {
+                val feedback = uiState.visualFeedback as? RankVisualFeedback.Choice
+                if (feedback != null) {
+                    RankChoiceFeedback(
+                        winner = matchup.songForId(feedback.winnerId) ?: matchup.left,
+                        loser = matchup.songForId(feedback.loserId) ?: matchup.right,
+                        winnerRatingChange = feedback.winnerRatingChange,
+                        loserRatingChange = feedback.loserRatingChange
+                    )
+                }
+            }
 
             MinimalSongChoiceCard(
                 modifier = if (compact) Modifier.heightIn(min = 180.dp) else Modifier.weight(1f),
@@ -397,12 +419,50 @@ internal fun MinimalSongChoiceCard(
                         modifier = Modifier.padding(top = 8.dp),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        MinimalMetaPill("Rating ${song.rating}", MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f))
-                        MinimalMetaPill("${song.wins}W ${song.losses}L", MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f))
+                        MinimalMetaPill(
+                            stringResource(com.songladder.android.R.string.rank_rating_stat, song.rating),
+                            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f)
+                        )
+                        MinimalMetaPill(
+                            text = stringResource(
+                                com.songladder.android.R.string.rank_song_match_context,
+                                song.matchCount,
+                                stringResource(song.confidenceLabel)
+                            ),
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f)
+                        )
                     }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun RankChoiceFeedback(
+    winner: Song,
+    loser: Song,
+    winnerRatingChange: Int,
+    loserRatingChange: Int,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        color = MaterialTheme.colorScheme.primaryContainer,
+        shape = MaterialTheme.shapes.medium
+    ) {
+        Text(
+            text = stringResource(
+                com.songladder.android.R.string.rank_rating_change,
+                winner.title,
+                winnerRatingChange,
+                loser.title,
+                loserRatingChange
+            ),
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onPrimaryContainer
+        )
     }
 }
 
@@ -446,8 +506,29 @@ private fun MinimalMetaPill(text: String, color: Color) {
     }
 }
 
+private val Song.matchCount: Int
+    get() = wins + losses
+
+private val Song.confidenceLabel: Int
+    get() = when (matchCount) {
+        0 -> com.songladder.android.R.string.rank_confidence_new
+        1, 2 -> com.songladder.android.R.string.rank_confidence_early
+        else -> com.songladder.android.R.string.rank_confidence_established
+    }
+
+private fun Matchup.songForId(songId: String): Song? {
+    return when (songId) {
+        left.id -> left
+        right.id -> right
+        else -> null
+    }
+}
+
 @Composable
-private fun EmptyRankState(onOpenLibrary: () -> Unit) {
+internal fun EmptyRankState(
+    onTrySampleSongs: () -> Unit,
+    onOpenLibrary: () -> Unit
+) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
         color = MaterialTheme.colorScheme.surface,
@@ -457,9 +538,21 @@ private fun EmptyRankState(onOpenLibrary: () -> Unit) {
             modifier = Modifier.padding(18.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Text("No matchup yet", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            Button(onClick = onOpenLibrary) {
-                Text("Open Library")
+            Text(
+                stringResource(com.songladder.android.R.string.rank_empty_title),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold
+            )
+            Text(
+                stringResource(com.songladder.android.R.string.rank_empty_two_songs),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Button(onClick = onTrySampleSongs) {
+                Text(stringResource(com.songladder.android.R.string.rank_try_sample_songs))
+            }
+            androidx.compose.material3.TextButton(onClick = onOpenLibrary) {
+                Text(stringResource(com.songladder.android.R.string.rank_search_or_add_songs))
             }
         }
     }

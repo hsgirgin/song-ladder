@@ -8,7 +8,9 @@ import kotlin.math.pow
 import kotlin.math.roundToInt
 import kotlin.random.Random
 
-class EloMatchupEngine {
+class EloMatchupEngine(
+    private val random: Random = Random.Default
+) {
     fun pickMatchup(
         songs: List<Song>,
         previousMatchup: Matchup? = null
@@ -16,9 +18,9 @@ class EloMatchupEngine {
         if (songs.size < 2) return null
 
         val ranked = songs.sortedWith(compareByDescending<Song> { it.rating }.thenBy { it.title })
-        val leftIndex = Random.nextInt(ranked.size)
+        val leftIndex = random.nextInt(ranked.size)
         val window = ranked.indices.filter { it != leftIndex }.sortedBy { abs(it - leftIndex) }.take(3)
-        val rightIndex = window.random()
+        val rightIndex = window[random.nextInt(window.size)]
         val candidate = Matchup(left = ranked[leftIndex], right = ranked[rightIndex])
 
         if (previousMatchup == null) return candidate
