@@ -43,7 +43,6 @@ class DefaultRankingRepository(
                 current
             }
         }
-    }
 
     override suspend fun recordBattle(winnerId: String, loserId: String): Result<Unit> = runCatching {
         database.withTransaction {
