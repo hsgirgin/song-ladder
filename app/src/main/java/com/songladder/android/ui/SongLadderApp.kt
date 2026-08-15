@@ -70,7 +70,8 @@ fun SongLadderApp(
                                 launchSingleTop = true
                                 restoreState = true
                             }
-                        }
+                        },
+                        onTrySampleSongs = libraryViewModel::seedSampleSongs
                     )
                 }
                 composable(SongLadderDestination.Library.route) {
