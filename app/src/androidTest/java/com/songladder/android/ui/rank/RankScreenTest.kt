@@ -7,6 +7,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
@@ -144,5 +145,106 @@ class RankScreenTest {
         composeRule.onNodeWithText("Right album")
             .performScrollTo()
             .assertIsDisplayed()
+    }
+
+    @Test
+    fun saving_disables_choices_and_skip() {
+        val left = Song(id = "left", title = "Left song", artist = "Left artist", createdAt = 1L)
+        val right = Song(id = "right", title = "Right song", artist = "Right artist", createdAt = 2L)
+
+        composeRule.setContent {
+            SongLadderTheme {
+                RankMatchupContent(
+                    uiState = RankUiState(
+                        songs = listOf(left, right),
+                        isSaving = true
+                    ),
+                    matchup = Matchup(left, right),
+                    onTogglePreview = {},
+                    onChoose = { _, _ -> },
+                    onSkip = {}
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("Left song").assertIsNotEnabled()
+        composeRule.onNodeWithText("Right song").assertIsNotEnabled()
+        composeRule.onNodeWithText("Skip").assertIsNotEnabled()
+    }
+
+    @Test
+    fun emptyRankState_prioritizesSampleSongs_andOffersLibraryFallback() {
+        var sampleActionCount = 0
+        var libraryActionCount = 0
+
+        composeRule.setContent {
+            SongLadderTheme {
+                EmptyRankState(
+                    onTrySampleSongs = { sampleActionCount++ },
+                    onOpenLibrary = { libraryActionCount++ }
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("You need at least two songs to create your first matchup.")
+            .assertIsDisplayed()
+        composeRule.onNodeWithText("Try sample songs")
+            .assertIsDisplayed()
+            .performClick()
+        composeRule.onNodeWithText("Search or add songs")
+            .assertIsDisplayed()
+            .performClick()
+
+        composeRule.runOnIdle {
+            assertEquals(1, sampleActionCount)
+            assertEquals(1, libraryActionCount)
+        }
+    }
+
+    @Test
+    fun firstMatchupReady_isShownAsClearMilestone() {
+        val songs = listOf(
+            Song(id = "left", title = "Left song", artist = "Left artist", createdAt = 1L),
+            Song(id = "right", title = "Right song", artist = "Right artist", createdAt = 2L)
+        )
+
+        composeRule.setContent {
+            SongLadderTheme {
+                MinimalRankHeader(
+                    RankUiState(
+                        songs = songs,
+                        matchup = Matchup(songs[0], songs[1]),
+                        isReady = true,
+                        isFirstMatchupReady = true
+                    )
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("Your first matchup is ready.").assertIsDisplayed()
+    }
+
+    @Test
+    fun firstMatchupError_isNotHiddenByMilestone() {
+        val songs = listOf(
+            Song(id = "left", title = "Left song", artist = "Left artist", createdAt = 1L),
+            Song(id = "right", title = "Right song", artist = "Right artist", createdAt = 2L)
+        )
+
+        composeRule.setContent {
+            SongLadderTheme {
+                MinimalRankHeader(
+                    RankUiState(
+                        songs = songs,
+                        matchup = Matchup(songs[0], songs[1]),
+                        isReady = true,
+                        isFirstMatchupReady = true,
+                        message = RankMessage.BattleSaveFailed
+                    )
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("Could not save ranking. Try again.").assertIsDisplayed()
     }
 }

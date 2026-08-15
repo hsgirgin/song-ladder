@@ -57,6 +57,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.songladder.android.domain.model.DAILY_MATCH_GOAL
 import com.songladder.android.domain.model.Matchup
 import com.songladder.android.domain.model.Song
 import com.songladder.android.ui.components.SongArtwork
@@ -146,6 +147,7 @@ internal fun RankMatchupContent(
     BoxWithConstraints(modifier = modifier) {
         val compact = maxHeight < 640.dp || LocalDensity.current.fontScale > 1.3f
         val artworkSize = if (compact) 80.dp else 112.dp
+        val actionsEnabled = !uiState.isSaving && uiState.visualFeedback == RankVisualFeedback.None
 
         Column(
             modifier = Modifier
@@ -185,6 +187,7 @@ internal fun RankMatchupContent(
                 artworkSize = artworkSize,
                 compact = compact,
                 reaction = uiState.visualFeedback.reactionFor(matchup.left.id),
+                enabled = actionsEnabled,
                 previewState = uiState.previews[matchup.left.id] ?: SongPreviewState.Loading,
                 onTogglePreview = { onTogglePreview(matchup.left.id) },
                 onChoose = { onChoose(matchup.left.id, matchup.right.id) }
@@ -195,12 +198,16 @@ internal fun RankMatchupContent(
                 horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("·", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(
+                    stringResource(com.songladder.android.R.string.rank_stat_separator),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
 
             Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                FilledTonalButton(onClick = onSkip) {
-                    Text("Skip", style = MaterialTheme.typography.labelLarge)
+                FilledTonalButton(onClick = onSkip, enabled = actionsEnabled) {
+                    Text(stringResource(com.songladder.android.R.string.rank_skip), style = MaterialTheme.typography.labelLarge)
                 }
             }
 
@@ -210,6 +217,7 @@ internal fun RankMatchupContent(
                 artworkSize = artworkSize,
                 compact = compact,
                 reaction = uiState.visualFeedback.reactionFor(matchup.right.id),
+                enabled = actionsEnabled,
                 previewState = uiState.previews[matchup.right.id] ?: SongPreviewState.Loading,
                 onTogglePreview = { onTogglePreview(matchup.right.id) },
                 onChoose = { onChoose(matchup.right.id, matchup.left.id) }
@@ -250,7 +258,7 @@ internal fun MinimalRankHeader(uiState: RankUiState) {
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(2.dp)
     ) {
-        Text("Rank", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+        Text(stringResource(com.songladder.android.R.string.rank_title), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
         Text(
             text = summaryParts.joinToString(
                 separator = stringResource(com.songladder.android.R.string.rank_stat_separator)
@@ -258,15 +266,40 @@ internal fun MinimalRankHeader(uiState: RankUiState) {
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
-        AnimatedVisibility(visible = uiState.message.isNotBlank()) {
+        Text(
+            text = stringResource(
+                com.songladder.android.R.string.rank_daily_goal,
+                uiState.stats.dailyMatchCount,
+                DAILY_MATCH_GOAL
+            ),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        AnimatedVisibility(visible = uiState.isFirstMatchupReady) {
             Text(
-                text = uiState.message,
+                text = stringResource(com.songladder.android.R.string.rank_first_matchup_ready),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.primary
+            )
+        }
+        AnimatedVisibility(visible = uiState.message != RankMessage.None) {
+            Text(
+                text = stringResource(uiState.message.stringRes),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
     }
 }
+
+private val RankMessage.stringRes: Int
+    get() = when (this) {
+        RankMessage.None -> com.songladder.android.R.string.rank_message_none
+        RankMessage.NeedTwoSongs -> com.songladder.android.R.string.rank_need_two_songs
+        RankMessage.HotStreak -> com.songladder.android.R.string.rank_hot_streak
+        RankMessage.BattleSaveFailed -> com.songladder.android.R.string.rank_battle_save_failed
+        RankMessage.SkipSaveFailed -> com.songladder.android.R.string.rank_skip_save_failed
+    }
 
 @Composable
 internal fun MinimalSongChoiceCard(
@@ -275,6 +308,7 @@ internal fun MinimalSongChoiceCard(
     artworkSize: androidx.compose.ui.unit.Dp,
     compact: Boolean = false,
     reaction: CardReaction,
+    enabled: Boolean = true,
     previewState: SongPreviewState,
     onTogglePreview: () -> Unit,
     onChoose: () -> Unit
@@ -333,6 +367,7 @@ internal fun MinimalSongChoiceCard(
             .alpha(alpha)
             .border(1.dp, borderColor, RoundedCornerShape(20.dp))
             .clickable(
+                enabled = enabled,
                 onClickLabel = chooseLabel,
                 role = Role.Button,
                 onClick = onChoose
@@ -369,7 +404,13 @@ internal fun MinimalSongChoiceCard(
                     IconButton(onClick = { showStats = !showStats }) {
                         Icon(
                             imageVector = Icons.Rounded.Info,
-                            contentDescription = if (showStats) "Hide song stats" else "Show song stats",
+                            contentDescription = stringResource(
+                                if (showStats) {
+                                    com.songladder.android.R.string.rank_hide_stats
+                                } else {
+                                    com.songladder.android.R.string.rank_show_stats
+                                }
+                            ),
                             tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
@@ -377,7 +418,7 @@ internal fun MinimalSongChoiceCard(
 
                 if (previewState == SongPreviewState.Unavailable) {
                     Text(
-                        text = "Preview unavailable",
+                        text = stringResource(com.songladder.android.R.string.rank_preview_unavailable),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -481,15 +522,15 @@ private fun PreviewButton(
             )
             SongPreviewState.Available -> Icon(
                 imageVector = Icons.Rounded.PlayArrow,
-                contentDescription = "Play preview of $songTitle"
+                contentDescription = stringResource(com.songladder.android.R.string.rank_play_preview, songTitle)
             )
             SongPreviewState.Playing -> Icon(
                 imageVector = Icons.Rounded.Pause,
-                contentDescription = "Pause preview of $songTitle"
+                contentDescription = stringResource(com.songladder.android.R.string.rank_pause_preview, songTitle)
             )
             SongPreviewState.Unavailable -> Icon(
                 imageVector = Icons.Rounded.MusicOff,
-                contentDescription = "Preview unavailable for $songTitle"
+                contentDescription = stringResource(com.songladder.android.R.string.rank_preview_unavailable_for, songTitle)
             )
         }
     }
