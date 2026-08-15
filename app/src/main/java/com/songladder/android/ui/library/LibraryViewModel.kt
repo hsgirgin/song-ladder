@@ -28,11 +28,46 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
+enum class LibraryMessageType {
+    KEEP_TYPING,
+    SONG_ADDED,
+    SONG_REMOVED,
+    LIBRARY_RESET,
+    SAMPLE_IMPORTED,
+    SAMPLE_ALREADY_IMPORTED,
+    ADDING_TRACK,
+    TRACK_ADDED,
+    TRACK_DUPLICATE,
+    JSON_IMPORTED,
+    PLAYLIST_IMPORTED,
+    JSON_EXPORTED,
+    PREVIEWED_PLAYLIST,
+    SEARCHING,
+    SEARCH_EMPTY,
+    SEARCH_RESULTS,
+    ADD_FAILED,
+    REMOVE_FAILED,
+    RESET_FAILED,
+    SAMPLE_IMPORT_FAILED,
+    IMPORT_FAILED,
+    JSON_IMPORT_FAILED,
+    EXPORT_FAILED,
+    PLAYLIST_URL_REQUIRED,
+    PLAYLIST_PREVIEW_FAILED,
+    PLAYLIST_IMPORT_FAILED,
+    SEARCH_FAILED
+}
+
+data class LibraryMessage(
+    val type: LibraryMessageType,
+    val args: List<Any> = emptyList()
+)
+
 data class LibraryUiState(
     val songs: List<Song> = emptyList(),
     val searchQuery: String = "",
     val searchResults: List<MusicTrackCandidate> = emptyList(),
-    val statusMessage: String = "",
+    val statusMessage: LibraryMessage? = null,
     val isSearching: Boolean = false,
     val addingTrackIds: Set<String> = emptySet(),
     val addedTrackIds: Set<String> = emptySet(),
@@ -40,7 +75,7 @@ data class LibraryUiState(
     val youtubeMusicPlaylistUrl: String = "",
     val isPreviewLoading: Boolean = false,
     val youtubeMusicPreview: PlaylistImportPreview? = null,
-    val previewError: String? = null,
+    val previewError: LibraryMessage? = null,
     val isImportingPreview: Boolean = false
 )
 
@@ -90,7 +125,7 @@ class LibraryViewModel(
                             it.copy(
                                 searchResults = emptyList(),
                                 isSearching = false,
-                                statusMessage = "Keep typing to search iTunes."
+                                statusMessage = LibraryMessage(LibraryMessageType.KEEP_TYPING)
                             )
                         }
                         return@collectLatest
@@ -105,10 +140,10 @@ class LibraryViewModel(
         viewModelScope.launch {
             songRepository.addSong(SongInput(title = title, artist = artist, album = album))
                 .onSuccess {
-                    mutableState.update { it.copy(statusMessage = "Song added to your ladder.") }
+                    mutableState.update { it.copy(statusMessage = LibraryMessage(LibraryMessageType.SONG_ADDED)) }
                 }
                 .onFailure { error ->
-                    mutableState.update { it.copy(statusMessage = error.message ?: "Could not add song.") }
+                    mutableState.update { it.copy(statusMessage = LibraryMessage(LibraryMessageType.ADD_FAILED)) }
                 }
         }
     }
@@ -117,10 +152,10 @@ class LibraryViewModel(
         viewModelScope.launch {
             songRepository.removeSong(songId)
                 .onSuccess {
-                    mutableState.update { it.copy(statusMessage = "Song removed.") }
+                    mutableState.update { it.copy(statusMessage = LibraryMessage(LibraryMessageType.SONG_REMOVED)) }
                 }
                 .onFailure { error ->
-                    mutableState.update { it.copy(statusMessage = error.message ?: "Could not remove song.") }
+                    mutableState.update { it.copy(statusMessage = LibraryMessage(LibraryMessageType.REMOVE_FAILED)) }
                 }
         }
     }
@@ -129,10 +164,10 @@ class LibraryViewModel(
         viewModelScope.launch {
             songRepository.resetLibrary()
                 .onSuccess {
-                    mutableState.update { it.copy(statusMessage = "Library reset.") }
+                    mutableState.update { it.copy(statusMessage = LibraryMessage(LibraryMessageType.LIBRARY_RESET)) }
                 }
                 .onFailure { error ->
-                    mutableState.update { it.copy(statusMessage = error.message ?: "Could not reset library.") }
+                    mutableState.update { it.copy(statusMessage = LibraryMessage(LibraryMessageType.RESET_FAILED)) }
                 }
         }
     }
@@ -144,15 +179,15 @@ class LibraryViewModel(
                     mutableState.update {
                         it.copy(
                             statusMessage = if (count > 0) {
-                                "Sample pack imported."
+                                LibraryMessage(LibraryMessageType.SAMPLE_IMPORTED)
                             } else {
-                                "Sample pack is already in your ladder."
+                                LibraryMessage(LibraryMessageType.SAMPLE_ALREADY_IMPORTED)
                             }
                         )
                     }
                 }
                 .onFailure { error ->
-                    mutableState.update { it.copy(statusMessage = error.message ?: "Sample pack import failed.") }
+                    mutableState.update { it.copy(statusMessage = LibraryMessage(LibraryMessageType.SAMPLE_IMPORT_FAILED)) }
                 }
         }
     }
@@ -166,7 +201,7 @@ class LibraryViewModel(
             mutableState.update {
                 it.copy(
                     addingTrackIds = it.addingTrackIds + candidate.externalId,
-                    statusMessage = "Adding ${candidate.title}..."
+                    statusMessage = LibraryMessage(LibraryMessageType.ADDING_TRACK, listOf(candidate.title))
                 )
             }
             importRepository.importTracks(listOf(candidate), "iTunes search")
@@ -177,9 +212,9 @@ class LibraryViewModel(
                             addedTrackIds = if (count > 0) it.addedTrackIds + candidate.externalId else it.addedTrackIds,
                             duplicateTrackIds = if (count == 0) it.duplicateTrackIds + candidate.externalId else it.duplicateTrackIds - candidate.externalId,
                             statusMessage = if (count > 0) {
-                                "Added ${candidate.title} to your ladder."
+                                LibraryMessage(LibraryMessageType.TRACK_ADDED, listOf(candidate.title))
                             } else {
-                                "${candidate.title} is already in your ladder."
+                                LibraryMessage(LibraryMessageType.TRACK_DUPLICATE, listOf(candidate.title))
                             }
                         )
                     }
@@ -188,7 +223,7 @@ class LibraryViewModel(
                     mutableState.update {
                         it.copy(
                             addingTrackIds = it.addingTrackIds - candidate.externalId,
-                            statusMessage = error.message ?: "Import failed."
+                            statusMessage = LibraryMessage(LibraryMessageType.IMPORT_FAILED)
                         )
                     }
                 }
@@ -201,10 +236,10 @@ class LibraryViewModel(
         viewModelScope.launch {
             importRepository.importFromJson(contentResolver, uri)
                 .onSuccess { count ->
-                    mutableState.update { it.copy(statusMessage = "Imported $count songs from JSON.") }
+                    mutableState.update { it.copy(statusMessage = LibraryMessage(LibraryMessageType.JSON_IMPORTED, listOf(count))) }
                 }
                 .onFailure { error ->
-                    mutableState.update { it.copy(statusMessage = error.message ?: "JSON import failed.") }
+                    mutableState.update { it.copy(statusMessage = LibraryMessage(LibraryMessageType.JSON_IMPORT_FAILED)) }
                 }
         }
     }
@@ -213,10 +248,10 @@ class LibraryViewModel(
         viewModelScope.launch {
             importRepository.exportToJson(contentResolver, uri)
                 .onSuccess {
-                    mutableState.update { it.copy(statusMessage = "Exported your library.") }
+                    mutableState.update { it.copy(statusMessage = LibraryMessage(LibraryMessageType.JSON_EXPORTED)) }
                 }
                 .onFailure { error ->
-                    mutableState.update { it.copy(statusMessage = error.message ?: "Export failed.") }
+                    mutableState.update { it.copy(statusMessage = LibraryMessage(LibraryMessageType.EXPORT_FAILED)) }
                 }
         }
     }
@@ -235,7 +270,7 @@ class LibraryViewModel(
         viewModelScope.launch {
             val playlistUrl = mutableState.value.youtubeMusicPlaylistUrl.trim()
             if (playlistUrl.isBlank()) {
-                mutableState.update { it.copy(previewError = "Paste a public YouTube Music playlist link.") }
+                mutableState.update { it.copy(previewError = LibraryMessage(LibraryMessageType.PLAYLIST_URL_REQUIRED)) }
                 return@launch
             }
 
@@ -253,7 +288,7 @@ class LibraryViewModel(
                         it.copy(
                             isPreviewLoading = false,
                             youtubeMusicPreview = preview,
-                            statusMessage = "Previewed ${preview.importableTracks.size} YouTube Music tracks."
+                            statusMessage = LibraryMessage(LibraryMessageType.PREVIEWED_PLAYLIST, listOf(preview.importableTracks.size))
                         )
                     }
                 }
@@ -261,7 +296,7 @@ class LibraryViewModel(
                     mutableState.update {
                         it.copy(
                             isPreviewLoading = false,
-                            previewError = error.message ?: "Could not preview this YouTube Music playlist."
+                            previewError = LibraryMessage(LibraryMessageType.PLAYLIST_PREVIEW_FAILED)
                         )
                     }
                 }
@@ -280,7 +315,7 @@ class LibraryViewModel(
                             isImportingPreview = false,
                             youtubeMusicPreview = null,
                             previewError = null,
-                            statusMessage = "Imported $count songs from ${preview.playlistTitle}.",
+                            statusMessage = LibraryMessage(LibraryMessageType.PLAYLIST_IMPORTED, listOf(count)),
                             youtubeMusicPlaylistUrl = ""
                         )
                     }
@@ -289,7 +324,7 @@ class LibraryViewModel(
                     mutableState.update {
                         it.copy(
                             isImportingPreview = false,
-                            previewError = error.message ?: "Could not import this playlist."
+                            previewError = LibraryMessage(LibraryMessageType.PLAYLIST_IMPORT_FAILED)
                         )
                     }
                 }
@@ -312,7 +347,7 @@ class LibraryViewModel(
             it.copy(
                 isSearching = true,
                 searchResults = emptyList(),
-                statusMessage = "Searching iTunes..."
+                statusMessage = LibraryMessage(LibraryMessageType.SEARCHING)
             )
         }
 
@@ -323,9 +358,9 @@ class LibraryViewModel(
                         it.copy(
                             searchResults = results,
                             statusMessage = if (results.isEmpty()) {
-                                "No songs found for \"$query\"."
+                                LibraryMessage(LibraryMessageType.SEARCH_EMPTY, listOf(query))
                             } else {
-                                "Found ${results.size} tracks."
+                                LibraryMessage(LibraryMessageType.SEARCH_RESULTS, listOf(results.size))
                             }
                         )
                     }
@@ -333,7 +368,7 @@ class LibraryViewModel(
                 .onFailure { error ->
                     mutableState.update {
                         it.copy(
-                            statusMessage = error.message ?: "iTunes search failed."
+                            statusMessage = LibraryMessage(LibraryMessageType.SEARCH_FAILED)
                         )
                     }
                 }

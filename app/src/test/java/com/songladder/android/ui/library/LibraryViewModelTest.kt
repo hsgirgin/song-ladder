@@ -70,7 +70,10 @@ class LibraryViewModelTest {
         advanceUntilIdle()
 
         assertEquals(1, viewModel.uiState.value.searchResults.size)
-        assertEquals("Found 1 tracks.", viewModel.uiState.value.statusMessage)
+        assertEquals(
+            LibraryMessage(LibraryMessageType.SEARCH_RESULTS, listOf(1)),
+            viewModel.uiState.value.statusMessage
+        )
         assertTrue(!viewModel.uiState.value.isSearching)
     }
 
@@ -91,7 +94,10 @@ class LibraryViewModelTest {
         advanceUntilIdle()
 
         assertEquals(0, musicSourceClient.searchCallCount)
-        assertEquals("Keep typing to search iTunes.", viewModel.uiState.value.statusMessage)
+        assertEquals(
+            LibraryMessage(LibraryMessageType.KEEP_TYPING),
+            viewModel.uiState.value.statusMessage
+        )
     }
 
     @Test
@@ -116,7 +122,10 @@ class LibraryViewModelTest {
         runCurrent()
 
         assertEquals(1, fakeImportRepository.imported.size)
-        assertEquals("Added Nights to your ladder.", viewModel.uiState.value.statusMessage)
+        assertEquals(
+            LibraryMessage(LibraryMessageType.TRACK_ADDED, listOf("Nights")),
+            viewModel.uiState.value.statusMessage
+        )
         assertTrue("1" in viewModel.uiState.value.addedTrackIds)
     }
 
@@ -182,6 +191,10 @@ class LibraryViewModelTest {
         assertEquals(1, fakeImportRepository.imported.size)
         assertEquals(MusicSourceType.YOUTUBE_MUSIC, fakeImportRepository.imported.single().sourceType)
         assertEquals("", viewModel.uiState.value.youtubeMusicPlaylistUrl)
+        assertEquals(
+            LibraryMessage(LibraryMessageType.PLAYLIST_IMPORTED, listOf(1)),
+            viewModel.uiState.value.statusMessage
+        )
     }
 }
 

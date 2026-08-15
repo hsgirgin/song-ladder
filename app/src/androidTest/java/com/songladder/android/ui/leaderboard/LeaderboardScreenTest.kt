@@ -66,7 +66,8 @@ class LeaderboardScreenTest {
         }
 
         composeRule.onNodeWithText("Rating 1234").assertIsDisplayed()
-        composeRule.onNodeWithText("12W 3L").assertIsDisplayed()
+        composeRule.onNodeWithText("12 wins, 3 losses").assertIsDisplayed()
+        composeRule.onNodeWithText("15 matches · More established").assertIsDisplayed()
         composeRule.onNodeWithText("5 skips").assertIsDisplayed()
     }
 }

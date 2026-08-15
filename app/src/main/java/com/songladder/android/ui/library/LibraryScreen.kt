@@ -43,6 +43,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -52,10 +54,10 @@ import com.songladder.android.domain.model.PlaylistImportPreview
 import com.songladder.android.domain.model.Song
 import com.songladder.android.ui.components.SongArtwork
 
-private enum class LibraryTab(val label: String) {
-    Search("Search"),
-    Add("Add"),
-    Manage("Manage")
+private enum class LibraryTab(val labelRes: Int) {
+    Search(com.songladder.android.R.string.library_tab_search),
+    Add(com.songladder.android.R.string.library_tab_add),
+    Manage(com.songladder.android.R.string.library_tab_manage)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -93,9 +95,9 @@ fun LibraryScreen(viewModel: LibraryViewModel) {
                 modifier = Modifier.padding(horizontal = 18.dp, vertical = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                Text("Library", style = MaterialTheme.typography.headlineMedium)
+                Text(stringResource(com.songladder.android.R.string.nav_library), style = MaterialTheme.typography.headlineMedium)
                 Text(
-                    "Search first, add fast, and manage the ladder without digging through one long screen.",
+                    stringResource(com.songladder.android.R.string.library_intro),
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
@@ -103,8 +105,9 @@ fun LibraryScreen(viewModel: LibraryViewModel) {
 
         LibraryReadinessBanner(songCount = uiState.songs.size)
 
-        if (uiState.statusMessage.isNotBlank() && !uiState.isSearchMessage()) {
-            LibraryStatusBanner(message = uiState.statusMessage)
+        val statusMessage = uiState.statusMessage?.localizedText()
+        if (!statusMessage.isNullOrBlank() && !uiState.isSearchMessage()) {
+            LibraryStatusBanner(message = statusMessage)
         }
 
         TabRow(selectedTabIndex = selectedTab.ordinal) {
@@ -112,7 +115,7 @@ fun LibraryScreen(viewModel: LibraryViewModel) {
                 Tab(
                     selected = selectedTab == tab,
                     onClick = { selectedTab = tab },
-                    text = { Text(tab.label) }
+                    text = { Text(stringResource(tab.labelRes)) }
                 )
             }
         }
@@ -167,8 +170,8 @@ fun LibraryScreen(viewModel: LibraryViewModel) {
     if (showImportConfirm) {
         AlertDialog(
             onDismissRequest = { showImportConfirm = false },
-            title = { Text("Replace library?") },
-            text = { Text("Importing JSON replaces the current library and ranking history with the selected file.") },
+            title = { Text(stringResource(com.songladder.android.R.string.library_replace_title)) },
+            text = { Text(stringResource(com.songladder.android.R.string.library_replace_message)) },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -176,12 +179,12 @@ fun LibraryScreen(viewModel: LibraryViewModel) {
                         importLauncher.launch(arrayOf("application/json"))
                     }
                 ) {
-                    Text("Import")
+                    Text(stringResource(com.songladder.android.R.string.action_import))
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showImportConfirm = false }) {
-                    Text("Cancel")
+                    Text(stringResource(com.songladder.android.R.string.action_cancel))
                 }
             }
         )
@@ -190,8 +193,8 @@ fun LibraryScreen(viewModel: LibraryViewModel) {
     if (showResetConfirm) {
         AlertDialog(
             onDismissRequest = { showResetConfirm = false },
-            title = { Text("Reset library?") },
-            text = { Text("This removes every song and clears ranking progress.") },
+            title = { Text(stringResource(com.songladder.android.R.string.library_reset_title)) },
+            text = { Text(stringResource(com.songladder.android.R.string.library_reset_message)) },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -199,12 +202,12 @@ fun LibraryScreen(viewModel: LibraryViewModel) {
                         viewModel.resetLibrary()
                     }
                 ) {
-                    Text("Reset")
+                    Text(stringResource(com.songladder.android.R.string.action_reset))
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showResetConfirm = false }) {
-                    Text("Cancel")
+                    Text(stringResource(com.songladder.android.R.string.action_cancel))
                 }
             }
         )
@@ -213,8 +216,8 @@ fun LibraryScreen(viewModel: LibraryViewModel) {
     songPendingRemoval?.let { song ->
         AlertDialog(
             onDismissRequest = { songPendingRemoval = null },
-            title = { Text("Remove song?") },
-            text = { Text("${song.title} will be removed from your ladder and rankings.") },
+            title = { Text(stringResource(com.songladder.android.R.string.library_remove_title)) },
+            text = { Text(stringResource(com.songladder.android.R.string.library_remove_message, song.title)) },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -222,12 +225,12 @@ fun LibraryScreen(viewModel: LibraryViewModel) {
                         viewModel.removeSong(song.id)
                     }
                 ) {
-                    Text("Remove")
+                    Text(stringResource(com.songladder.android.R.string.action_remove))
                 }
             },
             dismissButton = {
                 TextButton(onClick = { songPendingRemoval = null }) {
-                    Text("Cancel")
+                    Text(stringResource(com.songladder.android.R.string.action_cancel))
                 }
             }
         )
@@ -261,19 +264,21 @@ private fun SearchTabContent(
     ) {
         Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("Search songs", style = MaterialTheme.typography.titleLarge)
+                Text(stringResource(com.songladder.android.R.string.library_search_title), style = MaterialTheme.typography.titleLarge)
                 OutlinedTextField(
                     value = uiState.searchQuery,
                     onValueChange = onSearchQueryChange,
-                    label = { Text("Song or artist") },
+                    label = { Text(stringResource(com.songladder.android.R.string.library_search_label)) },
                     supportingText = {
                         Text(
-                            if (uiState.isSearching) "Searching automatically..." else "Search starts automatically as you type."
+                            stringResource(if (uiState.isSearching) com.songladder.android.R.string.library_searching else com.songladder.android.R.string.library_search_hint)
                         )
                     },
                     modifier = Modifier.fillMaxWidth()
                 )
-                val searchStatusMessage = uiState.statusMessage.takeIf { uiState.isSearchMessage() }
+                val searchStatusMessage = uiState.statusMessage
+                    ?.takeIf { uiState.isSearchMessage() }
+                    ?.localizedText()
                 if (!searchStatusMessage.isNullOrBlank()) {
                     Text(
                         text = searchStatusMessage,
@@ -294,9 +299,9 @@ private fun SearchTabContent(
                     modifier = Modifier.padding(18.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    Text("Ready to search", style = MaterialTheme.typography.titleMedium)
+                    Text(stringResource(com.songladder.android.R.string.library_ready_to_search), style = MaterialTheme.typography.titleMedium)
                     Text(
-                        "Type a song, artist, or album and results will appear here.",
+                        stringResource(com.songladder.android.R.string.library_search_empty),
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
@@ -342,19 +347,19 @@ internal fun AddTabContent(
         item {
             Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text("Quick start your ladder", style = MaterialTheme.typography.titleLarge)
+                    Text(stringResource(com.songladder.android.R.string.library_quick_start), style = MaterialTheme.typography.titleLarge)
                     Text(
-                        "Add one manually or drop in a sample pack so you can get to ranking fast.",
+                        stringResource(com.songladder.android.R.string.library_quick_start_message),
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    OutlinedTextField(value = title, onValueChange = onTitleChange, label = { Text("Title") }, modifier = Modifier.fillMaxWidth())
-                    OutlinedTextField(value = artist, onValueChange = onArtistChange, label = { Text("Artist") }, modifier = Modifier.fillMaxWidth())
-                    OutlinedTextField(value = album, onValueChange = onAlbumChange, label = { Text("Album") }, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(value = title, onValueChange = onTitleChange, label = { Text(stringResource(com.songladder.android.R.string.library_title_label)) }, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(value = artist, onValueChange = onArtistChange, label = { Text(stringResource(com.songladder.android.R.string.library_artist_label)) }, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(value = album, onValueChange = onAlbumChange, label = { Text(stringResource(com.songladder.android.R.string.library_album_label)) }, modifier = Modifier.fillMaxWidth())
                     Button(onClick = onAddSong, modifier = Modifier.fillMaxWidth()) {
-                        Text("Add to ladder")
+                        Text(stringResource(com.songladder.android.R.string.library_add_to_ladder))
                     }
                     OutlinedButton(onClick = onLoadSamplePack, modifier = Modifier.fillMaxWidth()) {
-                        Text("Load sample pack")
+                        Text(stringResource(com.songladder.android.R.string.library_load_sample_pack))
                     }
                 }
             }
@@ -369,7 +374,7 @@ private fun ManageTabContent(
     youtubeMusicPlaylistUrl: String,
     isPreviewLoading: Boolean,
     youtubeMusicPreview: PlaylistImportPreview?,
-    previewError: String?,
+    previewError: LibraryMessage?,
     isImportingPreview: Boolean,
     onYoutubeMusicPlaylistUrlChange: (String) -> Unit,
     onPreviewYoutubeMusicPlaylist: () -> Unit,
@@ -387,15 +392,15 @@ private fun ManageTabContent(
         item {
             Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text("Experimental playlist import", style = MaterialTheme.typography.titleLarge)
+                    Text(stringResource(com.songladder.android.R.string.library_playlist_import_title), style = MaterialTheme.typography.titleLarge)
                     Text(
-                        "Paste a public YouTube Music playlist link to preview tracks before import.",
+                        stringResource(com.songladder.android.R.string.library_playlist_import_message),
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     OutlinedTextField(
                         value = youtubeMusicPlaylistUrl,
                         onValueChange = onYoutubeMusicPlaylistUrlChange,
-                        label = { Text("YouTube Music playlist URL") },
+                        label = { Text(stringResource(com.songladder.android.R.string.library_playlist_url_label)) },
                         modifier = Modifier.fillMaxWidth()
                     )
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -404,16 +409,16 @@ private fun ManageTabContent(
                             enabled = !isPreviewLoading && !isImportingPreview,
                             modifier = Modifier.weight(1f)
                         ) {
-                            Text(if (isPreviewLoading) "Previewing..." else "Preview playlist")
+                            Text(stringResource(if (isPreviewLoading) com.songladder.android.R.string.library_previewing else com.songladder.android.R.string.library_preview_playlist))
                         }
                         if (youtubeMusicPreview != null || previewError != null) {
                             TextButton(onClick = onClearYoutubeMusicPreview) {
-                                Text("Clear")
+                                Text(stringResource(com.songladder.android.R.string.action_clear))
                             }
                         }
                     }
-                    if (!previewError.isNullOrBlank()) {
-                        Text(previewError, color = MaterialTheme.colorScheme.error)
+                    previewError?.localizedText()?.let { message ->
+                        Text(message, color = MaterialTheme.colorScheme.error)
                     }
                     youtubeMusicPreview?.let { preview ->
                         YoutubeMusicPreviewCard(
@@ -427,16 +432,16 @@ private fun ManageTabContent(
         }
 
         item {
-            Text("Current pool", style = MaterialTheme.typography.titleLarge)
+            Text(stringResource(com.songladder.android.R.string.library_current_pool), style = MaterialTheme.typography.titleLarge)
         }
 
         if (songs.isEmpty()) {
             item {
                 Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                     Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text("No songs yet", style = MaterialTheme.typography.titleMedium)
+                        Text(stringResource(com.songladder.android.R.string.library_no_songs), style = MaterialTheme.typography.titleMedium)
                         Text(
-                            "Search for songs or add one manually to start your ladder.",
+                            stringResource(com.songladder.android.R.string.library_no_songs_message),
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
@@ -451,21 +456,21 @@ private fun ManageTabContent(
         item {
             Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text("Manage library", style = MaterialTheme.typography.titleLarge)
+                    Text(stringResource(com.songladder.android.R.string.library_manage_title), style = MaterialTheme.typography.titleLarge)
                     Text(
-                        "Backup, restore, or reset after you have the current pool where you want it.",
+                        stringResource(com.songladder.android.R.string.library_manage_message),
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         OutlinedButton(onClick = onImportJson, modifier = Modifier.weight(1f)) {
-                            Text("Import JSON")
+                            Text(stringResource(com.songladder.android.R.string.action_import_json))
                         }
                         OutlinedButton(onClick = onExportJson, modifier = Modifier.weight(1f)) {
-                            Text("Export JSON")
+                            Text(stringResource(com.songladder.android.R.string.action_export_json))
                         }
                     }
                     OutlinedButton(onClick = onResetLibrary, modifier = Modifier.fillMaxWidth()) {
-                        Text("Reset library")
+                        Text(stringResource(com.songladder.android.R.string.library_reset_title).removeSuffix("?"))
                     }
                 }
             }
@@ -487,17 +492,23 @@ private fun YoutubeMusicPreviewCard(
         Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text(preview.playlistTitle, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             Text(
-                "${preview.importableTracks.size} ready to import",
+                stringResource(com.songladder.android.R.string.library_ready_to_import, preview.importableTracks.size),
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             if (preview.ambiguousTracks.isNotEmpty()) {
                 Text(
-                    "${preview.ambiguousTracks.size} need review and will be skipped",
+                    stringResource(com.songladder.android.R.string.library_ambiguous_to_skip, preview.ambiguousTracks.size),
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 preview.ambiguousTracks.take(3).forEach { track ->
                     Text(
-                        "• ${track.rawTitle.ifBlank { "Unknown title" }} — ${track.rawArtist.ifBlank { track.reason }}",
+                        stringResource(
+                            com.songladder.android.R.string.library_ambiguous_track,
+                            track.rawTitle.ifBlank {
+                                stringResource(com.songladder.android.R.string.library_unknown_title)
+                            },
+                            track.rawArtist.ifBlank { track.reason }
+                        ),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -505,7 +516,7 @@ private fun YoutubeMusicPreviewCard(
             }
             if (preview.unsupportedCount > 0) {
                 Text(
-                    "${preview.unsupportedCount} unsupported items were ignored",
+                    stringResource(com.songladder.android.R.string.library_unsupported_ignored, preview.unsupportedCount),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -515,7 +526,7 @@ private fun YoutubeMusicPreviewCard(
                 enabled = preview.importableTracks.isNotEmpty() && !isImporting,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text(if (isImporting) "Importing..." else "Import ready tracks")
+                Text(stringResource(if (isImporting) com.songladder.android.R.string.library_importing else com.songladder.android.R.string.library_import_ready_tracks))
             }
         }
     }
@@ -540,11 +551,11 @@ private fun LibrarySongRow(song: Song, onRemoveSong: () -> Unit) {
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 Text(song.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                Text("${song.artist} - ${song.album.ifBlank { "Single" }}", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text("Rating ${song.rating} - ${song.wins}W ${song.losses}L")
+                Text("${song.artist} - ${song.album.ifBlank { stringResource(com.songladder.android.R.string.library_single) }}", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(stringResource(com.songladder.android.R.string.library_rating_stats, song.rating, song.wins, song.losses))
             }
             OutlinedButton(onClick = onRemoveSong) {
-                Text("Remove")
+                Text(stringResource(com.songladder.android.R.string.action_remove))
             }
         }
     }
@@ -616,7 +627,7 @@ private fun ItunesSearchResultRow(
                     AssistChip(
                         onClick = {},
                         enabled = false,
-                        label = { Text("Added to ladder") },
+                        label = { Text(stringResource(com.songladder.android.R.string.library_added_to_ladder)) },
                         leadingIcon = {
                             Icon(Icons.Rounded.CheckCircle, contentDescription = null)
                         },
@@ -626,7 +637,7 @@ private fun ItunesSearchResultRow(
                     AssistChip(
                         onClick = {},
                         enabled = false,
-                        label = { Text("Already in ladder") },
+                        label = { Text(stringResource(com.songladder.android.R.string.library_already_in_ladder)) },
                         shape = RoundedCornerShape(999.dp)
                     )
                 }
@@ -637,10 +648,9 @@ private fun ItunesSearchResultRow(
             ) {
                 Text(
                     when {
-                        isAdding -> "Adding..."
-                        isAdded -> "Added"
-                        isDuplicate -> "Added"
-                        else -> "Add"
+                        isAdding -> stringResource(com.songladder.android.R.string.library_adding)
+                        isAdded || isDuplicate -> stringResource(com.songladder.android.R.string.library_added)
+                        else -> stringResource(com.songladder.android.R.string.library_add)
                     }
                 )
             }
@@ -649,21 +659,57 @@ private fun ItunesSearchResultRow(
 }
 
 private fun LibraryUiState.isSearchMessage(): Boolean {
+    val messageType = statusMessage?.type
     return isSearching ||
-        statusMessage.startsWith("Found ") ||
-        statusMessage.startsWith("No songs found") ||
-        statusMessage.startsWith("Keep typing") ||
-        statusMessage.startsWith("Searching iTunes") ||
-        statusMessage.startsWith("iTunes search failed")
+        messageType == LibraryMessageType.KEEP_TYPING ||
+        messageType == LibraryMessageType.SEARCHING ||
+        messageType == LibraryMessageType.SEARCH_EMPTY ||
+        messageType == LibraryMessageType.SEARCH_RESULTS ||
+        messageType == LibraryMessageType.SEARCH_FAILED
 }
+
+@Composable
+private fun LibraryMessage.localizedText(): String =
+    stringResource(type.stringRes, *args.toTypedArray())
+
+private val LibraryMessageType.stringRes: Int
+    get() = when (this) {
+        LibraryMessageType.KEEP_TYPING -> com.songladder.android.R.string.library_status_keep_typing
+        LibraryMessageType.SONG_ADDED -> com.songladder.android.R.string.library_status_song_added
+        LibraryMessageType.SONG_REMOVED -> com.songladder.android.R.string.library_status_song_removed
+        LibraryMessageType.LIBRARY_RESET -> com.songladder.android.R.string.library_status_library_reset
+        LibraryMessageType.SAMPLE_IMPORTED -> com.songladder.android.R.string.library_status_sample_imported
+        LibraryMessageType.SAMPLE_ALREADY_IMPORTED -> com.songladder.android.R.string.library_status_sample_already_imported
+        LibraryMessageType.ADDING_TRACK -> com.songladder.android.R.string.library_status_adding_track
+        LibraryMessageType.TRACK_ADDED -> com.songladder.android.R.string.library_status_track_added
+        LibraryMessageType.TRACK_DUPLICATE -> com.songladder.android.R.string.library_status_track_duplicate
+        LibraryMessageType.JSON_IMPORTED -> com.songladder.android.R.string.library_status_json_imported
+        LibraryMessageType.PLAYLIST_IMPORTED -> com.songladder.android.R.string.library_status_playlist_imported
+        LibraryMessageType.JSON_EXPORTED -> com.songladder.android.R.string.library_status_json_exported
+        LibraryMessageType.PREVIEWED_PLAYLIST -> com.songladder.android.R.string.library_status_previewed_playlist
+        LibraryMessageType.SEARCHING -> com.songladder.android.R.string.library_status_searching
+        LibraryMessageType.SEARCH_EMPTY -> com.songladder.android.R.string.library_status_search_empty
+        LibraryMessageType.SEARCH_RESULTS -> com.songladder.android.R.string.library_status_search_results
+        LibraryMessageType.ADD_FAILED -> com.songladder.android.R.string.library_error_add
+        LibraryMessageType.REMOVE_FAILED -> com.songladder.android.R.string.library_error_remove
+        LibraryMessageType.RESET_FAILED -> com.songladder.android.R.string.library_error_reset
+        LibraryMessageType.SAMPLE_IMPORT_FAILED -> com.songladder.android.R.string.library_error_sample_import
+        LibraryMessageType.IMPORT_FAILED -> com.songladder.android.R.string.library_error_import
+        LibraryMessageType.JSON_IMPORT_FAILED -> com.songladder.android.R.string.library_error_json_import
+        LibraryMessageType.EXPORT_FAILED -> com.songladder.android.R.string.library_error_export
+        LibraryMessageType.PLAYLIST_URL_REQUIRED -> com.songladder.android.R.string.library_error_playlist_url
+        LibraryMessageType.PLAYLIST_PREVIEW_FAILED -> com.songladder.android.R.string.library_error_playlist_preview
+        LibraryMessageType.PLAYLIST_IMPORT_FAILED -> com.songladder.android.R.string.library_error_playlist_import
+        LibraryMessageType.SEARCH_FAILED -> com.songladder.android.R.string.library_error_search
+    }
 
 @Composable
 private fun LibraryReadinessBanner(songCount: Int) {
     val ready = songCount >= 2
     val message = if (ready) {
-        "Ready to rank. $songCount songs in your ladder."
+        stringResource(com.songladder.android.R.string.library_ready_now, songCount)
     } else {
-        "Add ${2 - songCount} more song${if (songCount == 1) "" else "s"} to start ranking."
+        pluralStringResource(com.songladder.android.R.plurals.library_ready_message, 2 - songCount, 2 - songCount)
     }
 
     Surface(

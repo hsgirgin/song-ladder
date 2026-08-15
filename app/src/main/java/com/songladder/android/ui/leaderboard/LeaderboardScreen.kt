@@ -23,10 +23,13 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.songladder.android.R
 import com.songladder.android.domain.model.Song
 import com.songladder.android.ui.components.SongArtwork
 
@@ -43,9 +46,9 @@ fun LeaderboardScreen(viewModel: LeaderboardViewModel) {
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item {
-            Text("Leaderboard", style = MaterialTheme.typography.headlineMedium)
+            Text(stringResource(R.string.nav_leaderboard), style = MaterialTheme.typography.headlineMedium)
             Spacer(modifier = Modifier.height(4.dp))
-            Text("Review the ladder, scan the standouts, and sort by what matters most.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(stringResource(R.string.leaderboard_intro), color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
 
         item {
@@ -59,8 +62,8 @@ fun LeaderboardScreen(viewModel: LeaderboardViewModel) {
             item {
                 Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                     Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("No songs ranked yet", style = MaterialTheme.typography.titleLarge)
-                        Text("Add a few tracks or import a playlist to generate your first standings.")
+                        Text(stringResource(R.string.leaderboard_empty_title), style = MaterialTheme.typography.titleLarge)
+                        Text(stringResource(R.string.leaderboard_empty_message))
                     }
                 }
             }
@@ -95,9 +98,9 @@ internal fun LeaderboardSortControls(
                 label = {
                     Text(
                         when (mode) {
-                            LeaderboardSortMode.TOP_RATED -> "Top rated"
-                            LeaderboardSortMode.MOST_PLAYED -> "Most played"
-                            LeaderboardSortMode.MOST_SKIPPED -> "Most skipped"
+                            LeaderboardSortMode.TOP_RATED -> stringResource(R.string.leaderboard_top_rated)
+                            LeaderboardSortMode.MOST_PLAYED -> stringResource(R.string.leaderboard_most_played)
+                            LeaderboardSortMode.MOST_SKIPPED -> stringResource(R.string.leaderboard_most_skipped)
                         }
                     )
                 }
@@ -144,16 +147,35 @@ internal fun LeaderboardRow(index: Int, song: Song, modifier: Modifier = Modifie
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    LeaderboardStatChip("Rating ${song.rating}")
-                    LeaderboardStatChip("${song.wins}W ${song.losses}L")
+                    LeaderboardStatChip(stringResource(R.string.leaderboard_rating, song.rating))
+                    LeaderboardStatChip(
+                        stringResource(
+                            R.string.leaderboard_match_context,
+                            song.matchCount,
+                            stringResource(song.confidenceLabel)
+                        )
+                    )
+                    LeaderboardStatChip(
+                        stringResource(R.string.leaderboard_wins_losses, song.wins, song.losses)
+                    )
                     if (song.skips > 0) {
-                        LeaderboardStatChip("${song.skips} skips")
+                        LeaderboardStatChip(pluralStringResource(R.plurals.leaderboard_skips, song.skips, song.skips))
                     }
                 }
             }
         }
     }
 }
+
+private val Song.matchCount: Int
+    get() = wins + losses
+
+private val Song.confidenceLabel: Int
+    get() = when (matchCount) {
+        0 -> R.string.rank_confidence_new
+        1, 2 -> R.string.rank_confidence_early
+        else -> R.string.rank_confidence_established
+    }
 
 @Composable
 private fun LeaderboardStatChip(text: String) {
