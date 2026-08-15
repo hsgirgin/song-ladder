@@ -89,7 +89,7 @@ jobs:
             --name "song-ladder-api-35" \
             --package "system-images;android-35;google_apis;x86_64" \
             --device "pixel_2"
-          "$ANDROID_HOME/emulator/emulator" -list-avds | rg -x "song-ladder-api-35"
+          "$ANDROID_HOME/emulator/emulator" -list-avds | grep -Fx "song-ladder-api-35"
 
       - name: Start emulator
         run: |
