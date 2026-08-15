@@ -57,6 +57,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.songladder.android.domain.model.DAILY_MATCH_GOAL
 import com.songladder.android.domain.model.Matchup
 import com.songladder.android.domain.model.Song
 import com.songladder.android.ui.components.SongArtwork
@@ -265,6 +266,22 @@ internal fun MinimalRankHeader(uiState: RankUiState) {
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
+        Text(
+            text = stringResource(
+                com.songladder.android.R.string.rank_daily_goal,
+                uiState.stats.dailyMatchCount,
+                DAILY_MATCH_GOAL
+            ),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        AnimatedVisibility(visible = uiState.isFirstMatchupReady) {
+            Text(
+                text = stringResource(com.songladder.android.R.string.rank_first_matchup_ready),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.primary
+            )
+        }
         AnimatedVisibility(visible = uiState.message != RankMessage.None) {
             Text(
                 text = stringResource(uiState.message.stringRes),
