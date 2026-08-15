@@ -220,6 +220,13 @@ internal fun RankMatchupContent(
 
 @Composable
 internal fun MinimalRankHeader(uiState: RankUiState) {
+    val messageResource = when (uiState.message) {
+        RankMessage.None -> null
+        RankMessage.NeedTwoSongs -> com.songladder.android.R.string.rank_need_two_songs
+        RankMessage.HotStreak -> com.songladder.android.R.string.rank_hot_streak
+        RankMessage.BattleSaveFailed -> com.songladder.android.R.string.rank_battle_save_failed
+        RankMessage.SkipSaveFailed -> com.songladder.android.R.string.rank_skip_save_failed
+    }
     val summaryParts = buildList {
         add(
             pluralStringResource(
@@ -258,12 +265,14 @@ internal fun MinimalRankHeader(uiState: RankUiState) {
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
-        AnimatedVisibility(visible = uiState.message.isNotBlank()) {
-            Text(
-                text = uiState.message,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+        AnimatedVisibility(visible = messageResource != null) {
+            messageResource?.let { resourceId ->
+                Text(
+                    text = stringResource(resourceId),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
         }
     }
 }

@@ -52,6 +52,20 @@ class RankScreenTest {
     }
 
     @Test
+    fun rankHeader_displaysLocalizedRankMessage() {
+        composeRule.setContent {
+            SongLadderTheme {
+                MinimalRankHeader(
+                    RankUiState(message = RankMessage.NeedTwoSongs)
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("Add at least two songs to start ranking.")
+            .assertIsDisplayed()
+    }
+
+    @Test
     fun songChoiceCard_exposesChoiceAsButtonWithoutHidingPreviewAction() {
         var choiceCount = 0
         val song = Song(
