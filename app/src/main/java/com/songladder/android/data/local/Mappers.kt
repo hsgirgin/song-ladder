@@ -88,7 +88,9 @@ fun ExportPayload.toEntities(): Pair<List<SongEntity>, List<RankingStatsEntity>>
 
 fun AppStatsEntity?.toDomain(): AppStats = AppStats(
     matchCount = this?.matchCount ?: 0,
-    skipCount = this?.skipCount ?: 0
+    skipCount = this?.skipCount ?: 0,
+    dailyGoalDate = this?.dailyGoalDate,
+    dailyMatchCount = this?.dailyMatchCount ?: 0
 )
 
 private fun String.toMusicSourceType(): MusicSourceType =

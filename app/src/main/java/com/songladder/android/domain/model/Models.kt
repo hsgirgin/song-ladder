@@ -4,6 +4,7 @@ import kotlinx.serialization.Serializable
 
 const val BASE_RATING = 1200
 const val K_FACTOR = 32
+const val DAILY_MATCH_GOAL = 5
 
 enum class MusicSourceType {
     MANUAL,
@@ -37,7 +38,9 @@ data class Matchup(
 
 data class AppStats(
     val matchCount: Int = 0,
-    val skipCount: Int = 0
+    val skipCount: Int = 0,
+    val dailyGoalDate: String? = null,
+    val dailyMatchCount: Int = 0
 )
 
 data class SongInput(
@@ -92,5 +95,7 @@ data class SongExport(
 data class ExportPayload(
     val songs: List<SongExport>,
     val matchCount: Int = 0,
-    val skipCount: Int = 0
+    val skipCount: Int = 0,
+    val dailyGoalDate: String? = null,
+    val dailyMatchCount: Int = 0
 )

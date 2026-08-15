@@ -9,6 +9,7 @@ import com.songladder.android.data.local.SongLadderDatabase
 import com.songladder.android.data.local.toDomain
 import com.songladder.android.domain.engine.EloMatchupEngine
 import com.songladder.android.domain.model.AppStats
+import java.time.LocalDate
 import com.songladder.android.domain.repository.RankingRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -17,15 +18,36 @@ class DefaultRankingRepository(
     private val database: SongLadderDatabase,
     private val songDao: SongDao,
     private val matchupEngine: EloMatchupEngine,
-    private val appStatsDao: AppStatsDao? = null
+    private val appStatsDao: AppStatsDao? = null,
+    private val today: () -> LocalDate = { LocalDate.now() }
 ) : RankingRepository {
     override fun observeStats(): Flow<AppStats> {
         val dao = requireNotNull(appStatsDao) { "AppStatsDao is required for observeStats." }
-        return dao.observeAppStats().map { it.toDomain() }
+        return dao.observeAppStats()
+            .map { normalizeDailyStats(dao).toDomain() }
+    }
+
+    private suspend fun normalizeDailyStats(dao: AppStatsDao): AppStatsEntity =
+        database.withTransaction {
+            val currentDate = today().toString()
+            val current = dao.getAppStats()
+            if (current == null) {
+                val initial = AppStatsEntity(dailyGoalDate = currentDate)
+                dao.upsert(initial)
+                initial
+            } else if (current.dailyGoalDate != currentDate) {
+                val normalized = current.copy(dailyGoalDate = currentDate, dailyMatchCount = 0)
+                dao.upsert(normalized)
+                normalized
+            } else {
+                current
+            }
+        }
     }
 
     override suspend fun recordBattle(winnerId: String, loserId: String): Result<Unit> = runCatching {
         database.withTransaction {
+            require(winnerId != loserId) { "A song cannot battle itself." }
             val winner = songDao.getSongWithStats(winnerId)?.toDomain() ?: error("Winner not found.")
             val loser = songDao.getSongWithStats(loserId)?.toDomain() ?: error("Loser not found.")
             val (winnerUpdate, loserUpdate) = matchupEngine.updateRatings(winner, loser)
@@ -53,7 +75,19 @@ class DefaultRankingRepository(
 
             appStatsDao?.let { dao ->
                 val current = dao.getAppStats() ?: AppStatsEntity()
-                dao.upsert(current.copy(matchCount = current.matchCount + 1))
+                val currentDate = today().toString()
+                val dailyCount = if (current.dailyGoalDate == currentDate) {
+                    current.dailyMatchCount + 1
+                } else {
+                    1
+                }
+                dao.upsert(
+                    current.copy(
+                        matchCount = current.matchCount + 1,
+                        dailyGoalDate = currentDate,
+                        dailyMatchCount = dailyCount
+                    )
+                )
             }
         }
     }

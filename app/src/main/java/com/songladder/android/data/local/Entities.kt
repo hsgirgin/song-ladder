@@ -45,7 +45,9 @@ data class RankingStatsEntity(
 data class AppStatsEntity(
     @PrimaryKey val id: Int = 0,
     val matchCount: Int = 0,
-    val skipCount: Int = 0
+    val skipCount: Int = 0,
+    val dailyGoalDate: String? = null,
+    val dailyMatchCount: Int = 0
 )
 
 @Entity(tableName = "import_batches")

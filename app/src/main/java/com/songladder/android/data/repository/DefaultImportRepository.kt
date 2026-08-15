@@ -100,7 +100,14 @@ class DefaultImportRepository(
             songs.zip(stats).forEach { (song, stat) ->
                 songDao.insertSongWithStats(song = song, stats = stat)
             }
-            appStatsDao.upsert(AppStatsEntity(matchCount = payload.matchCount, skipCount = payload.skipCount))
+            appStatsDao.upsert(
+                AppStatsEntity(
+                    matchCount = payload.matchCount,
+                    skipCount = payload.skipCount,
+                    dailyGoalDate = payload.dailyGoalDate,
+                    dailyMatchCount = payload.dailyMatchCount
+                )
+            )
         }
         songs.size
     }
@@ -111,7 +118,9 @@ class DefaultImportRepository(
         val payload = ExportPayload(
             songs = songs,
             matchCount = appStats?.matchCount ?: 0,
-            skipCount = appStats?.skipCount ?: 0
+            skipCount = appStats?.skipCount ?: 0,
+            dailyGoalDate = appStats?.dailyGoalDate,
+            dailyMatchCount = appStats?.dailyMatchCount ?: 0
         )
         withContext(Dispatchers.IO) {
             contentResolver.openOutputStream(uri)?.bufferedWriter()?.use { writer ->
