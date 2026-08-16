@@ -333,7 +333,7 @@ class RepositoryDatabaseTest {
         val candidates = listOf(
             candidate("first", "Artist"),
             candidate(" FIRST ", "artist"),
-            candidate("Existing", "EXISTING"),
+            candidate("Existing", "ARTIST"),
             candidate("second", "Artist")
         )
 
