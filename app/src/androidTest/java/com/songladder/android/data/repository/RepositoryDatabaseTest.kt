@@ -20,7 +20,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-import java.io.ByteArrayOutputStream
+import java.io.File
 import java.time.LocalDate
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -32,14 +32,16 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class RepositoryDatabaseTest {
+    private lateinit var context: Context
     private lateinit var database: SongLadderDatabase
     private lateinit var songRepository: DefaultSongRepository
     private lateinit var rankingRepository: DefaultRankingRepository
     private lateinit var importRepository: DefaultImportRepository
+    private val backupFiles = mutableListOf<File>()
 
     @Before
     fun setUp() {
-        val context = ApplicationProvider.getApplicationContext<Context>()
+        context = ApplicationProvider.getApplicationContext()
         database = Room.inMemoryDatabaseBuilder(context, SongLadderDatabase::class.java)
             .allowMainThreadQueries()
             .build()
@@ -66,6 +68,7 @@ class RepositoryDatabaseTest {
     @After
     fun tearDown() {
         database.close()
+        backupFiles.forEach { it.delete() }
     }
 
     @Test
@@ -207,11 +210,8 @@ class RepositoryDatabaseTest {
             assertEquals(
                 0,
                 importRepository.importFromJson(
-                    StringContentResolver(
-                        ApplicationProvider.getApplicationContext(),
-                        SongLadderJsonPorter().encode(payload)
-                    ),
-                    Uri.parse("test://backup")
+                    context.contentResolver,
+                    createBackupUri(SongLadderJsonPorter().encode(payload))
                 ).getOrThrow()
             )
 
@@ -368,8 +368,8 @@ class RepositoryDatabaseTest {
         )
 
         val result = importRepository.importFromJson(
-            StringContentResolver(ApplicationProvider.getApplicationContext(), SongLadderJsonPorter().encode(payload)),
-            Uri.parse("test://backup")
+            context.contentResolver,
+            createBackupUri(SongLadderJsonPorter().encode(payload))
         )
 
         assertEquals(1, result.getOrThrow())
@@ -388,16 +388,15 @@ class RepositoryDatabaseTest {
             dailyMatchCount = 4
         )
         database.appStatsDao().upsert(expectedStats)
-        val resolver = RecordingContentResolver(ApplicationProvider.getApplicationContext())
-        val uri = Uri.parse("test://backup")
+        val uri = createBackupUri()
 
-        assertTrue(importRepository.exportToJson(resolver, uri).isSuccess)
-        val exported = SongLadderJsonPorter().decode(resolver.content)
+        assertTrue(importRepository.exportToJson(context.contentResolver, uri).isSuccess)
+        val exported = SongLadderJsonPorter().decode(readBackup(uri))
         assertEquals(expectedStats.dailyGoalDate, exported.dailyGoalDate)
         assertEquals(expectedStats.dailyMatchCount, exported.dailyMatchCount)
 
         database.appStatsDao().upsert(AppStatsEntity())
-        assertEquals(1, importRepository.importFromJson(resolver, uri).getOrThrow())
+        assertEquals(1, importRepository.importFromJson(context.contentResolver, uri).getOrThrow())
         assertEquals(expectedStats, database.appStatsDao().getAppStats())
     }
 
@@ -407,8 +406,8 @@ class RepositoryDatabaseTest {
         database.appStatsDao().upsert(AppStatsEntity(matchCount = 9, skipCount = 8))
 
         val result = importRepository.importFromJson(
-            StringContentResolver(ApplicationProvider.getApplicationContext(), "not-json"),
-            Uri.parse("test://backup")
+            context.contentResolver,
+            createBackupUri("not-json")
         )
 
         assertTrue(result.isFailure)
@@ -446,24 +445,13 @@ class RepositoryDatabaseTest {
             artist = artist,
             sourceType = MusicSourceType.ITUNES
         )
-}
 
-private class StringContentResolver(
-    context: Context,
-    private val content: String
-) : android.content.ContentResolver(context) {
-    override fun openInputStream(uri: Uri) = content.byteInputStream()
-}
-
-private class RecordingContentResolver(context: Context) : android.content.ContentResolver(context) {
-    var content: String = ""
-
-    override fun openInputStream(uri: Uri) = content.byteInputStream()
-
-    override fun openOutputStream(uri: Uri) = object : ByteArrayOutputStream() {
-        override fun close() {
-            content = toString(Charsets.UTF_8.name())
-            super.close()
-        }
+    private fun createBackupUri(content: String = ""): Uri {
+        val file = File.createTempFile("song-ladder-", ".json", context.cacheDir)
+        file.writeText(content)
+        backupFiles += file
+        return Uri.fromFile(file)
     }
+
+    private fun readBackup(uri: Uri): String = File(requireNotNull(uri.path)).readText()
 }
