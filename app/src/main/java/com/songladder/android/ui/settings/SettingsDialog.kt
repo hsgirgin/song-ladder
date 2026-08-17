@@ -17,6 +17,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.pluralStringResource
@@ -58,6 +61,11 @@ internal fun SettingsDialogContent(
     onDeleteSelected: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    var showDeleteConfirm by rememberSaveable { mutableStateOf(false) }
+    val selectedEventCount = uiState.deletedHistories
+        .filter { it.rankingSubjectId in uiState.selectedHistoryIds }
+        .sumOf { it.eventCount }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.settings_title)) },
@@ -115,7 +123,7 @@ internal fun SettingsDialogContent(
                                 Text(stringResource(R.string.settings_clear_selection))
                             }
                             Button(
-                                onClick = onDeleteSelected,
+                                onClick = { showDeleteConfirm = true },
                                 enabled = uiState.selectedHistoryIds.isNotEmpty() && !uiState.isDeletingHistory
                             ) {
                                 Text(
@@ -140,6 +148,37 @@ internal fun SettingsDialogContent(
             }
         }
     )
+
+    if (showDeleteConfirm) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirm = false },
+            title = { Text(stringResource(R.string.settings_confirm_delete_history_title)) },
+            text = {
+                Text(
+                    pluralStringResource(
+                        R.plurals.settings_confirm_delete_history_message,
+                        selectedEventCount,
+                        selectedEventCount
+                    )
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showDeleteConfirm = false
+                        onDeleteSelected()
+                    }
+                ) {
+                    Text(stringResource(R.string.settings_confirm_delete_history_action))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteConfirm = false }) {
+                    Text(stringResource(R.string.rating_editor_cancel))
+                }
+            }
+        )
+    }
 }
 
 @Composable

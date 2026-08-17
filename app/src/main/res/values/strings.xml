@@ -62,6 +62,8 @@
     <string name="settings_unknown_artist">Unknown artist</string>
     <string name="settings_save_failed">Could not save settings. Try again.</string>
     <string name="settings_delete_failed">Could not delete ranking history. Try again.</string>
+    <string name="settings_confirm_delete_history_title">Delete ranking history?</string>
+    <string name="settings_confirm_delete_history_action">Delete history</string>
     <string name="library_restore_history_title">Restore ranking history?</string>
     <string name="library_restore_history_message">This song matches deleted ranking history. Choose a history to restore, or start fresh.</string>
     <string name="library_restore_history_action">Restore %1$s by %2$s</string>
@@ -95,6 +97,10 @@
     <plurals name="settings_deleted_history_success">
         <item quantity="one">Deleted %1$d ranking event.</item>
         <item quantity="other">Deleted %1$d ranking events.</item>
+    </plurals>
+    <plurals name="settings_confirm_delete_history_message">
+        <item quantity="one">This permanently deletes %1$d ranking event and replays the remaining rankings.</item>
+        <item quantity="other">This permanently deletes %1$d ranking events and replays the remaining rankings.</item>
     </plurals>
     <plurals name="library_json_import_repaired_count">
         <item quantity="one">Imported JSON. Repaired %1$d ranking record.</item>
