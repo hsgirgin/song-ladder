@@ -33,12 +33,21 @@ enum class SongPreviewState {
     Unavailable
 }
 
+enum class UndoStatus {
+    None,
+    Unavailable,
+    Failed
+}
+
 data class RankUiState(
     val songs: List<Song> = emptyList(),
     val stats: AppStats = AppStats(),
     val matchup: Matchup? = null,
     val message: String = "",
     val isReady: Boolean = false,
+    val caughtUp: Boolean = false,
+    val undoAvailable: Boolean = false,
+    val undoStatus: UndoStatus = UndoStatus.None,
     val visualFeedback: RankVisualFeedback = RankVisualFeedback.None,
     val streakCount: Int = 0,
     val previews: Map<String, SongPreviewState> = emptyMap()
@@ -46,6 +55,9 @@ data class RankUiState(
 
 private data class RankSessionState(
     val previousMatchup: Matchup? = null,
+    val continueAnyway: Boolean = false,
+    val undoAvailable: Boolean = false,
+    val undoStatus: UndoStatus = UndoStatus.None,
     val visualFeedback: RankVisualFeedback = RankVisualFeedback.None,
     val streakCount: Int = 0,
     val transientMessage: String = ""
@@ -64,17 +76,25 @@ class RankViewModel(
     private var clearFeedbackJob: Job? = null
     private var previewPrefetchJob: Job? = null
     private var previewPrefetchGeneration: Long = 0
+    private var mutationInFlight = false
 
     private val rankingUiState: StateFlow<RankUiState> = combine(
         songRepository.observeSongs(),
         rankingRepository.observeStats(),
+        rankingRepository.observeMatchupEvents(),
         sessionState
-    ) { songs, stats, session ->
-        val matchup = if (session.visualFeedback == RankVisualFeedback.None) {
-            matchupEngine.pickMatchup(songs, session.previousMatchup)
+    ) { songs, stats, events, session ->
+        val selection = if (session.visualFeedback == RankVisualFeedback.None) {
+            matchupEngine.selectMatchup(
+                songs = songs,
+                events = events,
+                previousMatchup = session.previousMatchup,
+                continueAnyway = session.continueAnyway
+            )
         } else {
-            session.previousMatchup
+            com.songladder.android.domain.model.MatchupSelection(session.previousMatchup)
         }
+        val matchup = selection.matchup
         RankUiState(
             songs = songs,
             stats = stats,
@@ -86,6 +106,9 @@ class RankViewModel(
                 else -> ""
             },
             isReady = songs.size >= 2,
+            caughtUp = selection.caughtUp,
+            undoAvailable = session.undoAvailable,
+            undoStatus = session.undoStatus,
             visualFeedback = session.visualFeedback,
             streakCount = session.streakCount
         )
@@ -145,52 +168,106 @@ class RankViewModel(
     }
 
     fun rankWinner(winnerId: String, loserId: String) {
+        if (mutationInFlight) return
+        mutationInFlight = true
         stopPreview()
         viewModelScope.launch {
-            val currentMatchup = uiState.value.matchup ?: return@launch
-            rankingRepository.recordBattle(winnerId, loserId)
-                .onSuccess {
-                    sessionState.update {
-                        it.copy(
-                            previousMatchup = currentMatchup,
-                            visualFeedback = RankVisualFeedback.Choice(winnerId, loserId),
-                            streakCount = it.streakCount + 1,
-                            transientMessage = ""
-                        )
+            try {
+                val currentMatchup = uiState.value.matchup ?: return@launch
+                rankingRepository.recordBattle(winnerId, loserId)
+                    .onSuccess {
+                        sessionState.update {
+                            it.copy(
+                                previousMatchup = currentMatchup,
+                                continueAnyway = false,
+                                undoAvailable = true,
+                                undoStatus = UndoStatus.None,
+                                visualFeedback = RankVisualFeedback.Choice(winnerId, loserId),
+                                streakCount = it.streakCount + 1,
+                                transientMessage = ""
+                            )
+                        }
+                        scheduleFeedbackClear()
                     }
-                    scheduleFeedbackClear()
-                }
-                .onFailure {
-                    sessionState.update { state ->
-                        state.copy(transientMessage = "Could not save ranking. Try again.")
+                    .onFailure {
+                        sessionState.update { state ->
+                            state.copy(transientMessage = "Could not save ranking. Try again.")
+                        }
+                        scheduleFeedbackClear(delayMillis = 2_500)
                     }
-                    scheduleFeedbackClear(delayMillis = 2_500)
-                }
+            } finally {
+                mutationInFlight = false
+            }
         }
     }
 
     fun skip() {
+        if (mutationInFlight) return
+        mutationInFlight = true
         stopPreview()
         viewModelScope.launch {
-            val currentMatchup = uiState.value.matchup ?: return@launch
-            rankingRepository.recordSkip(listOf(currentMatchup.left.id, currentMatchup.right.id))
-                .onSuccess {
-                    sessionState.update {
-                        it.copy(
-                            previousMatchup = currentMatchup,
-                            visualFeedback = RankVisualFeedback.Skip,
-                            streakCount = 0,
-                            transientMessage = ""
-                        )
+            try {
+                val currentMatchup = uiState.value.matchup ?: return@launch
+                rankingRepository.recordSkip(listOf(currentMatchup.left.id, currentMatchup.right.id))
+                    .onSuccess {
+                        sessionState.update {
+                            it.copy(
+                                previousMatchup = currentMatchup,
+                                continueAnyway = false,
+                                undoStatus = UndoStatus.None,
+                                visualFeedback = RankVisualFeedback.Skip,
+                                streakCount = 0,
+                                transientMessage = ""
+                            )
+                        }
+                        scheduleFeedbackClear()
                     }
-                    scheduleFeedbackClear()
-                }
-                .onFailure {
-                    sessionState.update { state ->
-                        state.copy(transientMessage = "Could not save skip. Try again.")
+                    .onFailure {
+                        sessionState.update { state ->
+                            state.copy(transientMessage = "Could not save skip. Try again.")
+                        }
+                        scheduleFeedbackClear(delayMillis = 2_500)
                     }
-                    scheduleFeedbackClear(delayMillis = 2_500)
-                }
+            } finally {
+                mutationInFlight = false
+            }
+        }
+    }
+
+    fun continueAnyway() {
+        sessionState.update { it.copy(continueAnyway = true, transientMessage = "") }
+    }
+
+    fun undo() {
+        if (mutationInFlight) return
+        mutationInFlight = true
+        stopPreview()
+        viewModelScope.launch {
+            try {
+                rankingRepository.undoLastWinner()
+                    .onSuccess { undone ->
+                        sessionState.update {
+                            it.copy(
+                                previousMatchup = null,
+                                continueAnyway = false,
+                                undoAvailable = false,
+                                undoStatus = if (undone) UndoStatus.None else UndoStatus.Unavailable,
+                                visualFeedback = RankVisualFeedback.None,
+                                streakCount = if (undone) maxOf(0, it.streakCount - 1) else it.streakCount,
+                                transientMessage = ""
+                            )
+                        }
+                        if (!undone) scheduleFeedbackClear(delayMillis = 2_500)
+                    }
+                    .onFailure {
+                        sessionState.update { state ->
+                            state.copy(undoStatus = UndoStatus.Failed)
+                        }
+                        scheduleFeedbackClear(delayMillis = 2_500)
+                    }
+            } finally {
+                mutationInFlight = false
+            }
         }
     }
 

@@ -35,6 +35,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -59,6 +60,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.songladder.android.domain.model.Matchup
 import com.songladder.android.domain.model.Song
+import com.songladder.android.domain.model.formatScoreTenths
 import com.songladder.android.ui.components.SongArtwork
 
 internal enum class CardReaction {
@@ -111,9 +113,11 @@ fun RankScreen(
             .padding(top = 16.dp, bottom = 16.dp),
         verticalArrangement = Arrangement.spacedBy(18.dp)
     ) {
-        MinimalRankHeader(uiState = uiState)
+        MinimalRankHeader(uiState = uiState, onUndo = viewModel::undo)
 
-        if (!uiState.isReady || matchup == null) {
+        if (uiState.caughtUp) {
+            CaughtUpState(onContinueAnyway = viewModel::continueAnyway)
+        } else if (!uiState.isReady || matchup == null) {
             EmptyRankState(onOpenLibrary = onOpenLibrary)
         } else {
             RankMatchupContent(
@@ -126,6 +130,33 @@ fun RankScreen(
                 onChoose = viewModel::rankWinner,
                 onSkip = viewModel::skip
             )
+        }
+    }
+}
+
+@Composable
+private fun CaughtUpState(onContinueAnyway: () -> Unit) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+    ) {
+        Column(
+            modifier = Modifier.padding(24.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                text = stringResource(com.songladder.android.R.string.rank_caught_up_title),
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold
+            )
+            Text(
+                text = stringResource(com.songladder.android.R.string.rank_caught_up_message),
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Button(onClick = onContinueAnyway) {
+                Text(stringResource(com.songladder.android.R.string.rank_continue_anyway))
+            }
         }
     }
 }
@@ -197,7 +228,10 @@ internal fun RankMatchupContent(
 }
 
 @Composable
-internal fun MinimalRankHeader(uiState: RankUiState) {
+internal fun MinimalRankHeader(
+    uiState: RankUiState,
+    onUndo: () -> Unit = {}
+) {
     val summaryParts = buildList {
         add(
             pluralStringResource(
@@ -239,6 +273,24 @@ internal fun MinimalRankHeader(uiState: RankUiState) {
         AnimatedVisibility(visible = uiState.message.isNotBlank()) {
             Text(
                 text = uiState.message,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        AnimatedVisibility(visible = uiState.undoAvailable) {
+            TextButton(onClick = onUndo) {
+                Text(stringResource(com.songladder.android.R.string.rank_undo_action))
+            }
+        }
+        AnimatedVisibility(visible = uiState.undoStatus != UndoStatus.None) {
+            Text(
+                text = stringResource(
+                    when (uiState.undoStatus) {
+                        UndoStatus.None -> com.songladder.android.R.string.rank_undo_action
+                        UndoStatus.Unavailable -> com.songladder.android.R.string.rank_undo_unavailable
+                        UndoStatus.Failed -> com.songladder.android.R.string.rank_undo_failed
+                    }
+                ),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -397,7 +449,13 @@ internal fun MinimalSongChoiceCard(
                         modifier = Modifier.padding(top = 8.dp),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        MinimalMetaPill("Rating ${song.rating}", MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f))
+                        val score = song.scoreTenths
+                            ?.let { formatScoreTenths(it) }
+                            ?: stringResource(com.songladder.android.R.string.score_unrated)
+                        MinimalMetaPill(
+                            stringResource(com.songladder.android.R.string.score_value, score),
+                            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f)
+                        )
                         MinimalMetaPill("${song.wins}W ${song.losses}L", MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f))
                     }
                 }

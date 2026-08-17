@@ -1,54 +1,278 @@
 package com.songladder.android.domain.engine
 
-import com.songladder.android.domain.model.K_FACTOR
+import com.songladder.android.domain.model.EloMatchupResult
 import com.songladder.android.domain.model.Matchup
+import com.songladder.android.domain.model.MatchupEvent
+import com.songladder.android.domain.model.MatchupOutcome
+import com.songladder.android.domain.model.MatchupSelection
+import com.songladder.android.domain.model.RankingSubject
+import com.songladder.android.domain.model.ResponsivenessEpoch
 import com.songladder.android.domain.model.Song
+import com.songladder.android.domain.model.seedEloForScore
 import kotlin.math.abs
+import kotlin.math.exp
 import kotlin.math.pow
-import kotlin.math.roundToInt
 import kotlin.random.Random
 
-class EloMatchupEngine {
+class EloMatchupEngine(
+    private val random: Random = Random.Default
+) {
     fun pickMatchup(
         songs: List<Song>,
         previousMatchup: Matchup? = null
-    ): Matchup? {
-        if (songs.size < 2) return null
+    ): Matchup? = selectMatchup(
+        songs = songs,
+        previousMatchup = previousMatchup
+    ).matchup
 
-        val ranked = songs.sortedWith(compareByDescending<Song> { it.rating }.thenBy { it.title })
-        val leftIndex = Random.nextInt(ranked.size)
-        val window = ranked.indices.filter { it != leftIndex }.sortedBy { abs(it - leftIndex) }.take(3)
-        val rightIndex = window.random()
-        val candidate = Matchup(left = ranked[leftIndex], right = ranked[rightIndex])
+    fun selectMatchup(
+        songs: List<Song>,
+        events: List<MatchupEvent> = emptyList(),
+        previousMatchup: Matchup? = null,
+        continueAnyway: Boolean = false
+    ): MatchupSelection {
+        if (songs.size < 2) return MatchupSelection(matchup = null)
 
-        if (previousMatchup == null) return candidate
+        val rated = songs.filter { it.scoreTenths != null }
+        val unrated = songs.filter { it.scoreTenths == null }
+        val includeUnrated = rated.isNotEmpty() &&
+            unrated.isNotEmpty() &&
+            (events.size + 1) % 5 == 0
 
-        val sameAsPrevious =
-            candidate.left.id == previousMatchup.left.id && candidate.right.id == previousMatchup.right.id ||
-                candidate.left.id == previousMatchup.right.id && candidate.right.id == previousMatchup.left.id
-
-        return if (sameAsPrevious && songs.size > 2) {
-            pickMatchup(songs, previousMatchup = null)
-        } else {
-            candidate
+        val candidatePairs = allPairs(songs).let { pairs ->
+            when {
+                rated.isEmpty() -> pairs
+                includeUnrated -> pairs.filter { it.hasUnrated() }.ifEmpty { pairs }
+                rated.size >= 2 -> pairs.filter { it.bothRated() }.ifEmpty { pairs }
+                else -> pairs
+            }
         }
-    }
 
-    fun updateRatings(winner: Song, loser: Song): Pair<Song, Song> {
-        val winnerExpected = expectedScore(winner.rating, loser.rating)
-        val loserExpected = expectedScore(loser.rating, winner.rating)
-        return winner.copy(
-            rating = (winner.rating + K_FACTOR * (1 - winnerExpected)).roundToInt(),
-            wins = winner.wins + 1,
-            lastRankedAt = System.currentTimeMillis()
-        ) to loser.copy(
-            rating = (loser.rating + K_FACTOR * (0 - loserExpected)).roundToInt(),
-            losses = loser.losses + 1,
-            lastRankedAt = System.currentTimeMillis()
+        val blocked = events
+            .sortedBy { it.sequenceId }
+            .takeLast(3)
+            .map { it.pairKey() }
+            .toMutableSet()
+        previousMatchup?.let { blocked += it.pairKey() }
+        val temporarilyExcludedSubjectIds = rated
+            .groupBy { it.scoreTenths }
+            .values
+            .filter { group -> group.size == 2 }
+            .filter { group ->
+                PairKey(
+                    group[0].rankingSubjectId,
+                    group[1].rankingSubjectId
+                ) in blocked
+            }
+            .flatMap { group -> group.map(Song::rankingSubjectId) }
+            .toSet()
+        val eligiblePairs = candidatePairs.filterNot { pair ->
+            pair.first.rankingSubjectId in temporarilyExcludedSubjectIds ||
+                pair.second.rankingSubjectId in temporarilyExcludedSubjectIds
+        }
+        val availablePairs = eligiblePairs.filterNot { it.key() in blocked }
+
+        if (availablePairs.isEmpty() && continueAnyway) {
+            val forcedCandidates = candidatePairs.filter { it.key() in blocked }.ifEmpty { candidatePairs }
+            val forcedPair = forcedCandidates[random.nextInt(forcedCandidates.size)]
+            return MatchupSelection(matchup = Matchup(left = forcedPair.first, right = forcedPair.second))
+        }
+        val selectablePairs = when {
+            availablePairs.isNotEmpty() -> availablePairs
+            else -> return MatchupSelection(matchup = null, caughtUp = candidatePairs.isNotEmpty())
+        }
+
+        val preferredPairs = preferredPairs(selectablePairs, includeUnrated)
+        val exposure = events
+            .flatMap { event -> listOf(event.firstSubjectId, event.secondSubjectId) }
+            .groupingBy { it }
+            .eachCount()
+        val selected = chooseTie(preferredPairs, exposure)
+        return MatchupSelection(
+            matchup = selected?.let { Matchup(left = it.first, right = it.second) },
+            caughtUp = false
         )
     }
 
-    private fun expectedScore(playerRating: Int, opponentRating: Int): Double {
-        return 1.0 / (1 + 10.0.pow((opponentRating - playerRating) / 400.0))
+    fun updateRatings(
+        winner: RankingSubject,
+        loser: RankingSubject,
+        ratedAt: Long = System.currentTimeMillis()
+    ): EloMatchupResult {
+        require(winner.id != loser.id) { "A matchup requires two distinct ranking subjects." }
+        val winnerEffectiveK = effectiveK(winner)
+        val loserEffectiveK = effectiveK(loser)
+        val winnerExpected = expectedScore(winner.elo, loser.elo)
+        val loserExpected = expectedScore(loser.elo, winner.elo)
+        return EloMatchupResult(
+            winner = winner.copy(
+                elo = winner.elo + winnerEffectiveK * (1 - winnerExpected),
+                wins = winner.wins + 1,
+                completedMatchupsInEpoch = winner.completedMatchupsInEpoch + 1,
+                lastRatedAt = ratedAt
+            ),
+            loser = loser.copy(
+                elo = loser.elo + loserEffectiveK * (0 - loserExpected),
+                losses = loser.losses + 1,
+                completedMatchupsInEpoch = loser.completedMatchupsInEpoch + 1,
+                lastRatedAt = ratedAt
+            ),
+            winnerEffectiveK = winnerEffectiveK,
+            loserEffectiveK = loserEffectiveK,
+            ratedAt = ratedAt
+        )
+    }
+
+    fun replay(
+        subjects: List<RankingSubject>,
+        events: List<MatchupEvent>
+    ): List<RankingSubject> {
+        val replayed = subjects.associate { subject ->
+            subject.id to subject.copy(
+                elo = seedEloForScore(subject.scoreTenths),
+                wins = 0,
+                losses = 0,
+                skips = 0,
+                completedMatchupsInEpoch = 0
+            )
+        }.toMutableMap()
+
+        events.sortedBy { it.sequenceId }.forEach { event ->
+            when (event.outcome) {
+                MatchupOutcome.SKIP -> {
+                    incrementSubject(replayed, event.firstSubjectId) { it.copy(skips = it.skips + 1) }
+                    incrementSubject(replayed, event.secondSubjectId) { it.copy(skips = it.skips + 1) }
+                }
+
+                MatchupOutcome.WIN -> {
+                    val winnerId = requireNotNull(event.winnerSubjectId) {
+                        "Winner events must include a winner subject."
+                    }
+                    val loserId = requireNotNull(event.loserSubjectId) {
+                        "Winner events must include a loser subject."
+                    }
+                    val winner = requireNotNull(replayed[winnerId]) {
+                        "Winner subject $winnerId was not found."
+                    }
+                    val loser = requireNotNull(replayed[loserId]) {
+                        "Loser subject $loserId was not found."
+                    }
+                    val winnerK = event.winnerEffectiveK ?: effectiveK(winner)
+                    val loserK = event.loserEffectiveK ?: effectiveK(loser)
+                    val winnerExpected = expectedScore(winner.elo, loser.elo)
+                    val loserExpected = expectedScore(loser.elo, winner.elo)
+                    replayed[winnerId] = winner.copy(
+                        elo = winner.elo + winnerK * (1 - winnerExpected),
+                        wins = winner.wins + 1,
+                        completedMatchupsInEpoch = winner.completedMatchupsInEpoch + 1,
+                        lastRatedAt = maxOf(winner.lastRatedAt ?: event.occurredAt, event.occurredAt)
+                    )
+                    replayed[loserId] = loser.copy(
+                        elo = loser.elo + loserK * (0 - loserExpected),
+                        losses = loser.losses + 1,
+                        completedMatchupsInEpoch = loser.completedMatchupsInEpoch + 1,
+                        lastRatedAt = maxOf(loser.lastRatedAt ?: event.occurredAt, event.occurredAt)
+                    )
+                }
+
+                MatchupOutcome.UNKNOWN -> Unit
+            }
+        }
+
+        return subjects.map { original ->
+            val current = requireNotNull(replayed[original.id])
+                current.copy(
+                    responsivenessEpoch = original.responsivenessEpoch,
+                completedMatchupsInEpoch = events
+                    .asSequence()
+                    .filter { it.outcome == MatchupOutcome.WIN }
+                    .filter { event ->
+                        event.winnerSubjectId == original.id || event.loserSubjectId == original.id
+                    }
+                    .count { event -> event.sequenceId > original.responsivenessEpochSequence }
+            )
+        }
+    }
+
+    fun effectiveK(subject: RankingSubject): Double = when (subject.responsivenessEpoch) {
+        ResponsivenessEpoch.NEW -> 16.0 + 48.0 * exp(-subject.completedMatchupsInEpoch / 4.0)
+        ResponsivenessEpoch.EDITED -> 16.0 + 24.0 * exp(-subject.completedMatchupsInEpoch / 4.0)
+    }
+
+    private fun preferredPairs(
+        pairs: List<Pair<Song, Song>>,
+        includeUnrated: Boolean
+    ): List<Pair<Song, Song>> {
+        if (includeUnrated) return pairs
+
+        val ratedPairs = pairs.filter { it.bothRated() }
+        if (ratedPairs.isEmpty()) return pairs
+
+        val exactScorePairs = ratedPairs.filter { it.first.scoreTenths == it.second.scoreTenths }
+        val scoredPairs = exactScorePairs.ifEmpty { ratedPairs }
+        val minimumScoreDifference = scoredPairs.minOf { it.scoreDifference() }
+        return scoredPairs.filter { it.scoreDifference() == minimumScoreDifference }
+    }
+
+    private fun chooseTie(
+        pairs: List<Pair<Song, Song>>,
+        exposure: Map<String, Int>
+    ): Pair<Song, Song>? {
+        if (pairs.isEmpty()) return null
+        val minimumEloDifference = pairs.minOf { abs(it.first.elo - it.second.elo) }
+        val closestElo = pairs.filter { abs(it.first.elo - it.second.elo) == minimumEloDifference }
+        val minimumExposure = closestElo.minOf { exposure(it, exposure) }
+        val lowestExposure = closestElo.filter { exposure(it, exposure) == minimumExposure }
+        return lowestExposure[random.nextInt(lowestExposure.size)]
+    }
+
+    private fun exposure(pair: Pair<Song, Song>, exposure: Map<String, Int>): Int =
+        exposure.getOrDefault(pair.first.rankingSubjectId, 0) +
+            exposure.getOrDefault(pair.second.rankingSubjectId, 0)
+
+    private fun allPairs(songs: List<Song>): List<Pair<Song, Song>> = buildList {
+        songs.forEachIndexed { firstIndex, first ->
+            songs.drop(firstIndex + 1).forEach { second -> add(first to second) }
+        }
+    }
+
+    private fun incrementSubject(
+        subjects: MutableMap<String, RankingSubject>,
+        subjectId: String,
+        update: (RankingSubject) -> RankingSubject
+    ) {
+        subjects[subjectId]?.let { subjects[subjectId] = update(it) }
+    }
+
+    private fun expectedScore(playerElo: Double, opponentElo: Double): Double =
+        1.0 / (1 + 10.0.pow((opponentElo - playerElo) / 400.0))
+
+    private fun Pair<Song, Song>.bothRated(): Boolean =
+        first.scoreTenths != null && second.scoreTenths != null
+
+    private fun Pair<Song, Song>.hasUnrated(): Boolean =
+        first.scoreTenths == null || second.scoreTenths == null
+
+    private fun Pair<Song, Song>.scoreDifference(): Int =
+        abs((first.scoreTenths ?: 55) - (second.scoreTenths ?: 55))
+
+    private fun Pair<Song, Song>.key(): PairKey =
+        PairKey(first.rankingSubjectId, second.rankingSubjectId)
+
+    private fun Matchup.pairKey(): PairKey = PairKey(left.rankingSubjectId, right.rankingSubjectId)
+
+    private fun MatchupEvent.pairKey(): PairKey = PairKey(firstSubjectId, secondSubjectId)
+
+    private data class PairKey(val first: String, val second: String) {
+        init {
+            require(first != second) { "A matchup pair requires two distinct subjects." }
+        }
+
+        private val normalized: Set<String> = setOf(first, second)
+
+        override fun equals(other: Any?): Boolean =
+            other is PairKey && normalized == other.normalized
+
+        override fun hashCode(): Int = normalized.hashCode()
     }
 }

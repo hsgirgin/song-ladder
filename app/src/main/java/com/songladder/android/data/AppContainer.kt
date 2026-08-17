@@ -10,6 +10,7 @@ import com.songladder.android.data.preview.AndroidSongPreviewPlayer
 import com.songladder.android.data.preview.FallbackSongPreviewResolver
 import com.songladder.android.data.repository.DefaultImportRepository
 import com.songladder.android.data.repository.DefaultRankingRepository
+import com.songladder.android.data.repository.DefaultSettingsRepository
 import com.songladder.android.data.repository.DefaultSongRepository
 import com.songladder.android.data.youtubemusic.YoutubeMusicPlaylistClient
 import com.songladder.android.domain.engine.EloMatchupEngine
@@ -17,6 +18,7 @@ import com.songladder.android.domain.repository.ImportRepository
 import com.songladder.android.domain.repository.MusicSourceClient
 import com.songladder.android.domain.repository.PlaylistSourceClient
 import com.songladder.android.domain.repository.RankingRepository
+import com.songladder.android.domain.repository.SettingsRepository
 import com.songladder.android.domain.repository.SongRepository
 import okhttp3.OkHttpClient
 import java.util.concurrent.TimeUnit
@@ -44,19 +46,30 @@ class AppContainer(context: Context) {
     val songRepository: SongRepository = DefaultSongRepository(
         database = database,
         songDao = database.songDao(),
+        rankingSubjectDao = database.rankingSubjectDao(),
+        matchupEventDao = database.matchupEventDao(),
         appStatsDao = database.appStatsDao()
     )
     val rankingRepository: RankingRepository = DefaultRankingRepository(
         database = database,
         songDao = database.songDao(),
         matchupEngine = matchupEngine,
+        rankingSubjectDao = database.rankingSubjectDao(),
+        matchupEventDao = database.matchupEventDao(),
         appStatsDao = database.appStatsDao()
     )
     val importRepository: ImportRepository = DefaultImportRepository(
         database = database,
         songDao = database.songDao(),
+        rankingSubjectDao = database.rankingSubjectDao(),
+        matchupEventDao = database.matchupEventDao(),
+        rankingSettingsDao = database.rankingSettingsDao(),
         importBatchDao = database.importBatchDao(),
         appStatsDao = database.appStatsDao(),
-        jsonPorter = jsonPorter
+        jsonPorter = jsonPorter,
+        matchupEngine = matchupEngine
+    )
+    val settingsRepository: SettingsRepository = DefaultSettingsRepository(
+        settingsDao = database.rankingSettingsDao()
     )
 }
