@@ -188,13 +188,13 @@ class LibraryViewModelTest {
     fun `json import exposes repaired ranking record count`() = runTest {
         val viewModel = LibraryViewModel(
             songRepository = FakeSongRepository(),
-            importRepository = FakeImportRepository(importJsonResult = Result.success(2)),
+            importRepository = FakeImportRepository(),
             musicSourceClient = FakeMusicSourceClient(emptyList()),
             playlistSourceClient = FakePlaylistSourceClient(Result.success(emptyPreview()))
         )
         backgroundScope.launch(dispatcher) { viewModel.uiState.collect {} }
 
-        viewModel.importJson(FakeContentResolver(), Uri.EMPTY)
+        viewModel.importJson { Result.success(2) }
         advanceUntilIdle()
 
         assertEquals(2, viewModel.uiState.value.jsonImportRepairedCount)
@@ -246,8 +246,6 @@ private class FakePlaylistSourceClient(
 ) : PlaylistSourceClient {
     override suspend fun previewPlaylist(url: String): Result<PlaylistImportPreview> = result
 }
-
-private class FakeContentResolver : ContentResolver(null)
 
 private fun emptyPreview(): PlaylistImportPreview = PlaylistImportPreview(
     playlistTitle = "Empty",

@@ -202,8 +202,12 @@ class LibraryViewModel(
     }
 
     fun importJson(contentResolver: ContentResolver, uri: Uri) {
+        importJson { importRepository.importFromJson(contentResolver, uri) }
+    }
+
+    internal fun importJson(importOperation: suspend () -> Result<Int>) {
         viewModelScope.launch {
-            importRepository.importFromJson(contentResolver, uri)
+            importOperation()
                 .onSuccess { repairedCount ->
                     mutableState.update {
                         it.copy(
