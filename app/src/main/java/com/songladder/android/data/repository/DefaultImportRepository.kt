@@ -5,17 +5,20 @@ import android.net.Uri
 import androidx.room.withTransaction
 import com.songladder.android.data.local.AppStatsDao
 import com.songladder.android.data.local.AppStatsEntity
+import com.songladder.android.data.local.ExportEntities
 import com.songladder.android.data.local.ImportBatchDao
 import com.songladder.android.data.local.ImportBatchEntity
-import com.songladder.android.data.local.RankingStatsEntity
+import com.songladder.android.data.local.RankingSettingsDao
+import com.songladder.android.data.local.RankingSettingsEntity
+import com.songladder.android.data.local.RankingSubjectDao
+import com.songladder.android.data.local.MatchupEventDao
 import com.songladder.android.data.local.SongDao
 import com.songladder.android.data.local.SongLadderDatabase
 import com.songladder.android.data.local.SongLadderJsonPorter
 import com.songladder.android.data.local.toEntities
-import com.songladder.android.data.local.toDomain
-import com.songladder.android.data.local.toSongExport
-import com.songladder.android.data.local.toSongEntity
-import com.songladder.android.domain.model.ExportPayload
+import com.songladder.android.data.local.toPayload
+import com.songladder.android.data.local.toSongAndRankingSubjectEntities
+import com.songladder.android.data.local.validateForImport
 import com.songladder.android.domain.model.MusicSourceType
 import com.songladder.android.domain.model.MusicTrackCandidate
 import com.songladder.android.domain.model.SongInput
@@ -27,6 +30,9 @@ import java.util.UUID
 class DefaultImportRepository(
     private val database: SongLadderDatabase,
     private val songDao: SongDao,
+    private val rankingSubjectDao: RankingSubjectDao,
+    private val matchupEventDao: MatchupEventDao,
+    private val rankingSettingsDao: RankingSettingsDao,
     private val importBatchDao: ImportBatchDao,
     private val appStatsDao: AppStatsDao,
     private val jsonPorter: SongLadderJsonPorter
@@ -67,10 +73,10 @@ class DefaultImportRepository(
                     sourceType = candidate.sourceType,
                     externalId = candidate.externalId
                 )
-                val entity = input.toSongEntity()
+                val (entity, subject) = input.toSongAndRankingSubjectEntities()
                 songDao.insertSongWithStats(
                     song = entity,
-                    stats = RankingStatsEntity(songId = entity.id)
+                    stats = subject
                 )
                 existingKeys += key
                 inserted += 1
@@ -94,25 +100,34 @@ class DefaultImportRepository(
         }
             ?: error("Could not read the selected file.")
         val payload = jsonPorter.decode(raw)
-        val (songs, stats) = payload.toEntities()
+        payload.validateForImport()
+        val entities = payload.toEntities()
         database.withTransaction {
             songDao.clearSongs()
-            songs.zip(stats).forEach { (song, stat) ->
-                songDao.insertSongWithStats(song = song, stats = stat)
+            rankingSubjectDao.clearAll()
+            matchupEventDao.clearAll()
+            rankingSubjectDao.insertAll(entities.subjects)
+            entities.songs.forEach { song ->
+                songDao.insertSong(song)
             }
-            appStatsDao.upsert(AppStatsEntity(matchCount = payload.matchCount, skipCount = payload.skipCount))
+            matchupEventDao.insertAll(entities.events)
+            rankingSettingsDao.upsert(entities.settings)
+            appStatsDao.upsert(entities.appStats)
         }
-        songs.size
+        entities.songs.size
     }
 
     override suspend fun exportToJson(contentResolver: ContentResolver, uri: Uri): Result<Unit> = runCatching {
-        val songs = songDao.getSongsWithStats().map { it.toDomain().toSongExport() }
-        val appStats = appStatsDao.getAppStats()
-        val payload = ExportPayload(
-            songs = songs,
-            matchCount = appStats?.matchCount ?: 0,
-            skipCount = appStats?.skipCount ?: 0
-        )
+        val entities = database.withTransaction {
+            ExportEntities(
+                songs = songDao.getSongsWithStats().map { it.song },
+                subjects = rankingSubjectDao.getAll(),
+                events = matchupEventDao.getAll(),
+                settings = rankingSettingsDao.get() ?: RankingSettingsEntity(),
+                appStats = appStatsDao.getAppStats() ?: AppStatsEntity()
+            )
+        }
+        val payload = entities.toPayload()
         withContext(Dispatchers.IO) {
             contentResolver.openOutputStream(uri)?.bufferedWriter()?.use { writer ->
                 writer.write(jsonPorter.encode(payload))
