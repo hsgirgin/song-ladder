@@ -5,20 +5,30 @@ import android.net.Uri
 import androidx.room.withTransaction
 import com.songladder.android.data.local.AppStatsDao
 import com.songladder.android.data.local.AppStatsEntity
+import com.songladder.android.data.local.ExportEntities
 import com.songladder.android.data.local.ImportBatchDao
 import com.songladder.android.data.local.ImportBatchEntity
-import com.songladder.android.data.local.RankingStatsEntity
+import com.songladder.android.data.local.RankingSettingsDao
+import com.songladder.android.data.local.RankingSettingsEntity
+import com.songladder.android.data.local.RankingSubjectDao
+import com.songladder.android.data.local.MatchupEventDao
 import com.songladder.android.data.local.SongDao
 import com.songladder.android.data.local.SongLadderDatabase
 import com.songladder.android.data.local.SongLadderJsonPorter
 import com.songladder.android.data.local.toEntities
-import com.songladder.android.data.local.toDomain
-import com.songladder.android.data.local.toSongExport
-import com.songladder.android.data.local.toSongEntity
-import com.songladder.android.domain.model.ExportPayload
+import com.songladder.android.data.local.toPayload
+import com.songladder.android.data.local.toSongAndRankingSubjectEntities
+import com.songladder.android.data.local.validateForImport
+import com.songladder.android.data.local.recomputeDerivedState
+import com.songladder.android.domain.engine.EloMatchupEngine
 import com.songladder.android.domain.model.MusicSourceType
 import com.songladder.android.domain.model.MusicTrackCandidate
 import com.songladder.android.domain.model.SongInput
+import com.songladder.android.domain.model.TombstoneImportConflict
+import com.songladder.android.domain.model.TombstoneImportMatch
+import com.songladder.android.domain.model.TombstoneImportAction
+import com.songladder.android.domain.model.TombstoneImportResolution
+import com.songladder.android.data.local.toMusicSourceType
 import com.songladder.android.domain.repository.ImportRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -27,9 +37,13 @@ import java.util.UUID
 class DefaultImportRepository(
     private val database: SongLadderDatabase,
     private val songDao: SongDao,
+    private val rankingSubjectDao: RankingSubjectDao,
+    private val matchupEventDao: MatchupEventDao,
+    private val rankingSettingsDao: RankingSettingsDao,
     private val importBatchDao: ImportBatchDao,
     private val appStatsDao: AppStatsDao,
-    private val jsonPorter: SongLadderJsonPorter
+    private val jsonPorter: SongLadderJsonPorter,
+    private val matchupEngine: EloMatchupEngine = EloMatchupEngine()
 ) : ImportRepository {
     override suspend fun seedSampleSongs(): Result<Int> =
         importTracks(
@@ -46,11 +60,49 @@ class DefaultImportRepository(
             sourceLabel = "Sample Pack"
         )
 
-    override suspend fun importTracks(candidates: List<MusicTrackCandidate>, sourceLabel: String): Result<Int> = runCatching {
+    override suspend fun importTracks(candidates: List<MusicTrackCandidate>, sourceLabel: String): Result<Int> =
+        importTracks(candidates, sourceLabel, emptyMap())
+
+    override suspend fun findTombstoneMatches(
+        candidates: List<MusicTrackCandidate>
+    ): Result<List<TombstoneImportConflict>> = runCatching {
+        database.withTransaction {
+            val tombstones = rankingSubjectDao.getAll().filter { it.tombstoneDeletedAt != null }
+            val existingKeys = songDao.getSongsWithStats()
+                .map { songKey(it.song.title, it.song.artist) }
+                .toSet()
+            candidates.mapNotNull { candidate ->
+                if (songKey(candidate.title, candidate.artist) in existingKeys) return@mapNotNull null
+                val matches = tombstones.mapNotNull { subject ->
+                    if (matchesTombstone(candidate, subject)) {
+                        TombstoneImportMatch(
+                            rankingSubjectId = subject.id,
+                            title = subject.normalizedTitle,
+                            artist = subject.normalizedArtist,
+                            sourceType = (subject.tombstoneSourceType ?: subject.sourceType).toMusicSourceType(),
+                            externalId = subject.tombstoneExternalId ?: subject.externalId
+                        )
+                    } else {
+                        null
+                    }
+                }
+                matches.takeIf { it.isNotEmpty() }?.let {
+                    TombstoneImportConflict(candidate = candidate, matches = it)
+                }
+            }
+        }
+    }
+
+    override suspend fun importTracks(
+        candidates: List<MusicTrackCandidate>,
+        sourceLabel: String,
+        resolutions: Map<String, TombstoneImportResolution>
+    ): Result<Int> = runCatching {
         database.withTransaction {
             val existingKeys = songDao.getSongsWithStats()
                 .map { songKey(it.song.title, it.song.artist) }
                 .toMutableSet()
+            val tombstones = rankingSubjectDao.getAll().filter { it.tombstoneDeletedAt != null }
             var inserted = 0
             val normalizedCandidates = candidates
                 .filter { it.title.isNotBlank() && it.artist.isNotBlank() }
@@ -59,6 +111,30 @@ class DefaultImportRepository(
             normalizedCandidates.forEach { candidate ->
                 val key = songKey(candidate.title, candidate.artist)
                 if (existingKeys.contains(key)) return@forEach
+                val matches = tombstones.filter { matchesTombstone(candidate, it) }
+                val resolution = resolutions[importKey(candidate)]
+                val restoredSubject = when {
+                    matches.isEmpty() -> null
+                    resolution?.action == TombstoneImportAction.RESTORE -> {
+                        val selected = matches.singleOrNull { it.id == resolution.rankingSubjectId }
+                            ?: if (matches.size == 1 && resolution.rankingSubjectId == null) matches.single() else null
+                        selected ?: error("A valid restoration choice is required for ${candidate.title}.")
+                    }
+                    resolution?.action == TombstoneImportAction.START_FRESH -> {
+                        matches.forEach { subject ->
+                            rankingSubjectDao.update(
+                                subject.copy(
+                                    tombstoneSuppressedExternalId = candidate.externalId,
+                                    tombstoneSuppressedSourceType = candidate.sourceType.name,
+                                    tombstoneSuppressedNormalizedTitle = candidate.title.trim().lowercase(),
+                                    tombstoneSuppressedNormalizedArtist = candidate.artist.trim().lowercase()
+                                )
+                            )
+                        }
+                        null
+                    }
+                    else -> error("A restoration choice is required for ${candidate.title}.")
+                }
                 val input = SongInput(
                     title = candidate.title,
                     artist = candidate.artist,
@@ -67,11 +143,32 @@ class DefaultImportRepository(
                     sourceType = candidate.sourceType,
                     externalId = candidate.externalId
                 )
-                val entity = input.toSongEntity()
-                songDao.insertSongWithStats(
-                    song = entity,
-                    stats = RankingStatsEntity(songId = entity.id)
-                )
+                val (entity, subject) = input.toSongAndRankingSubjectEntities()
+                if (restoredSubject != null) {
+                    rankingSubjectDao.update(
+                        restoredSubject.copy(
+                            sourceType = input.sourceType.name,
+                            externalId = input.externalId,
+                            normalizedTitle = input.title.trim().lowercase(),
+                            normalizedArtist = input.artist.trim().lowercase(),
+                            tombstoneDeletedAt = null,
+                            tombstoneSourceType = null,
+                            tombstoneExternalId = null,
+                            tombstoneScoreTenths = null,
+                            tombstoneSeedElo = null,
+                            tombstoneSuppressedExternalId = null,
+                            tombstoneSuppressedSourceType = null,
+                            tombstoneSuppressedNormalizedTitle = null,
+                            tombstoneSuppressedNormalizedArtist = null
+                        )
+                    )
+                    songDao.insertSong(entity.copy(rankingSubjectId = restoredSubject.id))
+                } else {
+                    songDao.insertSongWithStats(
+                        song = entity,
+                        stats = subject
+                    )
+                }
                 existingKeys += key
                 inserted += 1
             }
@@ -94,25 +191,34 @@ class DefaultImportRepository(
         }
             ?: error("Could not read the selected file.")
         val payload = jsonPorter.decode(raw)
-        val (songs, stats) = payload.toEntities()
+        payload.validateForImport()
+        val entities = payload.toEntities().recomputeDerivedState(matchupEngine)
         database.withTransaction {
             songDao.clearSongs()
-            songs.zip(stats).forEach { (song, stat) ->
-                songDao.insertSongWithStats(song = song, stats = stat)
+            rankingSubjectDao.clearAll()
+            matchupEventDao.clearAll()
+            rankingSubjectDao.insertAll(entities.subjects)
+            entities.songs.forEach { song ->
+                songDao.insertSong(song)
             }
-            appStatsDao.upsert(AppStatsEntity(matchCount = payload.matchCount, skipCount = payload.skipCount))
+            matchupEventDao.insertAll(entities.events)
+            rankingSettingsDao.upsert(entities.settings)
+            appStatsDao.upsert(entities.appStats)
         }
-        songs.size
+        entities.songs.size
     }
 
     override suspend fun exportToJson(contentResolver: ContentResolver, uri: Uri): Result<Unit> = runCatching {
-        val songs = songDao.getSongsWithStats().map { it.toDomain().toSongExport() }
-        val appStats = appStatsDao.getAppStats()
-        val payload = ExportPayload(
-            songs = songs,
-            matchCount = appStats?.matchCount ?: 0,
-            skipCount = appStats?.skipCount ?: 0
-        )
+        val entities = database.withTransaction {
+            ExportEntities(
+                songs = songDao.getSongsWithStats().map { it.song },
+                subjects = rankingSubjectDao.getAll(),
+                events = matchupEventDao.getAll(),
+                settings = rankingSettingsDao.get() ?: RankingSettingsEntity(),
+                appStats = appStatsDao.getAppStats() ?: AppStatsEntity()
+            )
+        }
+        val payload = entities.toPayload()
         withContext(Dispatchers.IO) {
             contentResolver.openOutputStream(uri)?.bufferedWriter()?.use { writer ->
                 writer.write(jsonPorter.encode(payload))
@@ -122,4 +228,24 @@ class DefaultImportRepository(
 
     private fun songKey(title: String, artist: String): String =
         "${title.trim().lowercase()}::${artist.trim().lowercase()}"
+
+    private fun importKey(candidate: MusicTrackCandidate): String =
+        "${candidate.sourceType.name}:${candidate.externalId}:${songKey(candidate.title, candidate.artist)}"
+
+    private fun matchesTombstone(
+        candidate: MusicTrackCandidate,
+        subject: com.songladder.android.data.local.RankingSubjectEntity
+    ): Boolean {
+        val sourceType = subject.tombstoneSourceType ?: subject.sourceType
+        val externalMatch = candidate.externalId.isNotBlank() &&
+            candidate.sourceType.name == sourceType &&
+            candidate.externalId == subject.tombstoneExternalId
+        val titleArtistMatch = candidate.title.trim().equals(subject.normalizedTitle, ignoreCase = true) &&
+            candidate.artist.trim().equals(subject.normalizedArtist, ignoreCase = true)
+        val suppressed = (candidate.sourceType.name == subject.tombstoneSuppressedSourceType &&
+            candidate.externalId == subject.tombstoneSuppressedExternalId) ||
+            (candidate.title.trim().equals(subject.tombstoneSuppressedNormalizedTitle, ignoreCase = true) &&
+                candidate.artist.trim().equals(subject.tombstoneSuppressedNormalizedArtist, ignoreCase = true))
+        return !suppressed && (externalMatch || titleArtistMatch)
+    }
 }

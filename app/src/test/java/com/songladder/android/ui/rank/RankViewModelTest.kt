@@ -1,6 +1,8 @@
 package com.songladder.android.ui.rank
 
 import com.songladder.android.domain.model.AppStats
+import com.songladder.android.domain.model.MatchupEvent
+import com.songladder.android.domain.model.MatchupOutcome
 import com.songladder.android.domain.model.Song
 import com.songladder.android.domain.repository.RankingRepository
 import com.songladder.android.domain.repository.SongPreviewPlayer
@@ -293,6 +295,49 @@ class RankViewModelTest {
     }
 
     @Test
+    fun `rapid winner input records only one decision`() = runTest {
+        val rankingRepository = FakeRankingRepository()
+        val viewModel = RankViewModel(
+            songRepository = FakeRankSongRepository(
+                listOf(fakeSong(id = "1", title = "Dreams"), fakeSong(id = "2", title = "Go Your Own Way"))
+            ),
+            rankingRepository = rankingRepository
+        )
+        backgroundScope.launch(dispatcher) { viewModel.uiState.collect {} }
+
+        advanceUntilIdle()
+        viewModel.rankWinner("1", "2")
+        viewModel.rankWinner("1", "2")
+        runCurrent()
+
+        assertEquals(1, rankingRepository.battleCalls)
+    }
+
+    @Test
+    fun `successful winner exposes undo and undo clears the feedback state`() = runTest {
+        val rankingRepository = FakeRankingRepository()
+        val viewModel = RankViewModel(
+            songRepository = FakeRankSongRepository(
+                listOf(fakeSong(id = "1", title = "Dreams"), fakeSong(id = "2", title = "Go Your Own Way"))
+            ),
+            rankingRepository = rankingRepository
+        )
+        backgroundScope.launch(dispatcher) { viewModel.uiState.collect {} }
+
+        advanceUntilIdle()
+        viewModel.rankWinner("1", "2")
+        runCurrent()
+        assertTrue(viewModel.uiState.value.undoAvailable)
+
+        viewModel.undo()
+        runCurrent()
+
+        assertEquals(1, rankingRepository.undoCalls)
+        assertFalse(viewModel.uiState.value.undoAvailable)
+        assertEquals(RankVisualFeedback.None, viewModel.uiState.value.visualFeedback)
+    }
+
+    @Test
     fun `failed rank save does not emit successful choice feedback`() = runTest {
         val songs = listOf(
             fakeSong(id = "1", title = "Dreams"),
@@ -342,7 +387,43 @@ class RankViewModelTest {
 
         assertEquals(RankVisualFeedback.None, viewModel.uiState.value.visualFeedback)
     }
+
+    @Test
+    fun `caught up state offers continue anyway through the production view model`() = runTest {
+        val songs = listOf(
+            fakeSong(id = "1", title = "One"),
+            fakeSong(id = "2", title = "Two"),
+            fakeSong(id = "3", title = "Three")
+        )
+        val rankingRepository = FakeRankingRepository(
+            initialEvents = listOf(
+                skipEvent(1L, "1", "2"),
+                skipEvent(2L, "2", "3"),
+                skipEvent(3L, "1", "3")
+            )
+        )
+        val viewModel = RankViewModel(FakeRankSongRepository(songs), rankingRepository)
+        backgroundScope.launch(dispatcher) { viewModel.uiState.collect {} }
+
+        advanceUntilIdle()
+        assertTrue(viewModel.uiState.value.caughtUp)
+        assertEquals(null, viewModel.uiState.value.matchup)
+
+        viewModel.continueAnyway()
+        runCurrent()
+
+        assertTrue(!viewModel.uiState.value.caughtUp)
+        assertTrue(viewModel.uiState.value.matchup != null)
+    }
 }
+
+private fun skipEvent(sequenceId: Long, first: String, second: String) = MatchupEvent(
+    sequenceId = sequenceId,
+    occurredAt = sequenceId,
+    firstSubjectId = first,
+    secondSubjectId = second,
+    outcome = MatchupOutcome.SKIP
+)
 
 private class FakeSongPreviewResolver(
     private val urls: Map<String, String?>
@@ -414,14 +495,22 @@ private class FakeRankSongRepository(
 
 private class FakeRankingRepository(
     private val battleResult: Result<Unit> = Result.success(Unit),
-    private val skipResult: Result<Unit> = Result.success(Unit)
+    private val skipResult: Result<Unit> = Result.success(Unit),
+    private val undoResult: Result<Boolean> = Result.success(true),
+    initialEvents: List<MatchupEvent> = emptyList()
 ) : RankingRepository {
     private val stats = MutableStateFlow(AppStats())
+    private val events = MutableStateFlow(initialEvents)
     val skippedSongIds = mutableListOf<String>()
+    var battleCalls = 0
+    var undoCalls = 0
 
     override fun observeStats(): Flow<AppStats> = stats
 
+    override fun observeMatchupEvents(): Flow<List<MatchupEvent>> = events
+
     override suspend fun recordBattle(winnerId: String, loserId: String): Result<Unit> {
+        battleCalls += 1
         if (battleResult.isSuccess) {
             stats.value = stats.value.copy(matchCount = stats.value.matchCount + 1)
         }
@@ -434,6 +523,11 @@ private class FakeRankingRepository(
             stats.value = stats.value.copy(skipCount = stats.value.skipCount + 1)
         }
         return skipResult
+    }
+
+    override suspend fun undoLastWinner(): Result<Boolean> {
+        undoCalls += 1
+        return undoResult
     }
 }
 

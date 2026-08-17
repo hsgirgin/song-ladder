@@ -67,6 +67,23 @@ class LeaderboardViewModelTest {
 
         assertEquals("2", viewModel.uiState.value.songs.first().id)
     }
+
+    @Test
+    fun `top rated keeps score first even when Elo rating is lower`() = runTest {
+        val viewModel = LeaderboardViewModel(
+            songRepository = FakeLeaderboardSongRepository(
+                listOf(
+                    leaderboardSong(id = "higher-score", rating = 1100, wins = 0, losses = 0, skips = 0, scoreTenths = 80),
+                    leaderboardSong(id = "higher-elo", rating = 1300, wins = 0, losses = 0, skips = 0, scoreTenths = 70)
+                )
+            )
+        )
+        backgroundScope.launch(dispatcher) { viewModel.uiState.collect {} }
+
+        advanceUntilIdle()
+
+        assertEquals("higher-score", viewModel.uiState.value.songs.first().id)
+    }
 }
 
 private class FakeLeaderboardSongRepository(
@@ -83,12 +100,21 @@ private class FakeLeaderboardSongRepository(
     override suspend fun resetLibrary(): Result<Unit> = Result.success(Unit)
 }
 
-private fun leaderboardSong(id: String, rating: Int, wins: Int, losses: Int, skips: Int): Song {
+private fun leaderboardSong(
+    id: String,
+    rating: Int,
+    wins: Int,
+    losses: Int,
+    skips: Int,
+    scoreTenths: Int? = null
+): Song {
     return Song(
         id = id,
         title = "Song $id",
         artist = "Artist $id",
         createdAt = 1L,
+        scoreTenths = scoreTenths,
+        elo = rating.toDouble(),
         rating = rating,
         wins = wins,
         losses = losses,
