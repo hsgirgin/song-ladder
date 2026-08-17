@@ -20,6 +20,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
@@ -27,6 +28,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -66,7 +68,10 @@ private enum class LibraryTab(val label: String) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun LibraryScreen(viewModel: LibraryViewModel) {
+fun LibraryScreen(
+    viewModel: LibraryViewModel,
+    onOpenSettings: () -> Unit = {}
+) {
     val context = LocalContext.current
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     var selectedTab by rememberSaveable { mutableStateOf(LibraryTab.Search) }
@@ -100,7 +105,19 @@ fun LibraryScreen(viewModel: LibraryViewModel) {
                 modifier = Modifier.padding(horizontal = 18.dp, vertical = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                Text("Library", style = MaterialTheme.typography.headlineMedium)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Library", style = MaterialTheme.typography.headlineMedium)
+                    IconButton(onClick = onOpenSettings) {
+                        Icon(
+                            imageVector = Icons.Rounded.Settings,
+                            contentDescription = stringResource(com.songladder.android.R.string.settings_title)
+                        )
+                    }
+                }
                 Text(
                     "Search first, add fast, and manage the ladder without digging through one long screen.",
                     color = MaterialTheme.colorScheme.onSurfaceVariant

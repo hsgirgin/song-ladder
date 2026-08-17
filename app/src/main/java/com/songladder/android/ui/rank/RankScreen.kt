@@ -25,6 +25,7 @@ import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.MusicOff
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -73,6 +74,7 @@ internal enum class CardReaction {
 @Composable
 fun RankScreen(
     viewModel: RankViewModel,
+    onOpenSettings: () -> Unit = {},
     onOpenLibrary: () -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -113,7 +115,11 @@ fun RankScreen(
             .padding(top = 16.dp, bottom = 16.dp),
         verticalArrangement = Arrangement.spacedBy(18.dp)
     ) {
-        MinimalRankHeader(uiState = uiState, onUndo = viewModel::undo)
+        MinimalRankHeader(
+            uiState = uiState,
+            onUndo = viewModel::undo,
+            onOpenSettings = onOpenSettings
+        )
 
         if (uiState.caughtUp) {
             CaughtUpState(onContinueAnyway = viewModel::continueAnyway)
@@ -230,7 +236,8 @@ internal fun RankMatchupContent(
 @Composable
 internal fun MinimalRankHeader(
     uiState: RankUiState,
-    onUndo: () -> Unit = {}
+    onUndo: () -> Unit = {},
+    onOpenSettings: () -> Unit = {}
 ) {
     val summaryParts = buildList {
         add(
@@ -262,7 +269,19 @@ internal fun MinimalRankHeader(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(2.dp)
     ) {
-        Text("Rank", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(stringResource(com.songladder.android.R.string.destination_matchups), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+            IconButton(onClick = onOpenSettings) {
+                Icon(
+                    imageVector = Icons.Rounded.Settings,
+                    contentDescription = stringResource(com.songladder.android.R.string.settings_title)
+                )
+            }
+        }
         Text(
             text = summaryParts.joinToString(
                 separator = stringResource(com.songladder.android.R.string.rank_stat_separator)

@@ -49,6 +49,9 @@ interface RankingSubjectDao {
     @Query("SELECT * FROM ranking_subjects ORDER BY id")
     suspend fun getAll(): List<RankingSubjectEntity>
 
+    @Query("SELECT * FROM ranking_subjects WHERE tombstoneDeletedAt IS NOT NULL ORDER BY tombstoneDeletedAt DESC")
+    fun observeDeleted(): Flow<List<RankingSubjectEntity>>
+
     @Query("SELECT * FROM ranking_subjects WHERE id = :subjectId")
     suspend fun get(subjectId: String): RankingSubjectEntity?
 
