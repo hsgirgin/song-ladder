@@ -1,6 +1,8 @@
 package com.songladder.android.domain.engine
 
 import com.songladder.android.domain.model.BASE_RATING
+import com.songladder.android.domain.model.RankingSubject
+import com.songladder.android.domain.model.ResponsivenessEpoch
 import com.songladder.android.domain.model.Song
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
@@ -29,17 +31,36 @@ class EloMatchupEngineTest {
     }
 
     @Test
-    fun `winner gains rating and loser loses rating`() {
-        val winner = song(id = "one", rating = BASE_RATING)
-        val loser = song(id = "two", rating = BASE_RATING)
+    fun `winner and loser use independent double precision responsiveness factors`() {
+        val winner = subject(id = "one", elo = BASE_RATING.toDouble())
+        val loser = subject(
+            id = "two",
+            elo = BASE_RATING.toDouble(),
+            responsivenessEpoch = ResponsivenessEpoch.EDITED
+        )
 
-        val (winnerUpdated, loserUpdated) = engine.updateRatings(winner, loser)
+        val result = engine.updateRatings(winner, loser, ratedAt = 1234L)
 
-        assertEquals(1216, winnerUpdated.rating)
-        assertEquals(1184, loserUpdated.rating)
-        assertEquals(1, winnerUpdated.wins)
-        assertEquals(1, loserUpdated.losses)
+        assertEquals(64.0, result.winnerEffectiveK, 0.000001)
+        assertEquals(40.0, result.loserEffectiveK, 0.000001)
+        assertEquals(1232.0, result.winner.elo, 0.000001)
+        assertEquals(1180.0, result.loser.elo, 0.000001)
+        assertEquals(1, result.winner.wins)
+        assertEquals(1, result.loser.losses)
+        assertEquals(1, result.winner.completedMatchupsInEpoch)
+        assertEquals(1234L, result.winner.lastRatedAt)
+        assertEquals(1234L, result.loser.lastRatedAt)
     }
+
+    private fun subject(
+        id: String,
+        elo: Double,
+        responsivenessEpoch: ResponsivenessEpoch = ResponsivenessEpoch.NEW
+    ): RankingSubject = RankingSubject(
+        id = id,
+        elo = elo,
+        responsivenessEpoch = responsivenessEpoch
+    )
 
     private fun song(id: String, rating: Int = BASE_RATING): Song {
         return Song(

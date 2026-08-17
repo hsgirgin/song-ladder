@@ -6,12 +6,22 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 
 @Database(
-    entities = [SongEntity::class, RankingStatsEntity::class, AppStatsEntity::class, ImportBatchEntity::class],
+    entities = [
+        SongEntity::class,
+        RankingSubjectEntity::class,
+        MatchupEventEntity::class,
+        RankingSettingsEntity::class,
+        AppStatsEntity::class,
+        ImportBatchEntity::class
+    ],
     version = 1,
     exportSchema = false
 )
 abstract class SongLadderDatabase : RoomDatabase() {
     abstract fun songDao(): SongDao
+    abstract fun rankingSubjectDao(): RankingSubjectDao
+    abstract fun matchupEventDao(): MatchupEventDao
+    abstract fun rankingSettingsDao(): RankingSettingsDao
     abstract fun appStatsDao(): AppStatsDao
     abstract fun importBatchDao(): ImportBatchDao
 

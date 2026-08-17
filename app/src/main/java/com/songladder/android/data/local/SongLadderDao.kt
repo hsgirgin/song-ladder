@@ -26,22 +26,73 @@ interface SongDao {
     suspend fun insertSong(song: SongEntity)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertRankingStats(stats: RankingStatsEntity)
+    suspend fun insertRankingSubject(subject: RankingSubjectEntity)
 
     @Transaction
-    suspend fun insertSongWithStats(song: SongEntity, stats: RankingStatsEntity) {
+    suspend fun insertSongWithStats(song: SongEntity, stats: RankingSubjectEntity) {
+        insertRankingSubject(stats)
         insertSong(song)
-        insertRankingStats(stats)
     }
 
     @Update
-    suspend fun updateRankingStats(stats: RankingStatsEntity)
+    suspend fun updateRankingSubject(subject: RankingSubjectEntity)
 
     @Query("DELETE FROM songs WHERE id = :songId")
     suspend fun deleteSong(songId: String)
 
     @Query("DELETE FROM songs")
     suspend fun clearSongs()
+}
+
+@Dao
+interface RankingSubjectDao {
+    @Query("SELECT * FROM ranking_subjects ORDER BY id")
+    suspend fun getAll(): List<RankingSubjectEntity>
+
+    @Query("SELECT * FROM ranking_subjects WHERE id = :subjectId")
+    suspend fun get(subjectId: String): RankingSubjectEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(subject: RankingSubjectEntity)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(subjects: List<RankingSubjectEntity>)
+
+    @Update
+    suspend fun update(subject: RankingSubjectEntity)
+
+    @Query("DELETE FROM ranking_subjects")
+    suspend fun clearAll()
+}
+
+@Dao
+interface MatchupEventDao {
+    @Query("SELECT COALESCE(MAX(sequenceId), 0) + 1 FROM matchup_events")
+    suspend fun nextSequenceId(): Long
+
+    @Query("SELECT * FROM matchup_events ORDER BY sequenceId")
+    suspend fun getAll(): List<MatchupEventEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(event: MatchupEventEntity)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(events: List<MatchupEventEntity>)
+
+    @Query("DELETE FROM matchup_events")
+    suspend fun clearAll()
+}
+
+@Dao
+interface RankingSettingsDao {
+    @Query("SELECT * FROM ranking_settings WHERE id = 0")
+    fun observe(): Flow<RankingSettingsEntity?>
+
+    @Query("SELECT * FROM ranking_settings WHERE id = 0")
+    suspend fun get(): RankingSettingsEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(settings: RankingSettingsEntity)
 }
 
 @Dao
