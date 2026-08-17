@@ -28,4 +28,8 @@
         <item quantity="one">%1$d-choice streak</item>
         <item quantity="other">%1$d-choice streak</item>
     </plurals>
+    <plurals name="library_json_import_repaired_count">
+        <item quantity="one">Imported JSON. Repaired %1$d ranking record.</item>
+        <item quantity="other">Imported JSON. Repaired %1$d ranking records.</item>
+    </plurals>
 </resources>

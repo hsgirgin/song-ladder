@@ -59,15 +59,25 @@ class DefaultRankingRepositoryTest {
     }
 
     @Test
-    fun battleUpdatesLastRatedTimestampsFromTheEventClock() = runBlocking {
+    fun battleDoesNotChangeLastRatedTimestamps() = runBlocking {
         insertSong(songId = "song-a", subjectId = "subject-a")
         insertSong(songId = "song-b", subjectId = "subject-b")
         val repository = repository()
 
         repository.recordBattle("song-a", "song-b").getOrThrow()
 
+        assertEquals(null, database.rankingSubjectDao().get("subject-a")?.lastRatedAt)
+        assertEquals(null, database.rankingSubjectDao().get("subject-b")?.lastRatedAt)
+    }
+
+    @Test
+    fun scoreSaveUpdatesLastRatedTimestamp() = runBlocking {
+        insertSong(songId = "song-a", subjectId = "subject-a")
+        val repository = repository()
+
+        repository.saveScore("song-a", 80).getOrThrow()
+
         assertEquals(100L, database.rankingSubjectDao().get("subject-a")?.lastRatedAt)
-        assertEquals(100L, database.rankingSubjectDao().get("subject-b")?.lastRatedAt)
     }
 
     @Test

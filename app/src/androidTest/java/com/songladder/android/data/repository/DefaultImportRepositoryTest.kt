@@ -81,6 +81,29 @@ class DefaultImportRepositoryTest {
     }
 
     @Test
+    fun startFreshWithMultipleMatchesSuppressesOnlyTheSelectedTombstone() = runBlocking {
+        insertTombstone("subject-1", externalId = "external-1")
+        insertTombstone("subject-2", externalId = "external-2")
+        val candidate = candidate()
+        val repository = repository()
+
+        repository.importTracks(
+            listOf(candidate),
+            "search",
+            mapOf(
+                importKey(candidate) to TombstoneImportResolution(
+                    action = TombstoneImportAction.START_FRESH,
+                    rankingSubjectId = "subject-1"
+                )
+            )
+        ).getOrThrow()
+
+        assertEquals(candidate.externalId, database.rankingSubjectDao().get("subject-1")?.tombstoneSuppressedExternalId)
+        assertNull(database.rankingSubjectDao().get("subject-2")?.tombstoneSuppressedExternalId)
+        assertEquals(1, database.songDao().getSongsWithStats().size)
+    }
+
+    @Test
     fun doesNotOfferTombstoneRestorationWhenAnActiveDuplicateAlreadyExists() = runBlocking {
         insertTombstone("subject-1")
         database.songDao().insertSongWithStats(
@@ -117,7 +140,10 @@ class DefaultImportRepositoryTest {
         jsonPorter = SongLadderJsonPorter()
     )
 
-    private suspend fun insertTombstone(subjectId: String) {
+    private suspend fun insertTombstone(
+        subjectId: String,
+        externalId: String = "external-1"
+    ) {
         database.rankingSubjectDao().insert(
             RankingSubjectEntity(
                 id = subjectId,
@@ -127,7 +153,7 @@ class DefaultImportRepositoryTest {
                 normalizedArtist = "artist",
                 tombstoneDeletedAt = 10L,
                 tombstoneSourceType = "ITUNES",
-                tombstoneExternalId = "external-1"
+                tombstoneExternalId = externalId
             )
         )
     }

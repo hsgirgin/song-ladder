@@ -28,6 +28,8 @@ class EloMatchupEngine(
     fun selectMatchup(
         songs: List<Song>,
         events: List<MatchupEvent> = emptyList(),
+        displayedMatchups: List<Matchup> = emptyList(),
+        displayedMatchupCount: Int = displayedMatchups.size,
         previousMatchup: Matchup? = null,
         continueAnyway: Boolean = false
     ): MatchupSelection {
@@ -35,9 +37,10 @@ class EloMatchupEngine(
 
         val rated = songs.filter { it.scoreTenths != null }
         val unrated = songs.filter { it.scoreTenths == null }
+        val matchupCount = if (displayedMatchups.isEmpty()) events.size else displayedMatchupCount
         val includeUnrated = rated.isNotEmpty() &&
             unrated.isNotEmpty() &&
-            (events.size + 1) % 5 == 0
+            (matchupCount + 1) % 5 == 0
 
         val candidatePairs = allPairs(songs).let { pairs ->
             when {
@@ -48,10 +51,15 @@ class EloMatchupEngine(
             }
         }
 
-        val blocked = events
-            .sortedBy { it.sequenceId }
-            .takeLast(3)
+        val recentDisplayed = displayedMatchups.takeLast(3)
+        val blocked = recentDisplayed
             .map { it.pairKey() }
+            .ifEmpty {
+                events
+                    .sortedBy { it.sequenceId }
+                    .takeLast(3)
+                    .map { it.pairKey() }
+            }
             .toMutableSet()
         previousMatchup?.let { blocked += it.pairKey() }
         val temporarilyExcludedSubjectIds = rated
@@ -83,8 +91,14 @@ class EloMatchupEngine(
         }
 
         val preferredPairs = preferredPairs(selectablePairs, includeUnrated)
-        val exposure = events
-            .flatMap { event -> listOf(event.firstSubjectId, event.secondSubjectId) }
+        val exposureIds = if (displayedMatchups.isEmpty()) {
+            events.flatMap { event -> listOf(event.firstSubjectId, event.secondSubjectId) }
+        } else {
+            displayedMatchups.flatMap { matchup ->
+                listOf(matchup.left.rankingSubjectId, matchup.right.rankingSubjectId)
+            }
+        }
+        val exposure = exposureIds
             .groupingBy { it }
             .eachCount()
         val selected = chooseTie(preferredPairs, exposure)
@@ -108,14 +122,12 @@ class EloMatchupEngine(
             winner = winner.copy(
                 elo = winner.elo + winnerEffectiveK * (1 - winnerExpected),
                 wins = winner.wins + 1,
-                completedMatchupsInEpoch = winner.completedMatchupsInEpoch + 1,
-                lastRatedAt = ratedAt
+                completedMatchupsInEpoch = winner.completedMatchupsInEpoch + 1
             ),
             loser = loser.copy(
                 elo = loser.elo + loserEffectiveK * (0 - loserExpected),
                 losses = loser.losses + 1,
-                completedMatchupsInEpoch = loser.completedMatchupsInEpoch + 1,
-                lastRatedAt = ratedAt
+                completedMatchupsInEpoch = loser.completedMatchupsInEpoch + 1
             ),
             winnerEffectiveK = winnerEffectiveK,
             loserEffectiveK = loserEffectiveK,
@@ -164,14 +176,12 @@ class EloMatchupEngine(
                     replayed[winnerId] = winner.copy(
                         elo = winner.elo + winnerK * (1 - winnerExpected),
                         wins = winner.wins + 1,
-                        completedMatchupsInEpoch = winner.completedMatchupsInEpoch + 1,
-                        lastRatedAt = maxOf(winner.lastRatedAt ?: event.occurredAt, event.occurredAt)
+                        completedMatchupsInEpoch = winner.completedMatchupsInEpoch + 1
                     )
                     replayed[loserId] = loser.copy(
                         elo = loser.elo + loserK * (0 - loserExpected),
                         losses = loser.losses + 1,
-                        completedMatchupsInEpoch = loser.completedMatchupsInEpoch + 1,
-                        lastRatedAt = maxOf(loser.lastRatedAt ?: event.occurredAt, event.occurredAt)
+                        completedMatchupsInEpoch = loser.completedMatchupsInEpoch + 1
                     )
                 }
 

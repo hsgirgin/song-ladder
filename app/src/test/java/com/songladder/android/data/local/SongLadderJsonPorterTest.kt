@@ -133,10 +133,12 @@ class SongLadderJsonPorterTest {
             appStats = AppStatsEntity(matchCount = 99, skipCount = 99)
         )
 
-        val recomputed = entities.recomputeDerivedState(EloMatchupEngine())
+        val recomputedResult = entities.recomputeDerivedStateWithRepairCount(EloMatchupEngine())
+        val recomputed = recomputedResult.entities
         val one = recomputed.subjects.first { it.id == "one" }
         val two = recomputed.subjects.first { it.id == "two" }
 
+        assertEquals(2, recomputedResult.repairedSubjectCount)
         assertEquals(1432.0, one.elo, 0.000001)
         assertEquals(1380.0, two.elo, 0.000001)
         assertEquals(1, one.wins)
