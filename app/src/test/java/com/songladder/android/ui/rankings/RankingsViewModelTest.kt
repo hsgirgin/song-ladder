@@ -117,6 +117,7 @@ class RankingsViewModelTest {
         )
         val viewModel = viewModel(settingsRepository = settingsRepository)
         backgroundScope.launch(dispatcher) { viewModel.uiState.collect {} }
+        advanceUntilIdle()
 
         viewModel.setPresentation(RankingPresentation.LIST)
         advanceUntilIdle()
@@ -153,6 +154,7 @@ class RankingsViewModelTest {
             }
         )
         backgroundScope.launch(dispatcher) { viewModel.uiState.collect {} }
+        advanceUntilIdle()
 
         viewModel.togglePreview("song-1")
         advanceUntilIdle()
