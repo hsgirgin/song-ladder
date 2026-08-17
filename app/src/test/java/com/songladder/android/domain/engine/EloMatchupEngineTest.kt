@@ -1,6 +1,7 @@
 package com.songladder.android.domain.engine
 
 import com.songladder.android.domain.model.BASE_RATING
+import com.songladder.android.domain.model.Matchup
 import com.songladder.android.domain.model.MatchupEvent
 import com.songladder.android.domain.model.MatchupOutcome
 import com.songladder.android.domain.model.RankingSubject
@@ -37,13 +38,13 @@ class EloMatchupEngineTest {
     }
 
     @Test
-    fun `winner and loser use independent double precision responsiveness factors`() {
-        val winner = subject(id = "one", elo = BASE_RATING.toDouble())
+    fun `winner and loser use independent double precision responsiveness factors without changing score timestamps`() {
+        val winner = subject(id = "one", elo = BASE_RATING.toDouble()).copy(lastRatedAt = 111L)
         val loser = subject(
             id = "two",
             elo = BASE_RATING.toDouble(),
             responsivenessEpoch = ResponsivenessEpoch.EDITED
-        )
+        ).copy(lastRatedAt = 222L)
 
         val result = engine.updateRatings(winner, loser, ratedAt = 1234L)
 
@@ -54,8 +55,8 @@ class EloMatchupEngineTest {
         assertEquals(1, result.winner.wins)
         assertEquals(1, result.loser.losses)
         assertEquals(1, result.winner.completedMatchupsInEpoch)
-        assertEquals(1234L, result.winner.lastRatedAt)
-        assertEquals(1234L, result.loser.lastRatedAt)
+        assertEquals(111L, result.winner.lastRatedAt)
+        assertEquals(222L, result.loser.lastRatedAt)
     }
 
     @Test
@@ -229,7 +230,7 @@ class EloMatchupEngineTest {
     }
 
     @Test
-    fun `replay advances last rated timestamps from winner events`() {
+    fun `replay preserves last rated timestamps from manual scores`() {
         val result = EloMatchupEngine().replay(
             subjects = listOf(
                 subject("one").copy(lastRatedAt = 100L),
@@ -250,8 +251,30 @@ class EloMatchupEngineTest {
             )
         ).associateBy { it.id }
 
-        assertEquals(200L, result.getValue("one").lastRatedAt)
-        assertEquals(200L, result.getValue("two").lastRatedAt)
+        assertEquals(100L, result.getValue("one").lastRatedAt)
+        assertEquals(100L, result.getValue("two").lastRatedAt)
+    }
+
+    @Test
+    fun `displayed matchups are used for cooldown before an event is recorded`() {
+        val songs = listOf(
+            song(id = "one", scoreTenths = 80),
+            song(id = "two", scoreTenths = 80),
+            song(id = "three", scoreTenths = 90),
+            song(id = "four", scoreTenths = 70)
+        )
+        val displayed = Matchup(left = songs[0], right = songs[1])
+
+        val selection = EloMatchupEngine(Random(1)).selectMatchup(
+            songs = songs,
+            displayedMatchups = listOf(displayed),
+            displayedMatchupCount = 1
+        )
+
+        assertEquals(
+            setOf("three", "four"),
+            setOf(selection.matchup?.left?.id, selection.matchup?.right?.id)
+        )
     }
 
     @Test

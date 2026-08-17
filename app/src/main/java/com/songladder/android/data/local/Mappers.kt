@@ -30,21 +30,44 @@ data class ExportEntities(
     val appStats: AppStatsEntity
 )
 
+data class RecomputedExportEntities(
+    val entities: ExportEntities,
+    val repairedSubjectCount: Int
+)
+
 fun ExportEntities.recomputeDerivedState(
     matchupEngine: EloMatchupEngine
-): ExportEntities {
+): ExportEntities = recomputeDerivedStateWithRepairCount(matchupEngine).entities
+
+fun ExportEntities.recomputeDerivedStateWithRepairCount(
+    matchupEngine: EloMatchupEngine
+): RecomputedExportEntities {
     val domainEvents = events.map { it.toDomain() }
     val replayedSubjects = matchupEngine
         .replay(subjects.map { it.toDomain() }, domainEvents)
         .map { it.toEntity() }
-    return copy(
-        subjects = replayedSubjects,
-        appStats = AppStatsEntity(
-            matchCount = domainEvents.count { it.outcome == MatchupOutcome.WIN },
-            skipCount = domainEvents.count { it.outcome == MatchupOutcome.SKIP }
-        )
+    val originalSubjectsById = subjects.associateBy { it.id }
+    val repairedSubjectCount = replayedSubjects.count { replayed ->
+        originalSubjectsById[replayed.id]?.hasDifferentDerivedStateThan(replayed) ?: true
+    }
+    return RecomputedExportEntities(
+        entities = copy(
+            subjects = replayedSubjects,
+            appStats = AppStatsEntity(
+                matchCount = domainEvents.count { it.outcome == MatchupOutcome.WIN },
+                skipCount = domainEvents.count { it.outcome == MatchupOutcome.SKIP }
+            )
+        ),
+        repairedSubjectCount = repairedSubjectCount
     )
 }
+
+private fun RankingSubjectEntity.hasDifferentDerivedStateThan(other: RankingSubjectEntity): Boolean =
+    elo != other.elo ||
+        wins != other.wins ||
+        losses != other.losses ||
+        skips != other.skips ||
+        completedMatchupsInEpoch != other.completedMatchupsInEpoch
 
 fun SongWithStatsEntity.toDomain(): Song {
     return Song(

@@ -44,6 +44,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -109,8 +110,17 @@ fun LibraryScreen(viewModel: LibraryViewModel) {
 
         LibraryReadinessBanner(songCount = uiState.songs.size)
 
-        if (uiState.statusMessage.isNotBlank() && !uiState.isSearchMessage()) {
-            LibraryStatusBanner(message = uiState.statusMessage)
+        val jsonImportMessage = uiState.jsonImportRepairedCount?.let { repairedCount ->
+            pluralStringResource(
+                com.songladder.android.R.plurals.library_json_import_repaired_count,
+                repairedCount,
+                repairedCount
+            )
+        }
+        val statusMessage = uiState.statusMessage.takeIf { it.isNotBlank() && !uiState.isSearchMessage() }
+            ?: jsonImportMessage
+        if (!statusMessage.isNullOrBlank()) {
+            LibraryStatusBanner(message = statusMessage)
         }
 
         TabRow(selectedTabIndex = selectedTab.ordinal) {
@@ -270,15 +280,18 @@ fun LibraryScreen(viewModel: LibraryViewModel) {
                                 )
                             )
                         }
-                    }
-                    TextButton(
-                        onClick = {
-                            viewModel.resolveTombstoneConflict(
-                                TombstoneImportResolution(TombstoneImportAction.START_FRESH)
-                            )
+                        TextButton(
+                            onClick = {
+                                viewModel.resolveTombstoneConflict(
+                                    TombstoneImportResolution(
+                                        action = TombstoneImportAction.START_FRESH,
+                                        rankingSubjectId = match.rankingSubjectId
+                                    )
+                                )
+                            }
+                        ) {
+                            Text(stringResource(com.songladder.android.R.string.library_start_fresh_action))
                         }
-                    ) {
-                        Text(stringResource(com.songladder.android.R.string.library_start_fresh_action))
                     }
                     TextButton(onClick = viewModel::cancelTombstoneConflict) {
                         Text(stringResource(com.songladder.android.R.string.library_cancel_import_action))

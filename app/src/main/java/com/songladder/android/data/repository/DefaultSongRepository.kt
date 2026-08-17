@@ -35,11 +35,21 @@ class DefaultSongRepository(
     override suspend fun addSong(input: SongInput): Result<Unit> = runCatching {
         require(input.title.isNotBlank()) { "Song title is required." }
         require(input.artist.isNotBlank()) { "Artist is required." }
-        val (songEntity, subjectEntity) = input.toSongAndRankingSubjectEntities()
-        songDao.insertSongWithStats(
-            song = songEntity,
-            stats = subjectEntity
-        )
+        database.withTransaction {
+            val normalizedTitle = input.title.trim()
+            val normalizedArtist = input.artist.trim()
+            require(
+                songDao.getSongsWithStats().none {
+                    it.song.title.trim().equals(normalizedTitle, ignoreCase = true) &&
+                        it.song.artist.trim().equals(normalizedArtist, ignoreCase = true)
+                }
+            ) { "A song with this title and artist is already in the library." }
+            val (songEntity, subjectEntity) = input.toSongAndRankingSubjectEntities()
+            songDao.insertSongWithStats(
+                song = songEntity,
+                stats = subjectEntity
+            )
+        }
     }
 
     override suspend fun removeSong(songId: String): Result<Unit> = runCatching {

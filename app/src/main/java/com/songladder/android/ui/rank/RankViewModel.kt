@@ -54,7 +54,10 @@ data class RankUiState(
 )
 
 private data class RankSessionState(
+    val currentMatchup: Matchup? = null,
     val previousMatchup: Matchup? = null,
+    val recentDisplayedMatchups: List<Matchup> = emptyList(),
+    val displayedMatchupCount: Int = 0,
     val continueAnyway: Boolean = false,
     val undoAvailable: Boolean = false,
     val undoStatus: UndoStatus = UndoStatus.None,
@@ -84,13 +87,19 @@ class RankViewModel(
         rankingRepository.observeMatchupEvents(),
         sessionState
     ) { songs, stats, events, session ->
+        val activeSongIds = songs.mapTo(mutableSetOf()) { it.id }
+        val currentMatchup = session.currentMatchup
+            ?.takeIf { it.left.id in activeSongIds && it.right.id in activeSongIds }
         val selection = if (session.visualFeedback == RankVisualFeedback.None) {
-            matchupEngine.selectMatchup(
-                songs = songs,
-                events = events,
-                previousMatchup = session.previousMatchup,
-                continueAnyway = session.continueAnyway
-            )
+            currentMatchup?.let { com.songladder.android.domain.model.MatchupSelection(it) }
+                ?: matchupEngine.selectMatchup(
+                    songs = songs,
+                    events = events,
+                    displayedMatchups = session.recentDisplayedMatchups,
+                    displayedMatchupCount = session.displayedMatchupCount,
+                    previousMatchup = session.previousMatchup,
+                    continueAnyway = session.continueAnyway
+                )
         } else {
             com.songladder.android.domain.model.MatchupSelection(session.previousMatchup)
         }
@@ -130,9 +139,24 @@ class RankViewModel(
 
     fun updatePreviewPrefetch(matchup: Matchup?) {
         if (matchup != null) {
+            markMatchupDisplayed(matchup)
             prefetchPreviews(matchup)
         } else {
             clearPreviewPrefetch()
+        }
+    }
+
+    private fun markMatchupDisplayed(matchup: Matchup) {
+        sessionState.update { state ->
+            if (state.currentMatchup.hasSamePairAs(matchup)) {
+                state
+            } else {
+                state.copy(
+                    currentMatchup = matchup,
+                    recentDisplayedMatchups = (state.recentDisplayedMatchups + matchup).takeLast(3),
+                    displayedMatchupCount = state.displayedMatchupCount + 1
+                )
+            }
         }
     }
 
@@ -178,6 +202,7 @@ class RankViewModel(
                     .onSuccess {
                         sessionState.update {
                             it.copy(
+                                currentMatchup = null,
                                 previousMatchup = currentMatchup,
                                 continueAnyway = false,
                                 undoAvailable = true,
@@ -212,6 +237,7 @@ class RankViewModel(
                     .onSuccess {
                         sessionState.update {
                             it.copy(
+                                currentMatchup = null,
                                 previousMatchup = currentMatchup,
                                 continueAnyway = false,
                                 undoStatus = UndoStatus.None,
@@ -315,6 +341,12 @@ class RankViewModel(
             sessionState.update { it.copy(visualFeedback = RankVisualFeedback.None, transientMessage = "") }
         }
     }
+}
+
+private fun Matchup?.hasSamePairAs(other: Matchup): Boolean {
+    if (this == null) return false
+    return setOf(left.rankingSubjectId, right.rankingSubjectId) ==
+        setOf(other.left.rankingSubjectId, other.right.rankingSubjectId)
 }
 
 private data object UnavailablePreviewResolver : SongPreviewResolver {
