@@ -67,6 +67,7 @@ data class RankingsUiState(
     val detailSongId: String? = null,
     val previews: Map<String, RankingsPreviewState> = emptyMap(),
     val isSavingScore: Boolean = false,
+    val pendingDeletedSong: PendingDeletedSong? = null,
     val status: RankingsStatus = RankingsStatus.None
 ) {
     val detailSong: Song?
