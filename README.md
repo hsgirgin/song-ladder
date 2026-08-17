@@ -25,3 +25,9 @@ Use the Library screen to search iTunes, add songs manually, load the sample pac
 ## Notes
 
 - The app is local-first. JSON import replaces the current library after confirmation, while export writes a backup containing songs and ranking stats.
+
+## Product specifications
+
+- [Phase 1: Score-First Rankings](docs/phase-1-score-first-rankings-spec.md)
+- [Product decision record](docs/product-decisions.md)
+- [Phase 1 implementation plan](docs/phase-1-implementation-plan.md)
