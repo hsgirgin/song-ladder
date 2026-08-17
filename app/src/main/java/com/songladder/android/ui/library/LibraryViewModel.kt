@@ -47,7 +47,8 @@ data class LibraryUiState(
     val tombstoneConflict: TombstoneImportConflict? = null,
     val pendingImportCandidates: List<MusicTrackCandidate> = emptyList(),
     val pendingImportSourceLabel: String = "",
-    val tombstoneResolutions: Map<String, TombstoneImportResolution> = emptyMap()
+    val tombstoneResolutions: Map<String, TombstoneImportResolution> = emptyMap(),
+    val jsonImportRepairedCount: Int? = null
 )
 
 @OptIn(FlowPreview::class)
@@ -203,11 +204,21 @@ class LibraryViewModel(
     fun importJson(contentResolver: ContentResolver, uri: Uri) {
         viewModelScope.launch {
             importRepository.importFromJson(contentResolver, uri)
-                .onSuccess { count ->
-                    mutableState.update { it.copy(statusMessage = "Imported $count songs from JSON.") }
+                .onSuccess { repairedCount ->
+                    mutableState.update {
+                        it.copy(
+                            statusMessage = "",
+                            jsonImportRepairedCount = repairedCount
+                        )
+                    }
                 }
                 .onFailure { error ->
-                    mutableState.update { it.copy(statusMessage = error.message ?: "JSON import failed.") }
+                    mutableState.update {
+                        it.copy(
+                            statusMessage = error.message ?: "JSON import failed.",
+                            jsonImportRepairedCount = null
+                        )
+                    }
                 }
         }
     }

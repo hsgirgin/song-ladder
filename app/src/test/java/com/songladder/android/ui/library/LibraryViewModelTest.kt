@@ -183,6 +183,22 @@ class LibraryViewModelTest {
         assertEquals(MusicSourceType.YOUTUBE_MUSIC, fakeImportRepository.imported.single().sourceType)
         assertEquals("", viewModel.uiState.value.youtubeMusicPlaylistUrl)
     }
+
+    @Test
+    fun `json import exposes repaired ranking record count`() = runTest {
+        val viewModel = LibraryViewModel(
+            songRepository = FakeSongRepository(),
+            importRepository = FakeImportRepository(importJsonResult = Result.success(2)),
+            musicSourceClient = FakeMusicSourceClient(emptyList()),
+            playlistSourceClient = FakePlaylistSourceClient(Result.success(emptyPreview()))
+        )
+        backgroundScope.launch(dispatcher) { viewModel.uiState.collect {} }
+
+        viewModel.importJson(FakeContentResolver(), Uri.EMPTY)
+        advanceUntilIdle()
+
+        assertEquals(2, viewModel.uiState.value.jsonImportRepairedCount)
+    }
 }
 
 private class FakeSongRepository : SongRepository {
@@ -197,7 +213,9 @@ private class FakeSongRepository : SongRepository {
     override suspend fun resetLibrary(): Result<Unit> = Result.success(Unit)
 }
 
-private class FakeImportRepository : ImportRepository {
+private class FakeImportRepository(
+    private val importJsonResult: Result<Int> = Result.success(0)
+) : ImportRepository {
     val imported = mutableListOf<MusicTrackCandidate>()
 
     override suspend fun seedSampleSongs(): Result<Int> = Result.success(0)
@@ -207,7 +225,7 @@ private class FakeImportRepository : ImportRepository {
         return Result.success(candidates.size)
     }
 
-    override suspend fun importFromJson(contentResolver: ContentResolver, uri: Uri): Result<Int> = Result.success(0)
+    override suspend fun importFromJson(contentResolver: ContentResolver, uri: Uri): Result<Int> = importJsonResult
 
     override suspend fun exportToJson(contentResolver: ContentResolver, uri: Uri): Result<Unit> = Result.success(Unit)
 }
@@ -228,6 +246,8 @@ private class FakePlaylistSourceClient(
 ) : PlaylistSourceClient {
     override suspend fun previewPlaylist(url: String): Result<PlaylistImportPreview> = result
 }
+
+private class FakeContentResolver : ContentResolver(null)
 
 private fun emptyPreview(): PlaylistImportPreview = PlaylistImportPreview(
     playlistTitle = "Empty",

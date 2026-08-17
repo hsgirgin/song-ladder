@@ -19,7 +19,7 @@ import com.songladder.android.data.local.toEntities
 import com.songladder.android.data.local.toPayload
 import com.songladder.android.data.local.toSongAndRankingSubjectEntities
 import com.songladder.android.data.local.validateForImport
-import com.songladder.android.data.local.recomputeDerivedState
+import com.songladder.android.data.local.recomputeDerivedStateWithRepairCount
 import com.songladder.android.domain.engine.EloMatchupEngine
 import com.songladder.android.domain.model.MusicSourceType
 import com.songladder.android.domain.model.MusicTrackCandidate
@@ -121,16 +121,17 @@ class DefaultImportRepository(
                         selected ?: error("A valid restoration choice is required for ${candidate.title}.")
                     }
                     resolution?.action == TombstoneImportAction.START_FRESH -> {
-                        matches.forEach { subject ->
-                            rankingSubjectDao.update(
-                                subject.copy(
-                                    tombstoneSuppressedExternalId = candidate.externalId,
-                                    tombstoneSuppressedSourceType = candidate.sourceType.name,
-                                    tombstoneSuppressedNormalizedTitle = candidate.title.trim().lowercase(),
-                                    tombstoneSuppressedNormalizedArtist = candidate.artist.trim().lowercase()
-                                )
+                        val selected = matches.singleOrNull { it.id == resolution.rankingSubjectId }
+                            ?: if (matches.size == 1 && resolution.rankingSubjectId == null) matches.single() else null
+                        selected ?: error("A valid start-fresh choice is required for ${candidate.title}.")
+                        rankingSubjectDao.update(
+                            selected.copy(
+                                tombstoneSuppressedExternalId = candidate.externalId,
+                                tombstoneSuppressedSourceType = candidate.sourceType.name,
+                                tombstoneSuppressedNormalizedTitle = candidate.title.trim().lowercase(),
+                                tombstoneSuppressedNormalizedArtist = candidate.artist.trim().lowercase()
                             )
-                        }
+                        )
                         null
                     }
                     else -> error("A restoration choice is required for ${candidate.title}.")
@@ -192,7 +193,8 @@ class DefaultImportRepository(
             ?: error("Could not read the selected file.")
         val payload = jsonPorter.decode(raw)
         payload.validateForImport()
-        val entities = payload.toEntities().recomputeDerivedState(matchupEngine)
+        val recomputed = payload.toEntities().recomputeDerivedStateWithRepairCount(matchupEngine)
+        val entities = recomputed.entities
         database.withTransaction {
             songDao.clearSongs()
             rankingSubjectDao.clearAll()
@@ -205,7 +207,7 @@ class DefaultImportRepository(
             rankingSettingsDao.upsert(entities.settings)
             appStatsDao.upsert(entities.appStats)
         }
-        entities.songs.size
+        recomputed.repairedSubjectCount
     }
 
     override suspend fun exportToJson(contentResolver: ContentResolver, uri: Uri): Result<Unit> = runCatching {

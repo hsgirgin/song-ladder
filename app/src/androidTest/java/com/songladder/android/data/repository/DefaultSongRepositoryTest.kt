@@ -91,6 +91,17 @@ class DefaultSongRepositoryTest {
     }
 
     @Test
+    fun addingSongRejectsCaseInsensitiveTitleAndArtistDuplicates() = runBlocking {
+        insertSong(songId = "song-1", subjectId = "subject-1", title = "Nights")
+        val repository = repository()
+
+        val result = repository.addSong(SongInput(title = " nights ", artist = " artist "))
+
+        assertTrue(result.isFailure)
+        assertEquals(1, database.songDao().getSongsWithStats().size)
+    }
+
+    @Test
     fun restoringASongReusesItsTombstoneSubjectAndPreservesHistory() = runBlocking {
         insertSong(songId = "song-1", subjectId = "subject-1", title = "Nights")
         database.matchupEventDao().insert(
