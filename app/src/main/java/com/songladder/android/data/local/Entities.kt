@@ -43,6 +43,7 @@ data class RankingSubjectEntity(
     val lastRatedAt: Long? = null,
     val responsivenessEpoch: String = "NEW",
     val completedMatchupsInEpoch: Int = 0,
+    val responsivenessEpochSequence: Long = 0L,
     val sourceType: String = "MANUAL",
     val externalId: String? = null,
     val normalizedTitle: String = "",
@@ -51,7 +52,11 @@ data class RankingSubjectEntity(
     val tombstoneSourceType: String? = null,
     val tombstoneExternalId: String? = null,
     val tombstoneScoreTenths: Int? = null,
-    val tombstoneSeedElo: Double? = null
+    val tombstoneSeedElo: Double? = null,
+    val tombstoneSuppressedExternalId: String? = null,
+    val tombstoneSuppressedSourceType: String? = null,
+    val tombstoneSuppressedNormalizedTitle: String? = null,
+    val tombstoneSuppressedNormalizedArtist: String? = null
 )
 
 @Entity(tableName = "app_stats")

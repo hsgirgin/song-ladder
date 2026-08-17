@@ -2,8 +2,10 @@ package com.songladder.android.data.local
 
 import android.content.Context
 import androidx.room.Database
+import androidx.room.migration.Migration
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
     entities = [
@@ -14,7 +16,7 @@ import androidx.room.RoomDatabase
         AppStatsEntity::class,
         ImportBatchEntity::class
     ],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 abstract class SongLadderDatabase : RoomDatabase() {
@@ -35,8 +37,28 @@ abstract class SongLadderDatabase : RoomDatabase() {
                     context,
                     SongLadderDatabase::class.java,
                     "song_ladder.db"
-                ).build().also { instance = it }
+                ).addMigrations(MIGRATION_1_2).build().also { instance = it }
             }
         }
+    }
+}
+
+val MIGRATION_1_2 = object : Migration(1, 2) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "ALTER TABLE ranking_subjects ADD COLUMN responsivenessEpochSequence INTEGER NOT NULL DEFAULT 0"
+        )
+        db.execSQL(
+            "ALTER TABLE ranking_subjects ADD COLUMN tombstoneSuppressedExternalId TEXT"
+        )
+        db.execSQL(
+            "ALTER TABLE ranking_subjects ADD COLUMN tombstoneSuppressedSourceType TEXT"
+        )
+        db.execSQL(
+            "ALTER TABLE ranking_subjects ADD COLUMN tombstoneSuppressedNormalizedTitle TEXT"
+        )
+        db.execSQL(
+            "ALTER TABLE ranking_subjects ADD COLUMN tombstoneSuppressedNormalizedArtist TEXT"
+        )
     }
 }

@@ -43,6 +43,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -50,6 +51,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.songladder.android.domain.model.MusicTrackCandidate
 import com.songladder.android.domain.model.PlaylistImportPreview
 import com.songladder.android.domain.model.Song
+import com.songladder.android.domain.model.TombstoneImportAction
+import com.songladder.android.domain.model.TombstoneImportResolution
+import com.songladder.android.domain.model.formatScoreTenths
 import com.songladder.android.ui.components.SongArtwork
 
 private enum class LibraryTab(val label: String) {
@@ -228,6 +232,55 @@ fun LibraryScreen(viewModel: LibraryViewModel) {
             dismissButton = {
                 TextButton(onClick = { songPendingRemoval = null }) {
                     Text("Cancel")
+                }
+            }
+        )
+    }
+
+    uiState.tombstoneConflict?.let { conflict ->
+        AlertDialog(
+            onDismissRequest = viewModel::cancelTombstoneConflict,
+            title = { Text(stringResource(com.songladder.android.R.string.library_restore_history_title)) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(stringResource(com.songladder.android.R.string.library_restore_history_message))
+                    Text("${conflict.candidate.title} — ${conflict.candidate.artist}")
+                }
+            },
+            confirmButton = {
+                Column(horizontalAlignment = Alignment.End) {
+                    conflict.matches.forEach { match ->
+                        TextButton(
+                            onClick = {
+                                viewModel.resolveTombstoneConflict(
+                                    TombstoneImportResolution(
+                                        action = TombstoneImportAction.RESTORE,
+                                        rankingSubjectId = match.rankingSubjectId
+                                    )
+                                )
+                            }
+                        ) {
+                            Text(
+                                stringResource(
+                                    com.songladder.android.R.string.library_restore_history_action,
+                                    match.title,
+                                    match.artist
+                                )
+                            )
+                        }
+                    }
+                    TextButton(
+                        onClick = {
+                            viewModel.resolveTombstoneConflict(
+                                TombstoneImportResolution(TombstoneImportAction.START_FRESH)
+                            )
+                        }
+                    ) {
+                        Text(stringResource(com.songladder.android.R.string.library_start_fresh_action))
+                    }
+                    TextButton(onClick = viewModel::cancelTombstoneConflict) {
+                        Text(stringResource(com.songladder.android.R.string.library_cancel_import_action))
+                    }
                 }
             }
         )
@@ -541,7 +594,12 @@ private fun LibrarySongRow(song: Song, onRemoveSong: () -> Unit) {
             ) {
                 Text(song.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 Text("${song.artist} - ${song.album.ifBlank { "Single" }}", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text("Rating ${song.rating} - ${song.wins}W ${song.losses}L")
+                val score = song.scoreTenths
+                    ?.let { formatScoreTenths(it) }
+                    ?: stringResource(com.songladder.android.R.string.score_unrated)
+                Text(
+                    "${stringResource(com.songladder.android.R.string.score_value, score)} - ${song.wins}W ${song.losses}L"
+                )
             }
             OutlinedButton(onClick = onRemoveSong) {
                 Text("Remove")

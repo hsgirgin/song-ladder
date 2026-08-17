@@ -23,11 +23,14 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.songladder.android.R
 import com.songladder.android.domain.model.Song
+import com.songladder.android.domain.model.formatScoreTenths
 import com.songladder.android.ui.components.SongArtwork
 
 @Composable
@@ -144,7 +147,10 @@ internal fun LeaderboardRow(index: Int, song: Song, modifier: Modifier = Modifie
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    LeaderboardStatChip("Rating ${song.rating}")
+                    val score = song.scoreTenths
+                        ?.let { formatScoreTenths(it) }
+                        ?: stringResource(R.string.score_unrated)
+                    LeaderboardStatChip(stringResource(R.string.score_value, score))
                     LeaderboardStatChip("${song.wins}W ${song.losses}L")
                     if (song.skips > 0) {
                         LeaderboardStatChip("${song.skips} skips")
