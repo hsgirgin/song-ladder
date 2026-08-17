@@ -70,6 +70,7 @@ class SettingsViewModelTest {
 
         viewModel.toggleDeletedHistorySelection("one")
         viewModel.toggleDeletedHistorySelection("two")
+        advanceUntilIdle()
         viewModel.deleteSelectedRankingHistory()
         advanceUntilIdle()
 
