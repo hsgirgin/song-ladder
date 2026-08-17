@@ -3,6 +3,7 @@ package com.songladder.android.data.local
 import com.songladder.android.domain.model.AppStats
 import com.songladder.android.domain.model.AppStatsExport
 import com.songladder.android.domain.model.ExportPayload
+import com.songladder.android.domain.engine.EloMatchupEngine
 import com.songladder.android.domain.model.MatchupEvent
 import com.songladder.android.domain.model.MatchupEventExport
 import com.songladder.android.domain.model.MatchupOutcome
@@ -29,6 +30,22 @@ data class ExportEntities(
     val appStats: AppStatsEntity
 )
 
+fun ExportEntities.recomputeDerivedState(
+    matchupEngine: EloMatchupEngine
+): ExportEntities {
+    val domainEvents = events.map { it.toDomain() }
+    val replayedSubjects = matchupEngine
+        .replay(subjects.map { it.toDomain() }, domainEvents)
+        .map { it.toEntity() }
+    return copy(
+        subjects = replayedSubjects,
+        appStats = AppStatsEntity(
+            matchCount = domainEvents.count { it.outcome == MatchupOutcome.WIN },
+            skipCount = domainEvents.count { it.outcome == MatchupOutcome.SKIP }
+        )
+    )
+}
+
 fun SongWithStatsEntity.toDomain(): Song {
     return Song(
         id = song.id,
@@ -41,6 +58,7 @@ fun SongWithStatsEntity.toDomain(): Song {
         artworkUrl = song.artworkUrl,
         createdAt = song.createdAt,
         scoreTenths = stats.scoreTenths,
+        elo = stats.elo,
         rating = stats.elo.roundToInt(),
         wins = stats.wins,
         losses = stats.losses,
@@ -93,6 +111,7 @@ fun RankingSubject.toExport(): RankingSubjectExport = RankingSubjectExport(
     lastRatedAt = lastRatedAt,
     responsivenessEpoch = responsivenessEpoch.name,
     completedMatchupsInEpoch = completedMatchupsInEpoch,
+    responsivenessEpochSequence = responsivenessEpochSequence,
     sourceType = sourceType.name,
     externalId = externalId,
     normalizedTitle = normalizedTitle,
@@ -107,7 +126,11 @@ fun Tombstone.toExport(): TombstoneExport = TombstoneExport(
     normalizedArtist = normalizedArtist,
     scoreTenths = scoreTenths,
     seedElo = seedElo,
-    deletedAt = deletedAt
+    deletedAt = deletedAt,
+    suppressedExternalId = suppressedExternalId,
+    suppressedSourceType = suppressedSourceType?.name,
+    suppressedNormalizedTitle = suppressedNormalizedTitle,
+    suppressedNormalizedArtist = suppressedNormalizedArtist
 )
 
 fun RankingSubjectEntity.toDomain(): RankingSubject {
@@ -119,7 +142,11 @@ fun RankingSubjectEntity.toDomain(): RankingSubject {
             normalizedArtist = normalizedArtist,
             scoreTenths = tombstoneScoreTenths ?: scoreTenths,
             seedElo = tombstoneSeedElo ?: elo,
-            deletedAt = deletedAt
+            deletedAt = deletedAt,
+            suppressedExternalId = tombstoneSuppressedExternalId,
+            suppressedSourceType = tombstoneSuppressedSourceType?.toMusicSourceType(),
+            suppressedNormalizedTitle = tombstoneSuppressedNormalizedTitle,
+            suppressedNormalizedArtist = tombstoneSuppressedNormalizedArtist
         )
     }
     return RankingSubject(
@@ -132,6 +159,7 @@ fun RankingSubjectEntity.toDomain(): RankingSubject {
         lastRatedAt = lastRatedAt,
         responsivenessEpoch = responsivenessEpoch.toResponsivenessEpoch(),
         completedMatchupsInEpoch = completedMatchupsInEpoch,
+        responsivenessEpochSequence = responsivenessEpochSequence,
         sourceType = sourceType.toMusicSourceType(),
         externalId = externalId,
         normalizedTitle = normalizedTitle.ifBlank { tombstone?.normalizedTitle.orEmpty() },
@@ -150,6 +178,7 @@ fun RankingSubject.toEntity(): RankingSubjectEntity = RankingSubjectEntity(
     lastRatedAt = lastRatedAt,
     responsivenessEpoch = responsivenessEpoch.name,
     completedMatchupsInEpoch = completedMatchupsInEpoch,
+    responsivenessEpochSequence = responsivenessEpochSequence,
     sourceType = sourceType.name,
     externalId = externalId,
     normalizedTitle = normalizedTitle,
@@ -158,7 +187,11 @@ fun RankingSubject.toEntity(): RankingSubjectEntity = RankingSubjectEntity(
     tombstoneSourceType = tombstone?.sourceType?.name,
     tombstoneExternalId = tombstone?.externalId,
     tombstoneScoreTenths = tombstone?.scoreTenths,
-    tombstoneSeedElo = tombstone?.seedElo
+    tombstoneSeedElo = tombstone?.seedElo,
+    tombstoneSuppressedExternalId = tombstone?.suppressedExternalId,
+    tombstoneSuppressedSourceType = tombstone?.suppressedSourceType?.name,
+    tombstoneSuppressedNormalizedTitle = tombstone?.suppressedNormalizedTitle,
+    tombstoneSuppressedNormalizedArtist = tombstone?.suppressedNormalizedArtist
 )
 
 fun RankingSubjectExport.toEntity(): RankingSubjectEntity {
@@ -173,6 +206,7 @@ fun RankingSubjectExport.toEntity(): RankingSubjectEntity {
         lastRatedAt = lastRatedAt,
         responsivenessEpoch = responsivenessEpoch.toResponsivenessEpoch().name,
         completedMatchupsInEpoch = completedMatchupsInEpoch,
+        responsivenessEpochSequence = responsivenessEpochSequence,
         sourceType = sourceType.toMusicSourceType().name,
         externalId = externalId,
         normalizedTitle = normalizedTitle.ifBlank { tombstone?.normalizedTitle.orEmpty() },
@@ -181,7 +215,11 @@ fun RankingSubjectExport.toEntity(): RankingSubjectEntity {
         tombstoneSourceType = tombstone?.sourceType?.toMusicSourceType()?.name,
         tombstoneExternalId = tombstone?.externalId,
         tombstoneScoreTenths = tombstone?.scoreTenths,
-        tombstoneSeedElo = tombstone?.seedElo
+        tombstoneSeedElo = tombstone?.seedElo,
+        tombstoneSuppressedExternalId = tombstone?.suppressedExternalId,
+        tombstoneSuppressedSourceType = tombstone?.suppressedSourceType?.name,
+        tombstoneSuppressedNormalizedTitle = tombstone?.suppressedNormalizedTitle,
+        tombstoneSuppressedNormalizedArtist = tombstone?.suppressedNormalizedArtist
     )
 }
 
@@ -305,6 +343,9 @@ fun ExportPayload.validateForImport() {
         }
         require(subject.completedMatchupsInEpoch >= 0) {
             "Completed matchup counts must not be negative."
+        }
+        require(subject.responsivenessEpochSequence >= 0L) {
+            "Responsiveness epoch sequence must not be negative."
         }
         subject.tombstone?.let { tombstone ->
             require(tombstone.deletedAt > 0L) { "Tombstone deletion times must be positive." }
@@ -441,7 +482,7 @@ fun ExportEntities.toPayload(): ExportPayload {
     )
 }
 
-private fun String.toMusicSourceType(): MusicSourceType =
+internal fun String.toMusicSourceType(): MusicSourceType =
     runCatching { MusicSourceType.valueOf(trim().uppercase()) }
         .getOrDefault(MusicSourceType.IMPORT)
 

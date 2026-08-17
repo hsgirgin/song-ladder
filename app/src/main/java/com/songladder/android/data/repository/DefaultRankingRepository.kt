@@ -13,6 +13,15 @@ import com.songladder.android.data.local.toEntity
 import com.songladder.android.domain.engine.EloMatchupEngine
 import com.songladder.android.domain.model.AppStats
 import com.songladder.android.domain.model.MatchupOutcome
+import com.songladder.android.domain.model.MatchupEvent
+import com.songladder.android.domain.model.RankingHistoryDeletionResult
+import com.songladder.android.domain.model.RankingSubject
+import com.songladder.android.domain.model.ResponsivenessEpoch
+import com.songladder.android.domain.model.ScoreSaveResult
+import com.songladder.android.domain.model.TimeSource
+import com.songladder.android.domain.model.scoreFirstComparator
+import com.songladder.android.domain.model.seedEloForScore
+import com.songladder.android.domain.model.validateScoreTenths
 import com.songladder.android.domain.repository.RankingRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -23,12 +32,16 @@ class DefaultRankingRepository(
     private val matchupEngine: EloMatchupEngine,
     private val rankingSubjectDao: RankingSubjectDao,
     private val matchupEventDao: MatchupEventDao,
-    private val appStatsDao: AppStatsDao? = null
+    private val appStatsDao: AppStatsDao? = null,
+    private val timeSource: TimeSource = TimeSource { System.currentTimeMillis() }
 ) : RankingRepository {
     override fun observeStats(): Flow<AppStats> {
         val dao = requireNotNull(appStatsDao) { "AppStatsDao is required for observeStats." }
         return dao.observeAppStats().map { it.toDomain() }
     }
+
+    override fun observeMatchupEvents(): Flow<List<MatchupEvent>> =
+        matchupEventDao.observeAll().map { events -> events.map { it.toDomain() } }
 
     override suspend fun recordBattle(winnerId: String, loserId: String): Result<Unit> = runCatching {
         database.withTransaction {
@@ -37,9 +50,10 @@ class DefaultRankingRepository(
                 ?: error("Winner subject not found.")
             val loserSubject = songDao.getSongWithStats(loserId)?.stats
                 ?: error("Loser subject not found.")
-            val update = matchupEngine.updateRatings(winnerSubject.toDomain(), loserSubject.toDomain())
-            rankingSubjectDao.update(
-                update.winner.toEntity()
+            val update = matchupEngine.updateRatings(
+                winner = winnerSubject.toDomain(),
+                loser = loserSubject.toDomain(),
+                ratedAt = nextEventTimestamp()
             )
             matchupEventDao.insert(
                 MatchupEventEntity(
@@ -54,14 +68,7 @@ class DefaultRankingRepository(
                     loserEffectiveK = update.loserEffectiveK
                 )
             )
-            rankingSubjectDao.update(
-                update.loser.toEntity()
-            )
-
-            appStatsDao?.let { dao ->
-                val current = dao.getAppStats() ?: AppStatsEntity()
-                dao.upsert(current.copy(matchCount = current.matchCount + 1))
-            }
+            rebuildCaches()
         }
     }
 
@@ -72,20 +79,117 @@ class DefaultRankingRepository(
             val subjects = uniqueSongIds.map { songId ->
                 songDao.getSongWithStats(songId)?.stats ?: error("Song not found.")
             }
-            subjects.forEach { subject -> rankingSubjectDao.update(subject.copy(skips = subject.skips + 1)) }
             matchupEventDao.insert(
                 MatchupEventEntity(
                     sequenceId = matchupEventDao.nextSequenceId(),
-                    occurredAt = System.currentTimeMillis(),
+                    occurredAt = nextEventTimestamp(),
                     firstSubjectId = subjects[0].id,
                     secondSubjectId = subjects[1].id,
                     outcome = MatchupOutcome.SKIP.name
                 )
             )
-            appStatsDao?.let { dao ->
-                val current = dao.getAppStats() ?: AppStatsEntity()
-                dao.upsert(current.copy(skipCount = current.skipCount + 1))
-            }
+            rebuildCaches()
         }
+    }
+
+    override suspend fun saveScore(songId: String, scoreTenths: Int): Result<ScoreSaveResult> = runCatching {
+        validateScoreTenths(scoreTenths)
+        database.withTransaction {
+            val beforeOrder = currentSongOrder()
+            val row = songDao.getSongWithStats(songId) ?: error("Song not found.")
+            require(row.stats.tombstoneDeletedAt == null) { "Cannot score a deleted song." }
+            val current = row.stats.toDomain()
+            if (current.scoreTenths == scoreTenths) {
+                return@withTransaction ScoreSaveResult(
+                    songId = songId,
+                    scoreTenths = scoreTenths,
+                    visibleOrderChanged = false
+                )
+            }
+            val epochSequence = matchupEventDao.getAll().maxOfOrNull { it.sequenceId } ?: 0L
+            rankingSubjectDao.update(
+                current.copy(
+                    scoreTenths = scoreTenths,
+                    elo = seedEloForScore(scoreTenths),
+                    responsivenessEpoch = if (current.scoreTenths == null) {
+                        ResponsivenessEpoch.NEW
+                    } else {
+                        ResponsivenessEpoch.EDITED
+                    },
+                    completedMatchupsInEpoch = 0,
+                    responsivenessEpochSequence = epochSequence,
+                    lastRatedAt = nextEventTimestamp()
+                ).toEntity()
+            )
+            rebuildCaches()
+            val afterOrder = currentSongOrder()
+            ScoreSaveResult(
+                songId = songId,
+                scoreTenths = scoreTenths,
+                visibleOrderChanged = beforeOrder != afterOrder
+            )
+        }
+    }
+
+    override suspend fun undoLastWinner(): Result<Boolean> = runCatching {
+        database.withTransaction {
+            val latestWinner = matchupEventDao.getAll()
+                .lastOrNull { it.outcome == MatchupOutcome.WIN.name }
+                ?: return@withTransaction false
+            matchupEventDao.delete(latestWinner.sequenceId)
+            rebuildCaches()
+            true
+        }
+    }
+
+    override suspend fun deleteRankingHistory(rankingSubjectId: String): Result<RankingHistoryDeletionResult> = runCatching {
+        database.withTransaction {
+            val events = matchupEventDao.getAll()
+            val deletedEventCount = events.count {
+                it.firstSubjectId == rankingSubjectId || it.secondSubjectId == rankingSubjectId
+            }
+            matchupEventDao.deleteForSubject(rankingSubjectId)
+            rebuildCaches()
+            RankingHistoryDeletionResult(
+                rankingSubjectId = rankingSubjectId,
+                deletedEventCount = deletedEventCount
+            )
+        }
+    }
+
+    override suspend fun deleteAllRankingHistory(): Result<RankingHistoryDeletionResult> = runCatching {
+        database.withTransaction {
+            val deletedEventCount = matchupEventDao.getAll().size
+            matchupEventDao.clearAll()
+            rebuildCaches()
+            RankingHistoryDeletionResult(
+                rankingSubjectId = null,
+                deletedEventCount = deletedEventCount
+            )
+        }
+    }
+
+    private suspend fun rebuildCaches(): List<RankingSubject> {
+        val subjects = rankingSubjectDao.getAll().map { it.toDomain() }
+        val events = matchupEventDao.getAll().map { it.toDomain() }
+        val replayed = matchupEngine.replay(subjects, events)
+        replayed.forEach { rankingSubjectDao.update(it.toEntity()) }
+        appStatsDao?.upsert(
+            AppStatsEntity(
+                matchCount = events.count { it.outcome == MatchupOutcome.WIN },
+                skipCount = events.count { it.outcome == MatchupOutcome.SKIP }
+            )
+        )
+        return replayed
+    }
+
+    private suspend fun currentSongOrder(): List<String> = songDao.getSongsWithStats()
+        .map { it.toDomain() }
+        .sortedWith(scoreFirstComparator())
+        .map { it.id }
+
+    private suspend fun nextEventTimestamp(): Long {
+        val latest = matchupEventDao.getAll().maxOfOrNull { it.occurredAt } ?: Long.MIN_VALUE
+        return maxOf(timeSource.now(), latest + 1L)
     }
 }

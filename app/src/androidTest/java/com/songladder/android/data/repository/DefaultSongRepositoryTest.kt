@@ -8,6 +8,7 @@ import com.songladder.android.data.local.MatchupEventEntity
 import com.songladder.android.data.local.RankingSubjectEntity
 import com.songladder.android.data.local.SongEntity
 import com.songladder.android.data.local.SongLadderDatabase
+import com.songladder.android.domain.model.SongInput
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -87,6 +88,32 @@ class DefaultSongRepositoryTest {
         assertEquals(emptyList<RankingSubjectEntity>(), database.rankingSubjectDao().getAll())
         assertEquals(emptyList<MatchupEventEntity>(), database.matchupEventDao().getAll())
         assertEquals(AppStatsEntity(), database.appStatsDao().getAppStats())
+    }
+
+    @Test
+    fun `restoring a song reuses its tombstone subject and preserves history`() = runBlocking {
+        insertSong(songId = "song-1", subjectId = "subject-1", title = "Nights")
+        database.matchupEventDao().insert(
+            MatchupEventEntity(
+                sequenceId = 1L,
+                occurredAt = 100L,
+                firstSubjectId = "subject-1",
+                secondSubjectId = "subject-2",
+                outcome = "SKIP"
+            )
+        )
+        val repository = repository()
+        repository.removeSong("song-1").getOrThrow()
+
+        repository.restoreSong(
+            SongInput(title = "Nights", artist = "Artist", sourceType = com.songladder.android.domain.model.MusicSourceType.MANUAL),
+            rankingSubjectId = "subject-1"
+        ).getOrThrow()
+
+        val restored = database.songDao().getSongsWithStats().single()
+        assertEquals("subject-1", restored.song.rankingSubjectId)
+        assertNull(restored.stats.tombstoneDeletedAt)
+        assertEquals(listOf(1L), database.matchupEventDao().getAll().map { it.sequenceId })
     }
 
     private fun repository(): DefaultSongRepository = DefaultSongRepository(

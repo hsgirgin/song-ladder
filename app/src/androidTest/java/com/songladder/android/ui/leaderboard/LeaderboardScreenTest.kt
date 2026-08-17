@@ -5,6 +5,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.assertDoesNotExist
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -55,6 +56,7 @@ class LeaderboardScreenTest {
                         title = "A song",
                         artist = "An artist",
                         createdAt = 0L,
+                        scoreTenths = 80,
                         rating = 1234,
                         wins = 12,
                         losses = 3,
@@ -65,7 +67,8 @@ class LeaderboardScreenTest {
             }
         }
 
-        composeRule.onNodeWithText("Rating 1234").assertIsDisplayed()
+        composeRule.onNodeWithText("Score 8.0").assertIsDisplayed()
+        composeRule.onNodeWithText("Rating 1234").assertDoesNotExist()
         composeRule.onNodeWithText("12W 3L").assertIsDisplayed()
         composeRule.onNodeWithText("5 skips").assertIsDisplayed()
     }
