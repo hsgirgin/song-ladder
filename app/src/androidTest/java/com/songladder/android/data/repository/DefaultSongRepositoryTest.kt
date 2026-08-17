@@ -37,7 +37,7 @@ class DefaultSongRepositoryTest {
     }
 
     @Test
-    fun `removing a song leaves its tombstone and matchup history intact`() = runBlocking {
+    fun removingASongLeavesItsTombstoneAndMatchupHistoryIntact() = runBlocking {
         insertSong(songId = "song-1", subjectId = "subject-1", title = "Nights")
         insertSong(songId = "song-2", subjectId = "subject-2", title = "Ivy")
         val event = MatchupEventEntity(
@@ -68,7 +68,7 @@ class DefaultSongRepositoryTest {
     }
 
     @Test
-    fun `reset clears active songs subjects events and cached stats`() = runBlocking {
+    fun resetClearsActiveSongsSubjectsEventsAndCachedStats() = runBlocking {
         insertSong(songId = "song-1", subjectId = "subject-1", title = "Nights")
         database.matchupEventDao().insert(
             MatchupEventEntity(
@@ -91,7 +91,7 @@ class DefaultSongRepositoryTest {
     }
 
     @Test
-    fun `restoring a song reuses its tombstone subject and preserves history`() = runBlocking {
+    fun restoringASongReusesItsTombstoneSubjectAndPreservesHistory() = runBlocking {
         insertSong(songId = "song-1", subjectId = "subject-1", title = "Nights")
         database.matchupEventDao().insert(
             MatchupEventEntity(

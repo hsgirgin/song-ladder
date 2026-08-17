@@ -39,7 +39,7 @@ class DefaultImportRepositoryTest {
     }
 
     @Test
-    fun `matches and restores a tombstone by source and external id`() = runBlocking {
+    fun matchesAndRestoresATombstoneBySourceAndExternalId() = runBlocking {
         insertTombstone("subject-1")
         val candidate = candidate()
         val repository = repository()
@@ -63,7 +63,7 @@ class DefaultImportRepositoryTest {
     }
 
     @Test
-    fun `start fresh suppresses the selected tombstone association`() = runBlocking {
+    fun startFreshSuppressesTheSelectedTombstoneAssociation() = runBlocking {
         insertTombstone("subject-1")
         val candidate = candidate()
         val repository = repository()
@@ -81,7 +81,7 @@ class DefaultImportRepositoryTest {
     }
 
     @Test
-    fun `does not offer tombstone restoration when an active duplicate already exists`() = runBlocking {
+    fun doesNotOfferTombstoneRestorationWhenAnActiveDuplicateAlreadyExists() = runBlocking {
         insertTombstone("subject-1")
         database.songDao().insertSongWithStats(
             song = SongEntity(

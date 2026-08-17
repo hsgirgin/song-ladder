@@ -32,7 +32,7 @@ class DefaultRankingRepositoryTest {
     }
 
     @Test
-    fun `battle and skip events reference stable subject ids`() = runBlocking {
+    fun battleAndSkipEventsReferenceStableSubjectIds() = runBlocking {
         insertSong(songId = "song-w", subjectId = "subject-w")
         insertSong(songId = "song-l", subjectId = "subject-l")
         val repository = DefaultRankingRepository(
@@ -59,7 +59,7 @@ class DefaultRankingRepositoryTest {
     }
 
     @Test
-    fun `battle updates last rated timestamps from the event clock`() = runBlocking {
+    fun battleUpdatesLastRatedTimestampsFromTheEventClock() = runBlocking {
         insertSong(songId = "song-a", subjectId = "subject-a")
         insertSong(songId = "song-b", subjectId = "subject-b")
         val repository = repository()
@@ -71,7 +71,7 @@ class DefaultRankingRepositoryTest {
     }
 
     @Test
-    fun `score save replays the event log and resets edited responsiveness`() = runBlocking {
+    fun scoreSaveReplaysTheEventLogAndResetsEditedResponsiveness() = runBlocking {
         insertSong(songId = "song-a", subjectId = "subject-a")
         insertSong(songId = "song-b", subjectId = "subject-b")
         val repository = repository()
@@ -98,7 +98,7 @@ class DefaultRankingRepositoryTest {
     }
 
     @Test
-    fun `saving the existing score is a no-op for ranking state`() = runBlocking {
+    fun savingTheExistingScoreIsANoOpForRankingState() = runBlocking {
         insertSong(songId = "song-a", subjectId = "subject-a")
         insertSong(songId = "song-b", subjectId = "subject-b")
         val repository = repository()
@@ -124,7 +124,7 @@ class DefaultRankingRepositoryTest {
     }
 
     @Test
-    fun `skip changes skip counters but does not change Elo`() = runBlocking {
+    fun skipChangesSkipCountersButDoesNotChangeElo() = runBlocking {
         insertSong(songId = "song-a", subjectId = "subject-a")
         insertSong(songId = "song-b", subjectId = "subject-b")
         val repository = repository()
@@ -142,7 +142,7 @@ class DefaultRankingRepositoryTest {
     }
 
     @Test
-    fun `undo removes only the latest winner and rebuilds derived state`() = runBlocking {
+    fun undoRemovesOnlyTheLatestWinnerAndRebuildsDerivedState() = runBlocking {
         insertSong(songId = "song-a", subjectId = "subject-a")
         insertSong(songId = "song-b", subjectId = "subject-b")
         val repository = repository()
@@ -159,7 +159,7 @@ class DefaultRankingRepositoryTest {
     }
 
     @Test
-    fun `undo removes the latest winner even when a skip happened afterward`() = runBlocking {
+    fun undoRemovesTheLatestWinnerEvenWhenASkipHappenedAfterward() = runBlocking {
         insertSong(songId = "song-a", subjectId = "subject-a")
         insertSong(songId = "song-b", subjectId = "subject-b")
         val repository = repository()
@@ -174,7 +174,7 @@ class DefaultRankingRepositoryTest {
     }
 
     @Test
-    fun `invalid mutations leave event and cache state unchanged`() = runBlocking {
+    fun invalidMutationsLeaveEventAndCacheStateUnchanged() = runBlocking {
         insertSong(songId = "song-a", subjectId = "subject-a")
         insertSong(songId = "song-b", subjectId = "subject-b")
         database.appStatsDao().upsert(AppStatsEntity())
@@ -191,7 +191,7 @@ class DefaultRankingRepositoryTest {
     }
 
     @Test
-    fun `deleting one subject history removes matching events and replays remaining state`() = runBlocking {
+    fun deletingOneSubjectHistoryRemovesMatchingEventsAndReplaysRemainingState() = runBlocking {
         insertSong(songId = "song-a", subjectId = "subject-a")
         insertSong(songId = "song-b", subjectId = "subject-b")
         insertSong(songId = "song-c", subjectId = "subject-c")
@@ -210,7 +210,7 @@ class DefaultRankingRepositoryTest {
     }
 
     @Test
-    fun `deleting all ranking history clears events and every derived cache`() = runBlocking {
+    fun deletingAllRankingHistoryClearsEventsAndEveryDerivedCache() = runBlocking {
         insertSong(songId = "song-a", subjectId = "subject-a")
         insertSong(songId = "song-b", subjectId = "subject-b")
         val repository = repository()

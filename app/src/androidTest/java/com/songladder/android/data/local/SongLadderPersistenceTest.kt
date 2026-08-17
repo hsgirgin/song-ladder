@@ -29,7 +29,7 @@ class SongLadderPersistenceTest {
     }
 
     @Test
-    fun `round trip persists songs subjects events settings and stats`() = runBlocking {
+    fun roundTripPersistsSongsSubjectsEventsSettingsAndStats() = runBlocking {
         val song = SongEntity(
             id = "song-1",
             rankingSubjectId = "subject-1",
