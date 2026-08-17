@@ -73,11 +73,20 @@ interface MatchupEventDao {
     @Query("SELECT * FROM matchup_events ORDER BY sequenceId")
     suspend fun getAll(): List<MatchupEventEntity>
 
+    @Query("SELECT * FROM matchup_events ORDER BY sequenceId")
+    fun observeAll(): Flow<List<MatchupEventEntity>>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(event: MatchupEventEntity)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAll(events: List<MatchupEventEntity>)
+
+    @Query("DELETE FROM matchup_events WHERE sequenceId = :sequenceId")
+    suspend fun delete(sequenceId: Long)
+
+    @Query("DELETE FROM matchup_events WHERE firstSubjectId = :subjectId OR secondSubjectId = :subjectId")
+    suspend fun deleteForSubject(subjectId: String)
 
     @Query("DELETE FROM matchup_events")
     suspend fun clearAll()

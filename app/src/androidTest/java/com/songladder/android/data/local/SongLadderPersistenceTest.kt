@@ -29,7 +29,7 @@ class SongLadderPersistenceTest {
     }
 
     @Test
-    fun `round trip persists songs subjects events settings and stats`() = runBlocking {
+    fun roundTripPersistsSongsSubjectsEventsSettingsAndStats() = runBlocking {
         val song = SongEntity(
             id = "song-1",
             rankingSubjectId = "subject-1",
@@ -45,6 +45,7 @@ class SongLadderPersistenceTest {
             wins = 8,
             losses = 2,
             skips = 1,
+            responsivenessEpochSequence = 1L,
             normalizedTitle = "nights",
             normalizedArtist = "frank ocean"
         )
@@ -57,7 +58,11 @@ class SongLadderPersistenceTest {
             tombstoneSourceType = "ITUNES",
             tombstoneExternalId = "external-2",
             tombstoneScoreTenths = 76,
-            tombstoneSeedElo = 1208.0
+            tombstoneSeedElo = 1208.0,
+            tombstoneSuppressedExternalId = "replacement-2",
+            tombstoneSuppressedSourceType = "ITUNES",
+            tombstoneSuppressedNormalizedTitle = "ivy",
+            tombstoneSuppressedNormalizedArtist = "frank ocean"
         )
         val event = MatchupEventEntity(
             sequenceId = 1L,

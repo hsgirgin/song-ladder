@@ -7,6 +7,7 @@ import com.songladder.android.domain.model.RankingSettingsExport
 import com.songladder.android.domain.model.RankingSubjectExport
 import com.songladder.android.domain.model.SongExport
 import com.songladder.android.domain.model.TombstoneExport
+import com.songladder.android.domain.engine.EloMatchupEngine
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
@@ -48,7 +49,11 @@ class SongLadderJsonPorterTest {
                         normalizedArtist = "frank ocean",
                         scoreTenths = 87,
                         seedElo = 1456.0,
-                        deletedAt = 9999L
+                        deletedAt = 9999L,
+                        suppressedExternalId = "duplicate-source-1",
+                        suppressedSourceType = "SPOTIFY",
+                        suppressedNormalizedTitle = "nights duplicate",
+                        suppressedNormalizedArtist = "frank ocean"
                     )
                 )
             ),
@@ -70,6 +75,10 @@ class SongLadderJsonPorterTest {
         assertNotNull(tombstone)
         assertEquals(87, tombstone?.scoreTenths)
         assertEquals(9999L, tombstone?.deletedAt)
+        assertEquals("duplicate-source-1", tombstone?.suppressedExternalId)
+        assertEquals("SPOTIFY", tombstone?.suppressedSourceType?.name)
+        assertEquals("nights duplicate", tombstone?.suppressedNormalizedTitle)
+        assertEquals("frank ocean", tombstone?.suppressedNormalizedArtist)
         assertEquals("nights", restoredSubject.normalizedTitle)
         assertEquals("frank ocean", restoredSubject.normalizedArtist)
     }
@@ -97,6 +106,42 @@ class SongLadderJsonPorterTest {
         assertEquals("Unknown artist", entities.songs.single().artist)
         assertEquals("song-2", entities.subjects.single().id)
         assertEquals(null, entities.subjects.single().scoreTenths)
+    }
+
+    @Test
+    fun `recomputes imported Elo and counters from matchup events`() {
+        val entities = ExportEntities(
+            songs = emptyList(),
+            subjects = listOf(
+                RankingSubjectEntity(id = "one", scoreTenths = 80, elo = 1.0, wins = 99),
+                RankingSubjectEntity(id = "two", scoreTenths = 80, elo = 2.0, losses = 99)
+            ),
+            events = listOf(
+                MatchupEventEntity(
+                    sequenceId = 1L,
+                    occurredAt = 1L,
+                    firstSubjectId = "one",
+                    secondSubjectId = "two",
+                    outcome = "WIN",
+                    winnerSubjectId = "one",
+                    loserSubjectId = "two",
+                    winnerEffectiveK = 64.0,
+                    loserEffectiveK = 40.0
+                )
+            ),
+            settings = RankingSettingsEntity(),
+            appStats = AppStatsEntity(matchCount = 99, skipCount = 99)
+        )
+
+        val recomputed = entities.recomputeDerivedState(EloMatchupEngine())
+        val one = recomputed.subjects.first { it.id == "one" }
+        val two = recomputed.subjects.first { it.id == "two" }
+
+        assertEquals(1432.0, one.elo, 0.000001)
+        assertEquals(1380.0, two.elo, 0.000001)
+        assertEquals(1, one.wins)
+        assertEquals(1, two.losses)
+        assertEquals(AppStatsEntity(matchCount = 1), recomputed.appStats)
     }
 
     @Test
