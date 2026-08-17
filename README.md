@@ -4,7 +4,7 @@ Song Ladder is a native Android app built with Kotlin, Jetpack Compose, Room, an
 
 ## What is implemented
 
-- Compose app shell with `Rank`, `Library`, and `Leaderboard` destinations
+- Compose app shell with `Matchups`, `Library`, and `Rankings` destinations
 - Elo-based song ranking engine
 - Local persistence with Room
 - Manual song entry, sample pack import, JSON import/export

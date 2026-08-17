@@ -11,33 +11,42 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.stringResource
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
-import com.songladder.android.ui.leaderboard.LeaderboardScreen
-import com.songladder.android.ui.leaderboard.LeaderboardViewModel
 import com.songladder.android.ui.library.LibraryScreen
 import com.songladder.android.ui.library.LibraryViewModel
 import com.songladder.android.ui.navigation.SongLadderDestination
 import com.songladder.android.ui.navigation.topLevelDestinations
 import com.songladder.android.ui.rank.RankScreen
 import com.songladder.android.ui.rank.RankViewModel
+import com.songladder.android.ui.rankings.RankingsScreen
+import com.songladder.android.ui.rankings.RankingsViewModel
+import com.songladder.android.ui.settings.SettingsDialog
+import com.songladder.android.ui.settings.SettingsViewModel
 import com.songladder.android.ui.theme.SongLadderTheme
 
 @Composable
 fun SongLadderApp(
     rankViewModel: RankViewModel,
     libraryViewModel: LibraryViewModel,
-    leaderboardViewModel: LeaderboardViewModel
+    rankingsViewModel: RankingsViewModel,
+    settingsViewModel: SettingsViewModel
 ) {
     SongLadderTheme {
         val navController = rememberNavController()
         val backStack = navController.currentBackStackEntryAsState()
         val currentRoute = backStack.value?.destination?.route
         val isImeVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
+        var showSettings by rememberSaveable { mutableStateOf(false) }
 
         SongLadderScaffold(
             currentRoute = currentRoute,
@@ -45,7 +54,7 @@ fun SongLadderApp(
             onDestinationSelected = { destination ->
                 if (currentRoute != destination.route) {
                     navController.navigate(destination.route) {
-                        popUpTo(SongLadderDestination.Rank.route) {
+                        popUpTo(SongLadderDestination.Matchups.route) {
                             saveState = true
                         }
                         launchSingleTop = true
@@ -56,12 +65,13 @@ fun SongLadderApp(
         ) { innerPadding ->
             NavHost(
                 navController = navController,
-                startDestination = SongLadderDestination.Rank.route,
+                startDestination = SongLadderDestination.Matchups.route,
                 modifier = Modifier.padding(innerPadding)
             ) {
-                composable(SongLadderDestination.Rank.route) {
+                composable(SongLadderDestination.Matchups.route) {
                     RankScreen(
                         viewModel = rankViewModel,
+                        onOpenSettings = { showSettings = true },
                         onOpenLibrary = {
                             navController.navigate(SongLadderDestination.Library.route) {
                                 launchSingleTop = true
@@ -71,12 +81,24 @@ fun SongLadderApp(
                     )
                 }
                 composable(SongLadderDestination.Library.route) {
-                    LibraryScreen(viewModel = libraryViewModel)
+                    LibraryScreen(
+                        viewModel = libraryViewModel,
+                        onOpenSettings = { showSettings = true }
+                    )
                 }
-                composable(SongLadderDestination.Leaderboard.route) {
-                    LeaderboardScreen(viewModel = leaderboardViewModel)
+                composable(SongLadderDestination.Rankings.route) {
+                    RankingsScreen(
+                        viewModel = rankingsViewModel,
+                        onOpenSettings = { showSettings = true }
+                    )
                 }
             }
+        }
+        if (showSettings) {
+            SettingsDialog(
+                viewModel = settingsViewModel,
+                onDismiss = { showSettings = false }
+            )
         }
     }
 }
@@ -94,11 +116,12 @@ internal fun SongLadderScaffold(
             if (!isImeVisible) {
                 NavigationBar {
                     topLevelDestinations.forEach { destination ->
+                        val label = stringResource(destination.labelRes)
                         NavigationBarItem(
                             selected = currentRoute == destination.route,
                             onClick = { onDestinationSelected(destination) },
-                            icon = { Icon(destination.icon, contentDescription = destination.label) },
-                            label = { Text(destination.label) }
+                            icon = { Icon(destination.icon, contentDescription = label) },
+                            label = { Text(label) }
                         )
                     }
                 }
