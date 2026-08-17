@@ -23,6 +23,7 @@ import com.songladder.android.R
 import com.songladder.android.domain.model.MAX_SCORE_TENTHS
 import com.songladder.android.domain.model.MIN_SCORE_TENTHS
 import com.songladder.android.domain.model.formatScoreTenths
+import kotlin.math.roundToInt
 
 @Composable
 fun SongRatingControl(
@@ -49,7 +50,7 @@ fun SongRatingControl(
         Slider(
             value = scoreTenths.toFloat(),
             onValueChange = { value ->
-                onScoreChange(value.toInt().coerceIn(MIN_SCORE_TENTHS, MAX_SCORE_TENTHS))
+                onScoreChange(value.roundToInt().coerceIn(MIN_SCORE_TENTHS, MAX_SCORE_TENTHS))
             },
             valueRange = MIN_SCORE_TENTHS.toFloat()..MAX_SCORE_TENTHS.toFloat(),
             steps = MAX_SCORE_TENTHS - MIN_SCORE_TENTHS - 1,
