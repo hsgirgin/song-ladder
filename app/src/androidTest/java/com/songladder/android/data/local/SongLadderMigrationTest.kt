@@ -28,7 +28,7 @@ class SongLadderMigrationTest {
     }
 
     @Test
-    fun `migration adds responsiveness and tombstone suppression columns`() {
+    fun migrationAddsResponsivenessAndTombstoneSuppressionColumns() {
         val oldHelper = helper(callback = object : SupportSQLiteOpenHelper.Callback(1) {
             override fun onCreate(db: SupportSQLiteDatabase) {
                 db.execSQL(
