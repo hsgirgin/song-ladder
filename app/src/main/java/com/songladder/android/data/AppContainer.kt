@@ -66,7 +66,8 @@ class AppContainer(context: Context) {
         rankingSettingsDao = database.rankingSettingsDao(),
         importBatchDao = database.importBatchDao(),
         appStatsDao = database.appStatsDao(),
-        jsonPorter = jsonPorter
+        jsonPorter = jsonPorter,
+        matchupEngine = matchupEngine
     )
     val settingsRepository: SettingsRepository = DefaultSettingsRepository(
         settingsDao = database.rankingSettingsDao()

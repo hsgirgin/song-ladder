@@ -5,9 +5,26 @@ import kotlinx.serialization.Serializable
 const val BASE_RATING = 1200
 const val K_FACTOR = 32
 const val BASE_ELO = 1200.0
+const val MIN_SCORE_TENTHS = 10
+const val MAX_SCORE_TENTHS = 100
 
 fun seedEloForScore(scoreTenths: Int?): Double =
     BASE_ELO + 80.0 * ((scoreTenths ?: 55) / 10.0 - 5.5)
+
+fun validateScoreTenths(scoreTenths: Int) {
+    require(scoreTenths in MIN_SCORE_TENTHS..MAX_SCORE_TENTHS) {
+        "Score must be between 10 and 100 tenths."
+    }
+}
+
+fun formatScoreTenths(scoreTenths: Int): String {
+    validateScoreTenths(scoreTenths)
+    return "${scoreTenths / 10}.${scoreTenths % 10}"
+}
+
+fun interface TimeSource {
+    fun now(): Long
+}
 
 enum class MusicSourceType {
     MANUAL,
@@ -29,6 +46,7 @@ data class Song(
     val artworkUrl: String? = null,
     val createdAt: Long,
     val scoreTenths: Int? = null,
+    val elo: Double = BASE_ELO,
     val rating: Int = BASE_RATING,
     val wins: Int = 0,
     val losses: Int = 0,
@@ -59,7 +77,11 @@ data class Tombstone(
     val normalizedArtist: String,
     val scoreTenths: Int?,
     val seedElo: Double,
-    val deletedAt: Long
+    val deletedAt: Long,
+    val suppressedExternalId: String? = null,
+    val suppressedSourceType: MusicSourceType? = null,
+    val suppressedNormalizedTitle: String? = null,
+    val suppressedNormalizedArtist: String? = null
 )
 
 data class RankingSubject(
@@ -72,6 +94,7 @@ data class RankingSubject(
     val lastRatedAt: Long? = null,
     val responsivenessEpoch: ResponsivenessEpoch = ResponsivenessEpoch.NEW,
     val completedMatchupsInEpoch: Int = 0,
+    val responsivenessEpochSequence: Long = 0L,
     val sourceType: MusicSourceType = MusicSourceType.MANUAL,
     val externalId: String? = null,
     val normalizedTitle: String = "",
@@ -108,6 +131,34 @@ data class RankingSettings(
 data class Matchup(
     val left: Song,
     val right: Song
+)
+
+data class MatchupSelection(
+    val matchup: Matchup?,
+    val caughtUp: Boolean = false
+)
+
+data class TombstoneImportMatch(
+    val rankingSubjectId: String,
+    val title: String,
+    val artist: String,
+    val sourceType: MusicSourceType,
+    val externalId: String?
+)
+
+data class TombstoneImportConflict(
+    val candidate: MusicTrackCandidate,
+    val matches: List<TombstoneImportMatch>
+)
+
+enum class TombstoneImportAction {
+    RESTORE,
+    START_FRESH
+}
+
+data class TombstoneImportResolution(
+    val action: TombstoneImportAction,
+    val rankingSubjectId: String? = null
 )
 
 data class AppStats(
@@ -167,7 +218,11 @@ data class TombstoneExport(
     val normalizedArtist: String = "",
     val scoreTenths: Int? = null,
     val seedElo: Double = BASE_ELO,
-    val deletedAt: Long = 0L
+    val deletedAt: Long = 0L,
+    val suppressedExternalId: String? = null,
+    val suppressedSourceType: String? = null,
+    val suppressedNormalizedTitle: String? = null,
+    val suppressedNormalizedArtist: String? = null
 )
 
 @Serializable
@@ -181,6 +236,7 @@ data class RankingSubjectExport(
     val lastRatedAt: Long? = null,
     val responsivenessEpoch: String = ResponsivenessEpoch.NEW.name,
     val completedMatchupsInEpoch: Int = 0,
+    val responsivenessEpochSequence: Long = 0L,
     val sourceType: String = MusicSourceType.MANUAL.name,
     val externalId: String? = null,
     val normalizedTitle: String = "",
@@ -234,3 +290,15 @@ data class RankingHistoryDeletionResult(
     val rankingSubjectId: String?,
     val deletedEventCount: Int
 )
+
+fun scoreFirstComparator(): Comparator<Song> = compareByDescending<Song> {
+    it.scoreTenths ?: Int.MIN_VALUE
+}.thenByDescending {
+    it.elo
+}.thenByDescending {
+    it.lastRankedAt ?: Long.MIN_VALUE
+}.thenBy {
+    it.title.trim().lowercase()
+}.thenBy {
+    it.id
+}
