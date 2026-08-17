@@ -49,7 +49,11 @@ class SongLadderJsonPorterTest {
                         normalizedArtist = "frank ocean",
                         scoreTenths = 87,
                         seedElo = 1456.0,
-                        deletedAt = 9999L
+                        deletedAt = 9999L,
+                        suppressedExternalId = "duplicate-source-1",
+                        suppressedSourceType = "SPOTIFY",
+                        suppressedNormalizedTitle = "nights duplicate",
+                        suppressedNormalizedArtist = "frank ocean"
                     )
                 )
             ),
@@ -71,6 +75,10 @@ class SongLadderJsonPorterTest {
         assertNotNull(tombstone)
         assertEquals(87, tombstone?.scoreTenths)
         assertEquals(9999L, tombstone?.deletedAt)
+        assertEquals("duplicate-source-1", tombstone?.suppressedExternalId)
+        assertEquals("SPOTIFY", tombstone?.suppressedSourceType?.name)
+        assertEquals("nights duplicate", tombstone?.suppressedNormalizedTitle)
+        assertEquals("frank ocean", tombstone?.suppressedNormalizedArtist)
         assertEquals("nights", restoredSubject.normalizedTitle)
         assertEquals("frank ocean", restoredSubject.normalizedArtist)
     }
