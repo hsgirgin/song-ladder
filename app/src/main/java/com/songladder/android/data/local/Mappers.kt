@@ -217,7 +217,7 @@ fun RankingSubjectExport.toEntity(): RankingSubjectEntity {
         tombstoneScoreTenths = tombstone?.scoreTenths,
         tombstoneSeedElo = tombstone?.seedElo,
         tombstoneSuppressedExternalId = tombstone?.suppressedExternalId,
-        tombstoneSuppressedSourceType = tombstone?.suppressedSourceType?.name,
+        tombstoneSuppressedSourceType = tombstone?.suppressedSourceType?.toMusicSourceType()?.name,
         tombstoneSuppressedNormalizedTitle = tombstone?.suppressedNormalizedTitle,
         tombstoneSuppressedNormalizedArtist = tombstone?.suppressedNormalizedArtist
     )
