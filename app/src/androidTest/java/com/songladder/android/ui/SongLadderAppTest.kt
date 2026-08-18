@@ -6,7 +6,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
-import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import com.songladder.android.ui.navigation.SongLadderDestination
@@ -85,11 +84,11 @@ class SongLadderAppTest {
         composeRule.onNodeWithText("Open Library").performClick()
         composeRule.onNodeWithText("Library destination").assertIsDisplayed()
 
-        composeRule.onNodeWithContentDescription("Matchups").performClick()
+        composeRule.onNodeWithText("Matchups").performClick()
         composeRule.onNodeWithText("Matchups destination").assertIsDisplayed()
         composeRule.onNodeWithText("Library destination").assertDoesNotExist()
 
-        composeRule.onNodeWithContentDescription("Library").performClick()
+        composeRule.onNodeWithText("Library").performClick()
         composeRule.onNodeWithText("Library destination").assertIsDisplayed()
     }
 }
