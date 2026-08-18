@@ -2,6 +2,7 @@ package com.songladder.android.ui.rankings
 
 import androidx.compose.foundation.layout.width
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.test.assertDoesNotExist
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -50,6 +51,49 @@ class RankingsScreenTest {
         composeRule.onNodeWithText("Score 8.0").assertIsDisplayed()
         composeRule.onNodeWithText("12W 3L · 5 skips").assertIsDisplayed()
         composeRule.onNodeWithText("Preview unavailable").assertIsDisplayed()
+    }
+
+    @Test
+    fun gridMode_opensScoreEditorFromProminentScoreTarget() {
+        val song = rankingsSong(id = "song-1", scoreTenths = 80)
+        var savedScore: Pair<String, Int>? = null
+        var previewTaps = 0
+
+        composeRule.setContent {
+            SongLadderTheme {
+                RankingsScreenContent(
+                    uiState = RankingsUiState(
+                        allSongs = listOf(song),
+                        rankedSongs = listOf(RankedSong(1, song)),
+                        selectedTab = RankingsTab.SONGS,
+                        presentation = RankingPresentation.GRID
+                    ),
+                    onTabSelected = {},
+                    onSearchActiveChanged = {},
+                    onSearchQueryChanged = {},
+                    onPresentationChanged = {},
+                    onToggleUnrated = {},
+                    onToggleStats = {},
+                    onTogglePreview = { previewTaps += 1 },
+                    onShowDetails = {},
+                    onHideDetails = {},
+                    onSaveScore = { songId, scoreTenths -> savedScore = songId to scoreTenths },
+                    onDeleteSong = {},
+                    onUndoDelete = {},
+                    onOpenSettings = {}
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("Save 8.0").assertDoesNotExist()
+        composeRule.onNodeWithText("8.0").assertIsDisplayed().performClick()
+        composeRule.onNodeWithText("Edit score").assertIsDisplayed()
+        composeRule.onNodeWithText("Save 8.0").performClick()
+
+        composeRule.runOnIdle {
+            assertEquals("song-1" to 80, savedScore)
+            assertEquals(0, previewTaps)
+        }
     }
 
     @Test
