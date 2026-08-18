@@ -3,6 +3,7 @@ package com.songladder.android.domain.repository
 import android.content.ContentResolver
 import android.net.Uri
 import com.songladder.android.domain.model.AppStats
+import com.songladder.android.domain.model.DeletedRankingHistory
 import com.songladder.android.domain.model.PlaylistImportPreview
 import com.songladder.android.domain.model.RankingHistoryDeletionResult
 import com.songladder.android.domain.model.RankingSettings
@@ -29,6 +30,7 @@ interface SongRepository {
 interface RankingRepository {
     fun observeStats(): Flow<AppStats>
     fun observeMatchupEvents(): Flow<List<MatchupEvent>> = flowOf(emptyList())
+    fun observeDeletedRankingHistories(): Flow<List<DeletedRankingHistory>> = flowOf(emptyList())
     suspend fun recordBattle(winnerId: String, loserId: String): Result<Unit>
     suspend fun recordSkip(songIds: List<String>): Result<Unit>
 

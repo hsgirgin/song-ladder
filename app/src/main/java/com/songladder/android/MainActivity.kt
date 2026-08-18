@@ -6,9 +6,10 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import com.songladder.android.ui.SongLadderApp
-import com.songladder.android.ui.leaderboard.LeaderboardViewModel
 import com.songladder.android.ui.library.LibraryViewModel
 import com.songladder.android.ui.rank.RankViewModel
+import com.songladder.android.ui.rankings.RankingsViewModel
+import com.songladder.android.ui.settings.SettingsViewModel
 import com.songladder.android.ui.viewmodel.SongLadderViewModelFactory
 
 class MainActivity : ComponentActivity() {
@@ -18,7 +19,10 @@ class MainActivity : ComponentActivity() {
     private val libraryViewModel: LibraryViewModel by viewModels {
         SongLadderViewModelFactory((application as SongLadderApplication).container)
     }
-    private val leaderboardViewModel: LeaderboardViewModel by viewModels {
+    private val rankingsViewModel: RankingsViewModel by viewModels {
+        SongLadderViewModelFactory((application as SongLadderApplication).container)
+    }
+    private val settingsViewModel: SettingsViewModel by viewModels {
         SongLadderViewModelFactory((application as SongLadderApplication).container)
     }
 
@@ -29,7 +33,8 @@ class MainActivity : ComponentActivity() {
             SongLadderApp(
                 rankViewModel = rankViewModel,
                 libraryViewModel = libraryViewModel,
-                leaderboardViewModel = leaderboardViewModel
+                rankingsViewModel = rankingsViewModel,
+                settingsViewModel = settingsViewModel
             )
         }
     }

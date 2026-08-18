@@ -3,9 +3,10 @@ package com.songladder.android.ui.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import com.songladder.android.data.AppContainer
-import com.songladder.android.ui.leaderboard.LeaderboardViewModel
 import com.songladder.android.ui.library.LibraryViewModel
 import com.songladder.android.ui.rank.RankViewModel
+import com.songladder.android.ui.rankings.RankingsViewModel
+import com.songladder.android.ui.settings.SettingsViewModel
 
 class SongLadderViewModelFactory(
     private val container: AppContainer
@@ -29,8 +30,20 @@ class SongLadderViewModelFactory(
                     playlistSourceClient = container.playlistSourceClient
                 ) as T
             }
-            modelClass.isAssignableFrom(LeaderboardViewModel::class.java) -> {
-                LeaderboardViewModel(container.songRepository) as T
+            modelClass.isAssignableFrom(RankingsViewModel::class.java) -> {
+                RankingsViewModel(
+                    songRepository = container.songRepository,
+                    rankingRepository = container.rankingRepository,
+                    settingsRepository = container.settingsRepository,
+                    songPreviewResolver = container.songPreviewResolver,
+                    songPreviewPlayer = container.songPreviewPlayer
+                ) as T
+            }
+            modelClass.isAssignableFrom(SettingsViewModel::class.java) -> {
+                SettingsViewModel(
+                    settingsRepository = container.settingsRepository,
+                    rankingRepository = container.rankingRepository
+                ) as T
             }
             else -> error("Unknown ViewModel class: ${modelClass.name}")
         }

@@ -291,6 +291,15 @@ data class RankingHistoryDeletionResult(
     val deletedEventCount: Int
 )
 
+data class DeletedRankingHistory(
+    val rankingSubjectId: String,
+    val title: String,
+    val artist: String,
+    val scoreTenths: Int?,
+    val deletedAt: Long,
+    val eventCount: Int
+)
+
 fun scoreFirstComparator(): Comparator<Song> = compareByDescending<Song> {
     it.scoreTenths ?: Int.MIN_VALUE
 }.thenByDescending {
