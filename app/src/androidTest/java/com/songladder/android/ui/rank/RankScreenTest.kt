@@ -4,10 +4,11 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.test.assertDoesNotExist
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.fetchSemanticsNode
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performScrollTo
@@ -21,6 +22,7 @@ import com.songladder.android.domain.model.Matchup
 import com.songladder.android.domain.model.Song
 import com.songladder.android.ui.theme.SongLadderTheme
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -74,8 +76,8 @@ class RankScreenTest {
 
         composeRule.onNodeWithText("Dreams").assertIsDisplayed()
         composeRule.onNodeWithText("Fleetwood Mac").assertIsDisplayed()
-        composeRule.onNodeWithText("Choose").assertDoesNotExist()
-        composeRule.onNodeWithText("Preview unavailable").assertDoesNotExist()
+        composeRule.onAllNodesWithText("Choose").assertCountEquals(0)
+        composeRule.onAllNodesWithText("Preview unavailable").assertCountEquals(0)
     }
 
     @Test
@@ -104,9 +106,9 @@ class RankScreenTest {
 
         composeRule.onNodeWithText("Left song").assertIsDisplayed()
         composeRule.onNodeWithText("Right song").assertIsDisplayed()
-        composeRule.onNodeWithText("Choose the song you prefer").assertDoesNotExist()
-        composeRule.onNodeWithText("Choose").assertDoesNotExist()
-        composeRule.onNodeWithText("Skip").assertDoesNotExist()
+        composeRule.onAllNodesWithText("Choose the song you prefer").assertCountEquals(0)
+        composeRule.onAllNodesWithText("Choose").assertCountEquals(0)
+        composeRule.onAllNodesWithText("Skip").assertCountEquals(0)
     }
 
     @Test
@@ -265,6 +267,6 @@ class RankScreenTest {
         composeRule.onNodeWithText("Right artist")
             .performScrollTo()
             .assertIsDisplayed()
-        composeRule.onNodeWithText("Skip").assertDoesNotExist()
+        composeRule.onAllNodesWithText("Skip").assertCountEquals(0)
     }
 }
