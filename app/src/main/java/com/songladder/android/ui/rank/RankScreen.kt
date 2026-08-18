@@ -6,7 +6,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -49,7 +49,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.awaitFirstDown
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
@@ -201,33 +204,31 @@ internal fun RankMatchupContent(
             Modifier
         } else {
             Modifier.pointerInput(matchup.left.id, matchup.right.id, wide) {
-                var dragX = 0f
-                var dragY = 0f
-                detectDragGestures(
-                    onDragCancel = {
-                        dragX = 0f
-                        dragY = 0f
-                    },
-                    onDragEnd = {
-                        if (wide) {
-                            when {
-                                dragX <= -dragThresholdPx -> onChoose(matchup.right.id, matchup.left.id)
-                                dragX >= dragThresholdPx -> onChoose(matchup.left.id, matchup.right.id)
-                            }
-                        } else {
-                            when {
-                                dragY <= -dragThresholdPx -> onChoose(matchup.right.id, matchup.left.id)
-                                dragY >= dragThresholdPx -> onChoose(matchup.left.id, matchup.right.id)
-                            }
+                awaitEachGesture {
+                    awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                    var dragX = 0f
+                    var dragY = 0f
+                    do {
+                        val event = awaitPointerEvent(PointerEventPass.Initial)
+                        event.changes.forEach { change ->
+                            val delta = change.positionChange()
+                            dragX += delta.x
+                            dragY += delta.y
                         }
-                        dragX = 0f
-                        dragY = 0f
-                    },
-                    onDrag = { _, dragAmount ->
-                        dragX += dragAmount.x
-                        dragY += dragAmount.y
+                    } while (event.changes.any { it.pressed })
+
+                    if (wide) {
+                        when {
+                            dragX <= -dragThresholdPx -> onChoose(matchup.right.id, matchup.left.id)
+                            dragX >= dragThresholdPx -> onChoose(matchup.left.id, matchup.right.id)
+                        }
+                    } else {
+                        when {
+                            dragY <= -dragThresholdPx -> onChoose(matchup.right.id, matchup.left.id)
+                            dragY >= dragThresholdPx -> onChoose(matchup.left.id, matchup.right.id)
+                        }
                     }
-                )
+                }
             }
         }
 
