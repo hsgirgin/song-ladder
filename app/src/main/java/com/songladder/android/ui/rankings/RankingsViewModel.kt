@@ -153,6 +153,8 @@ class RankingsViewModel(
         localState.update {
             it.copy(
                 selectedTab = tab,
+                searchActive = if (tab == RankingsTab.SONGS) it.searchActive else false,
+                searchQuery = if (tab == RankingsTab.SONGS) it.searchQuery else "",
                 status = if (tab == RankingsTab.SONGS) RankingsStatus.None else RankingsStatus.ComingSoon
             )
         }
@@ -177,6 +179,17 @@ class RankingsViewModel(
         if (presentation == current) return
         viewModelScope.launch {
             settingsRepository.saveSettings(uiState.value.settings.copy(presentation = presentation))
+                .onFailure {
+                    localState.update { state -> state.copy(status = RankingsStatus.SaveFailed) }
+                }
+        }
+    }
+
+    fun dismissRankingsTip() {
+        val currentSettings = uiState.value.settings
+        if (!currentSettings.showTips) return
+        viewModelScope.launch {
+            settingsRepository.saveSettings(currentSettings.copy(showTips = false))
                 .onFailure {
                     localState.update { state -> state.copy(status = RankingsStatus.SaveFailed) }
                 }

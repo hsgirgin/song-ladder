@@ -3,6 +3,7 @@ package com.songladder.android.ui.rankings
 import androidx.compose.foundation.layout.width
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.assertDoesNotExist
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
@@ -11,6 +12,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.dp
 import com.songladder.android.domain.model.RankingPresentation
+import com.songladder.android.domain.model.RankingSettings
 import com.songladder.android.domain.model.Song
 import com.songladder.android.ui.components.SongRatingControl
 import com.songladder.android.ui.theme.SongLadderTheme
@@ -79,6 +81,7 @@ class RankingsScreenTest {
                     onShowDetails = {},
                     onHideDetails = {},
                     onSaveScore = { songId, scoreTenths -> savedScore = songId to scoreTenths },
+                    onDismissTip = {},
                     onDeleteSong = {},
                     onUndoDelete = {},
                     onOpenSettings = {}
@@ -100,6 +103,7 @@ class RankingsScreenTest {
     @Test
     fun screenContent_exposesTabsSearchGridModeAndSettingsAction() {
         var openedSettings = false
+        var dismissedTip = false
 
         composeRule.setContent {
             SongLadderTheme {
@@ -119,6 +123,7 @@ class RankingsScreenTest {
                     onShowDetails = {},
                     onHideDetails = {},
                     onSaveScore = { _, _ -> },
+                    onDismissTip = { dismissedTip = true },
                     onDeleteSong = {},
                     onUndoDelete = {},
                     onOpenSettings = { openedSettings = true }
@@ -130,11 +135,82 @@ class RankingsScreenTest {
         composeRule.onNodeWithText("Albums").assertIsDisplayed()
         composeRule.onNodeWithText("Artists").assertIsDisplayed()
         composeRule.onNodeWithText("Tap to preview · Hold for details").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Dismiss tip").performClick()
         composeRule.onNodeWithContentDescription("Settings").performClick()
 
         composeRule.runOnIdle {
             assertEquals(true, openedSettings)
+            assertEquals(true, dismissedTip)
         }
+    }
+
+    @Test
+    fun screenContent_hidesDismissedTipInSongsGrid() {
+        composeRule.setContent {
+            SongLadderTheme {
+                RankingsScreenContent(
+                    uiState = RankingsUiState(
+                        rankedSongs = listOf(RankedSong(1, rankingsSong(title = "A song"))),
+                        selectedTab = RankingsTab.SONGS,
+                        settings = RankingSettings(showTips = false),
+                        presentation = RankingPresentation.GRID
+                    ),
+                    onTabSelected = {},
+                    onSearchActiveChanged = {},
+                    onSearchQueryChanged = {},
+                    onPresentationChanged = {},
+                    onToggleUnrated = {},
+                    onToggleStats = {},
+                    onTogglePreview = {},
+                    onShowDetails = {},
+                    onHideDetails = {},
+                    onSaveScore = { _, _ -> },
+                    onDismissTip = {},
+                    onDeleteSong = {},
+                    onUndoDelete = {},
+                    onOpenSettings = {}
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("Tap to preview · Hold for details").assertDoesNotExist()
+    }
+
+    @Test
+    fun screenContent_hidesSongOnlyActionsOutsideSongsTab() {
+        composeRule.setContent {
+            SongLadderTheme {
+                RankingsScreenContent(
+                    uiState = RankingsUiState(
+                        rankedSongs = listOf(RankedSong(1, rankingsSong(title = "A song"))),
+                        selectedTab = RankingsTab.ALBUMS,
+                        searchActive = true,
+                        searchQuery = "needle",
+                        settings = RankingSettings(showTips = false),
+                        presentation = RankingPresentation.GRID
+                    ),
+                    onTabSelected = {},
+                    onSearchActiveChanged = {},
+                    onSearchQueryChanged = {},
+                    onPresentationChanged = {},
+                    onToggleUnrated = {},
+                    onToggleStats = {},
+                    onTogglePreview = {},
+                    onShowDetails = {},
+                    onHideDetails = {},
+                    onSaveScore = { _, _ -> },
+                    onDismissTip = {},
+                    onDeleteSong = {},
+                    onUndoDelete = {},
+                    onOpenSettings = {}
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("Coming soon").assertIsDisplayed()
+        composeRule.onNodeWithText("Search songs").assertDoesNotExist()
+        composeRule.onNodeWithContentDescription("Search rankings").assertDoesNotExist()
+        composeRule.onNodeWithContentDescription("Show list").assertDoesNotExist()
     }
 
     @Test

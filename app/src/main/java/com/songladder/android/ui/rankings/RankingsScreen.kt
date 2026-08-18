@@ -39,7 +39,6 @@ import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -69,6 +68,7 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -107,6 +107,7 @@ fun RankingsScreen(
         onShowDetails = viewModel::showDetails,
         onHideDetails = viewModel::hideDetails,
         onSaveScore = viewModel::saveScore,
+        onDismissTip = viewModel::dismissRankingsTip,
         onDeleteSong = viewModel::deleteSong,
         onUndoDelete = viewModel::undoDelete,
         onOpenSettings = onOpenSettings
@@ -127,6 +128,7 @@ internal fun RankingsScreenContent(
     onShowDetails: (String) -> Unit,
     onHideDetails: () -> Unit,
     onSaveScore: (String, Int) -> Unit,
+    onDismissTip: () -> Unit,
     onDeleteSong: (Song) -> Unit,
     onUndoDelete: () -> Unit,
     onOpenSettings: () -> Unit,
@@ -139,7 +141,7 @@ internal fun RankingsScreenContent(
     ) {
         TopAppBar(
             title = {
-                if (uiState.searchActive) {
+                if (uiState.searchActive && uiState.selectedTab == RankingsTab.SONGS) {
                     OutlinedTextField(
                         value = uiState.searchQuery,
                         onValueChange = onSearchQueryChanged,
@@ -152,39 +154,41 @@ internal fun RankingsScreenContent(
                 }
             },
             actions = {
-                IconButton(onClick = { onSearchActiveChanged(!uiState.searchActive) }) {
-                    Icon(
-                        imageVector = if (uiState.searchActive) Icons.Rounded.Close else Icons.Rounded.Search,
-                        contentDescription = stringResource(
-                            if (uiState.searchActive) R.string.rankings_close_search else R.string.rankings_open_search
-                        )
-                    )
-                }
-                IconButton(
-                    onClick = {
-                        onPresentationChanged(
-                            if (uiState.presentation == RankingPresentation.GRID) {
-                                RankingPresentation.LIST
-                            } else {
-                                RankingPresentation.GRID
-                            }
+                if (uiState.selectedTab == RankingsTab.SONGS) {
+                    IconButton(onClick = { onSearchActiveChanged(!uiState.searchActive) }) {
+                        Icon(
+                            imageVector = if (uiState.searchActive) Icons.Rounded.Close else Icons.Rounded.Search,
+                            contentDescription = stringResource(
+                                if (uiState.searchActive) R.string.rankings_close_search else R.string.rankings_open_search
+                            )
                         )
                     }
-                ) {
-                    Icon(
-                        imageVector = if (uiState.presentation == RankingPresentation.GRID) {
-                            Icons.Rounded.List
-                        } else {
-                            Icons.Rounded.GridView
-                        },
-                        contentDescription = stringResource(
-                            if (uiState.presentation == RankingPresentation.GRID) {
-                                R.string.rankings_show_list
+                    IconButton(
+                        onClick = {
+                            onPresentationChanged(
+                                if (uiState.presentation == RankingPresentation.GRID) {
+                                    RankingPresentation.LIST
+                                } else {
+                                    RankingPresentation.GRID
+                                }
+                            )
+                        }
+                    ) {
+                        Icon(
+                            imageVector = if (uiState.presentation == RankingPresentation.GRID) {
+                                Icons.Rounded.List
                             } else {
-                                R.string.rankings_show_grid
-                            }
+                                Icons.Rounded.GridView
+                            },
+                            contentDescription = stringResource(
+                                if (uiState.presentation == RankingPresentation.GRID) {
+                                    R.string.rankings_show_list
+                                } else {
+                                    R.string.rankings_show_grid
+                                }
+                            )
                         )
-                    )
+                    }
                 }
                 IconButton(onClick = onOpenSettings) {
                     Icon(
@@ -222,6 +226,7 @@ internal fun RankingsScreenContent(
                 onTogglePreview = onTogglePreview,
                 onShowDetails = onShowDetails,
                 onSaveScore = onSaveScore,
+                onDismissTip = onDismissTip,
                 modifier = Modifier.weight(1f)
             )
             RankingsTab.ALBUMS,
@@ -250,6 +255,7 @@ private fun RankingsSongsContent(
     onTogglePreview: (String) -> Unit,
     onShowDetails: (String) -> Unit,
     onSaveScore: (String, Int) -> Unit,
+    onDismissTip: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val gridState = rememberLazyGridState()
@@ -294,6 +300,7 @@ private fun RankingsSongsContent(
             onTogglePreview = onTogglePreview,
             onShowDetails = onShowDetails,
             onEditScore = { songId -> gridRatingSongId = songId },
+            onDismissTip = onDismissTip,
             gridState = gridState,
             modifier = modifier
         )
@@ -329,6 +336,7 @@ private fun RankingsGrid(
     onTogglePreview: (String) -> Unit,
     onShowDetails: (String) -> Unit,
     onEditScore: (String) -> Unit,
+    onDismissTip: () -> Unit,
     gridState: LazyGridState,
     modifier: Modifier = Modifier
 ) {
@@ -340,12 +348,10 @@ private fun RankingsGrid(
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        item(key = "hint", span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
-            Text(
-                text = stringResource(R.string.rankings_grid_hint),
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+        if (uiState.settings.showTips) {
+            item(key = "hint", span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
+                RankingsGridHint(onDismiss = onDismissTip)
+            }
         }
         items(uiState.rankedSongs, key = { it.song.id }) { rankedSong ->
             RankingsGridCard(
@@ -521,10 +527,17 @@ private fun GridScoreButton(
     modifier: Modifier = Modifier
 ) {
     val score = song.scoreTenths?.let { formatScoreTenths(it) }
+    val scoreStateDescription = score?.let { stringResource(R.string.rankings_score_state, it, song.title) }
+        ?: stringResource(R.string.rankings_unrated_state)
     FilledTonalButton(
         onClick = onClick,
         enabled = enabled,
-        modifier = modifier.fillMaxWidth()
+        modifier = modifier
+            .fillMaxWidth()
+            .heightIn(min = 48.dp)
+            .semantics {
+                stateDescription = scoreStateDescription
+            }
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text(
@@ -657,10 +670,12 @@ internal fun RankingsListRow(
                     )
                     PreviewLabel(state = previewState)
                 }
-                AssistChip(
+                FilledTonalButton(
                     onClick = onToggleStats,
-                    label = { Text(scoreText(rankedSong.song)) }
-                )
+                    modifier = Modifier.heightIn(min = 48.dp)
+                ) {
+                    Text(scoreText(rankedSong.song), maxLines = 1)
+                }
                 IconButton(onClick = onToggleStats) {
                     Icon(
                         imageVector = if (expanded) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore,
@@ -689,6 +704,28 @@ internal fun RankingsListRow(
                     enabled = !isSaving
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun RankingsGridHint(onDismiss: () -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = stringResource(R.string.rankings_grid_hint),
+            modifier = Modifier.weight(1f),
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        IconButton(onClick = onDismiss) {
+            Icon(
+                imageVector = Icons.Rounded.Close,
+                contentDescription = stringResource(R.string.rankings_dismiss_tip)
+            )
         }
     }
 }
