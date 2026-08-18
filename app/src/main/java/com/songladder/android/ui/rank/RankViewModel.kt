@@ -335,12 +335,14 @@ class RankViewModel(
 
     fun saveRatingStep() {
         if (mutationInFlight) return
-        val step = uiState.value.ratingStep ?: return
+        val session = sessionState.value
+        val step = session.pendingRatingSteps.firstOrNull() ?: return
+        val scoreTenths = session.ratingDraftScoreTenths
         mutationInFlight = true
         sessionState.update { it.copy(isSavingRating = true, transientMessage = "") }
         viewModelScope.launch {
             try {
-                rankingRepository.saveScore(step.song.id, step.draftScoreTenths)
+                rankingRepository.saveScore(step.song.id, scoreTenths)
                     .onSuccess {
                         advanceRatingStep()
                     }
