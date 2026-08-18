@@ -33,6 +33,7 @@
     <string name="rankings_empty_title">No songs yet</string>
     <string name="rankings_empty_message">Add songs in Library to start building your rankings.</string>
     <string name="rankings_grid_hint">Tap to preview · Hold for details</string>
+    <string name="rankings_dismiss_tip">Dismiss tip</string>
     <string name="rankings_open_details">Open details</string>
     <string name="rankings_preview_action">Preview</string>
     <string name="rankings_pause_preview">Pause</string>
@@ -43,6 +44,8 @@
     <string name="rankings_ranked_title">#%1$d %2$s</string>
     <string name="rankings_rank_badge">#%1$d</string>
     <string name="rankings_score_label">Score</string>
+    <string name="rankings_score_state">%1$s score for %2$s</string>
+    <string name="rankings_unrated_state">Unrated song</string>
     <string name="rankings_rate_song">Rate song</string>
     <string name="rankings_edit_score">Edit score</string>
     <string name="rankings_stats_summary">%1$dW %2$dL · %3$d skips</string>

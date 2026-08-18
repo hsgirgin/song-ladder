@@ -107,6 +107,34 @@ class RankingsViewModelTest {
     }
 
     @Test
+    fun `selecting future tabs closes songs search and reports coming soon`() = runTest {
+        val viewModel = viewModel(
+            songs = listOf(
+                rankingsSong(id = "one", title = "Needle"),
+                rankingsSong(id = "two", title = "Other")
+            )
+        )
+        backgroundScope.launch(dispatcher) { viewModel.uiState.collect {} }
+
+        viewModel.setSearchActive(true)
+        viewModel.updateSearchQuery("needle")
+        advanceUntilIdle()
+
+        viewModel.selectTab(RankingsTab.ALBUMS)
+        advanceUntilIdle()
+
+        assertEquals(false, viewModel.uiState.value.searchActive)
+        assertEquals("", viewModel.uiState.value.searchQuery)
+        assertEquals(RankingsTab.ALBUMS, viewModel.uiState.value.selectedTab)
+        assertEquals(RankingsStatus.ComingSoon, viewModel.uiState.value.status)
+
+        viewModel.selectTab(RankingsTab.SONGS)
+        advanceUntilIdle()
+
+        assertEquals(2, viewModel.uiState.value.rankedSongs.size)
+    }
+
+    @Test
     fun `presentation changes persist while preserving other settings`() = runTest {
         val settingsRepository = FakeSettingsRepository(
             RankingSettings(
@@ -120,6 +148,32 @@ class RankingsViewModelTest {
         advanceUntilIdle()
 
         viewModel.setPresentation(RankingPresentation.LIST)
+        advanceUntilIdle()
+
+        assertEquals(
+            RankingSettings(
+                autoPlayMatchupPreviews = false,
+                showTips = false,
+                presentation = RankingPresentation.LIST
+            ),
+            settingsRepository.settings.value
+        )
+    }
+
+    @Test
+    fun `dismissing rankings tip persists tips off while preserving other settings`() = runTest {
+        val settingsRepository = FakeSettingsRepository(
+            RankingSettings(
+                autoPlayMatchupPreviews = false,
+                showTips = true,
+                presentation = RankingPresentation.LIST
+            )
+        )
+        val viewModel = viewModel(settingsRepository = settingsRepository)
+        backgroundScope.launch(dispatcher) { viewModel.uiState.collect {} }
+        advanceUntilIdle()
+
+        viewModel.dismissRankingsTip()
         advanceUntilIdle()
 
         assertEquals(
