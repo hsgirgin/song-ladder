@@ -6,6 +6,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -30,7 +31,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -48,7 +49,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.consume
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -62,6 +66,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.songladder.android.domain.model.Matchup
 import com.songladder.android.domain.model.Song
 import com.songladder.android.domain.model.formatScoreTenths
+import com.songladder.android.ui.components.SongRatingControl
 import com.songladder.android.ui.components.SongArtwork
 
 internal enum class CardReaction {
@@ -92,7 +97,7 @@ fun RankScreen(
             when (event) {
                 Lifecycle.Event.ON_START -> updatePrefetchForLifecycle()
                 Lifecycle.Event.ON_STOP -> {
-                    viewModel.stopPreview()
+                    viewModel.disarmAutoplayForBackground()
                     viewModel.clearPreviewPrefetch()
                 }
                 else -> Unit
@@ -123,6 +128,17 @@ fun RankScreen(
 
         if (uiState.caughtUp) {
             CaughtUpState(onContinueAnyway = viewModel::continueAnyway)
+        } else if (uiState.ratingStep != null) {
+            PostMatchRatingContent(
+                ratingStep = uiState.ratingStep,
+                enabled = !uiState.isSavingRating,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+                onScoreChange = viewModel::updateRatingDraft,
+                onSave = viewModel::saveRatingStep,
+                onSkip = viewModel::skipRatingStep
+            )
         } else if (!uiState.isReady || matchup == null) {
             EmptyRankState(onOpenLibrary = onOpenLibrary)
         } else {
@@ -178,11 +194,52 @@ internal fun RankMatchupContent(
 ) {
     BoxWithConstraints(modifier = modifier) {
         val compact = maxHeight < 640.dp || LocalDensity.current.fontScale > 1.3f
+        val wide = maxWidth >= 600.dp && !compact
         val artworkSize = if (compact) 80.dp else 112.dp
+        val dragThresholdPx = with(LocalDensity.current) {
+            (if (wide) maxWidth else maxHeight).toPx() / 4f
+        }
+        var dragX = 0f
+        var dragY = 0f
+        val gestureModifier = if (compact) {
+            Modifier
+        } else {
+            Modifier.pointerInput(matchup.left.id, matchup.right.id, wide) {
+                detectDragGestures(
+                    onDragCancel = {
+                        dragX = 0f
+                        dragY = 0f
+                    },
+                    onDragEnd = {
+                        if (wide) {
+                            when {
+                                dragX <= -dragThresholdPx -> onChoose(matchup.right.id, matchup.left.id)
+                                dragX >= dragThresholdPx -> onChoose(matchup.left.id, matchup.right.id)
+                            }
+                        } else {
+                            when {
+                                dragY <= -dragThresholdPx -> onChoose(matchup.right.id, matchup.left.id)
+                                dragY >= dragThresholdPx -> onChoose(matchup.left.id, matchup.right.id)
+                            }
+                        }
+                        dragX = 0f
+                        dragY = 0f
+                    },
+                    onDrag = { change, dragAmount ->
+                        change.consume()
+                        dragX += dragAmount.x
+                        dragY += dragAmount.y
+                    }
+                )
+            }
+        }
 
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .testTag("rank_matchup_drag_area")
+                .then(gestureModifier)
+                .padding(bottom = 72.dp)
                 .then(
                     if (compact) Modifier.verticalScroll(rememberScrollState()) else Modifier
                 ),
@@ -194,41 +251,126 @@ internal fun RankMatchupContent(
                 fontWeight = FontWeight.SemiBold
             )
 
-            MinimalSongChoiceCard(
-                modifier = if (compact) Modifier.heightIn(min = 180.dp) else Modifier.weight(1f),
-                song = matchup.left,
-                artworkSize = artworkSize,
-                compact = compact,
-                reaction = uiState.visualFeedback.reactionFor(matchup.left.id),
-                previewState = uiState.previews[matchup.left.id] ?: SongPreviewState.Loading,
-                onTogglePreview = { onTogglePreview(matchup.left.id) },
-                onChoose = { onChoose(matchup.left.id, matchup.right.id) }
-            )
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text("·", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-
-            Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                FilledTonalButton(onClick = onSkip) {
-                    Text("Skip", style = MaterialTheme.typography.labelLarge)
+            if (wide) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                    horizontalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    MinimalSongChoiceCard(
+                        modifier = Modifier.weight(1f),
+                        song = matchup.left,
+                        artworkSize = artworkSize,
+                        compact = false,
+                        reaction = uiState.visualFeedback.reactionFor(matchup.left.id),
+                        previewState = uiState.previews[matchup.left.id] ?: SongPreviewState.Loading,
+                        onTogglePreview = { onTogglePreview(matchup.left.id) },
+                        onChoose = { onChoose(matchup.left.id, matchup.right.id) }
+                    )
+                    MinimalSongChoiceCard(
+                        modifier = Modifier.weight(1f),
+                        song = matchup.right,
+                        artworkSize = artworkSize,
+                        compact = false,
+                        reaction = uiState.visualFeedback.reactionFor(matchup.right.id),
+                        previewState = uiState.previews[matchup.right.id] ?: SongPreviewState.Loading,
+                        onTogglePreview = { onTogglePreview(matchup.right.id) },
+                        onChoose = { onChoose(matchup.right.id, matchup.left.id) }
+                    )
                 }
+            } else {
+                MinimalSongChoiceCard(
+                    modifier = if (compact) Modifier.heightIn(min = 180.dp) else Modifier.weight(1f),
+                    song = matchup.left,
+                    artworkSize = artworkSize,
+                    compact = compact,
+                    reaction = uiState.visualFeedback.reactionFor(matchup.left.id),
+                    previewState = uiState.previews[matchup.left.id] ?: SongPreviewState.Loading,
+                    onTogglePreview = { onTogglePreview(matchup.left.id) },
+                    onChoose = { onChoose(matchup.left.id, matchup.right.id) }
+                )
             }
 
-            MinimalSongChoiceCard(
-                modifier = if (compact) Modifier.heightIn(min = 180.dp) else Modifier.weight(1f),
-                song = matchup.right,
-                artworkSize = artworkSize,
-                compact = compact,
-                reaction = uiState.visualFeedback.reactionFor(matchup.right.id),
-                previewState = uiState.previews[matchup.right.id] ?: SongPreviewState.Loading,
-                onTogglePreview = { onTogglePreview(matchup.right.id) },
-                onChoose = { onChoose(matchup.right.id, matchup.left.id) }
+            if (!wide) {
+                MinimalSongChoiceCard(
+                    modifier = if (compact) Modifier.heightIn(min = 180.dp) else Modifier.weight(1f),
+                    song = matchup.right,
+                    artworkSize = artworkSize,
+                    compact = compact,
+                    reaction = uiState.visualFeedback.reactionFor(matchup.right.id),
+                    previewState = uiState.previews[matchup.right.id] ?: SongPreviewState.Loading,
+                    onTogglePreview = { onTogglePreview(matchup.right.id) },
+                    onChoose = { onChoose(matchup.right.id, matchup.left.id) }
+                )
+            }
+        }
+        FloatingActionButton(
+            onClick = onSkip,
+            modifier = Modifier.align(Alignment.BottomCenter)
+        ) {
+            Text(stringResource(com.songladder.android.R.string.rank_skip), style = MaterialTheme.typography.labelLarge)
+        }
+    }
+}
+
+@Composable
+private fun PostMatchRatingContent(
+    ratingStep: PostMatchRatingStep,
+    enabled: Boolean,
+    modifier: Modifier = Modifier,
+    onScoreChange: (Int) -> Unit,
+    onSave: () -> Unit,
+    onSkip: () -> Unit
+) {
+    Surface(
+        modifier = modifier,
+        color = MaterialTheme.colorScheme.surface,
+        shape = RoundedCornerShape(18.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            Text(
+                text = stringResource(
+                    when (ratingStep.role) {
+                        PostMatchRatingRole.Winner -> com.songladder.android.R.string.rank_rate_winner
+                        PostMatchRatingRole.Loser -> com.songladder.android.R.string.rank_rate_loser
+                    },
+                    ratingStep.song.title
+                ),
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.SemiBold
             )
+            Text(
+                text = stringResource(
+                    com.songladder.android.R.string.rank_rating_step_progress,
+                    ratingStep.index,
+                    ratingStep.total
+                ),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Text(
+                text = ratingStep.song.artist,
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            SongRatingControl(
+                scoreTenths = ratingStep.draftScoreTenths,
+                onScoreChange = onScoreChange,
+                onSave = onSave,
+                onCancel = { onScoreChange(ratingStep.song.scoreTenths ?: 55) },
+                enabled = enabled
+            )
+            TextButton(
+                onClick = onSkip,
+                enabled = enabled,
+                modifier = Modifier.align(Alignment.End)
+            ) {
+                Text(stringResource(com.songladder.android.R.string.rank_skip_for_now))
+            }
         }
     }
 }
@@ -477,6 +619,14 @@ internal fun MinimalSongChoiceCard(
                         )
                         MinimalMetaPill("${song.wins}W ${song.losses}L", MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f))
                     }
+                }
+                Button(
+                    onClick = onChoose,
+                    modifier = Modifier
+                        .align(Alignment.End)
+                        .padding(top = 8.dp)
+                ) {
+                    Text(stringResource(com.songladder.android.R.string.rank_choose_button))
                 }
             }
         }

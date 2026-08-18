@@ -5,9 +5,15 @@
     <string name="rank_caught_up_title">You’re caught up for now</string>
     <string name="rank_caught_up_message">Continue anyway to repeat a matchup once.</string>
     <string name="rank_continue_anyway">Continue anyway</string>
+    <string name="rank_choose_button">Choose</string>
+    <string name="rank_skip">Skip</string>
     <string name="rank_undo_action">Undo last choice</string>
     <string name="rank_undo_unavailable">Undo is no longer available.</string>
     <string name="rank_undo_failed">Could not undo ranking. Try again.</string>
+    <string name="rank_rate_winner">Rate winner: %1$s</string>
+    <string name="rank_rate_loser">Rate other song: %1$s</string>
+    <string name="rank_rating_step_progress">Step %1$d of %2$d</string>
+    <string name="rank_skip_for_now">Skip for now</string>
     <string name="destination_matchups">Matchups</string>
     <string name="destination_library">Library</string>
     <string name="destination_rankings">Rankings</string>

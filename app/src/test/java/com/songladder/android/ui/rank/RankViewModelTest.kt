@@ -3,8 +3,11 @@ package com.songladder.android.ui.rank
 import com.songladder.android.domain.model.AppStats
 import com.songladder.android.domain.model.MatchupEvent
 import com.songladder.android.domain.model.MatchupOutcome
+import com.songladder.android.domain.model.RankingSettings
+import com.songladder.android.domain.model.ScoreSaveResult
 import com.songladder.android.domain.model.Song
 import com.songladder.android.domain.repository.RankingRepository
+import com.songladder.android.domain.repository.SettingsRepository
 import com.songladder.android.domain.repository.SongPreviewPlayer
 import com.songladder.android.domain.repository.SongPreviewResolver
 import com.songladder.android.domain.repository.SongRepository
@@ -71,8 +74,8 @@ class RankViewModelTest {
     @Test
     fun `preview controls switch playback and ranking stops it`() = runTest {
         val songs = listOf(
-            fakeSong(id = "1", title = "Dreams"),
-            fakeSong(id = "2", title = "Go Your Own Way")
+            fakeSong(id = "1", title = "Dreams", scoreTenths = 80),
+            fakeSong(id = "2", title = "Go Your Own Way", scoreTenths = 80)
         )
         val player = FakeSongPreviewPlayer()
         val viewModel = RankViewModel(
@@ -101,6 +104,69 @@ class RankViewModelTest {
         runCurrent()
         assertEquals(1, player.stopCount)
         assertEquals(SongPreviewState.Available, viewModel.uiState.value.previews["2"])
+    }
+
+    @Test
+    fun `play tap arms autoplay and advances through available previews sequentially`() = runTest {
+        val songs = listOf(
+            fakeSong(id = "1", title = "Dreams"),
+            fakeSong(id = "2", title = "Go Your Own Way")
+        )
+        val player = FakeSongPreviewPlayer()
+        val viewModel = RankViewModel(
+            songRepository = FakeRankSongRepository(songs),
+            rankingRepository = FakeRankingRepository(),
+            settingsRepository = FakeSettingsRepository(),
+            songPreviewResolver = FakeSongPreviewResolver(
+                mapOf("1" to "https://audio/1.m4a", "2" to "https://audio/2.m4a")
+            ),
+            songPreviewPlayer = player
+        )
+        backgroundScope.launch(dispatcher) { viewModel.uiState.collect {} }
+        advanceUntilIdle()
+        viewModel.updatePreviewPrefetch(viewModel.uiState.value.matchup)
+        advanceUntilIdle()
+
+        viewModel.togglePreview("1")
+        runCurrent()
+        assertTrue(viewModel.uiState.value.autoplayArmed)
+        assertEquals(listOf("1"), player.playedSongIds)
+
+        player.complete("1")
+        runCurrent()
+
+        assertEquals(listOf("1", "2"), player.playedSongIds)
+        assertEquals(SongPreviewState.Playing, viewModel.uiState.value.previews["2"])
+    }
+
+    @Test
+    fun `background disarms autoplay and stops playback`() = runTest {
+        val songs = listOf(
+            fakeSong(id = "1", title = "Dreams"),
+            fakeSong(id = "2", title = "Go Your Own Way")
+        )
+        val player = FakeSongPreviewPlayer()
+        val viewModel = RankViewModel(
+            songRepository = FakeRankSongRepository(songs),
+            rankingRepository = FakeRankingRepository(),
+            settingsRepository = FakeSettingsRepository(),
+            songPreviewResolver = FakeSongPreviewResolver(
+                mapOf("1" to "https://audio/1.m4a", "2" to "https://audio/2.m4a")
+            ),
+            songPreviewPlayer = player
+        )
+        backgroundScope.launch(dispatcher) { viewModel.uiState.collect {} }
+        advanceUntilIdle()
+        viewModel.updatePreviewPrefetch(viewModel.uiState.value.matchup)
+        advanceUntilIdle()
+        viewModel.togglePreview("1")
+        runCurrent()
+
+        viewModel.disarmAutoplayForBackground()
+        runCurrent()
+
+        assertFalse(viewModel.uiState.value.autoplayArmed)
+        assertEquals(1, player.stopCount)
     }
 
     @Test
@@ -309,8 +375,12 @@ class RankViewModelTest {
         viewModel.rankWinner("1", "2")
         viewModel.rankWinner("1", "2")
         runCurrent()
+        viewModel.rankWinner("1", "2")
+        viewModel.skip()
+        runCurrent()
 
         assertEquals(1, rankingRepository.battleCalls)
+        assertEquals(emptyList<String>(), rankingRepository.skippedSongIds)
     }
 
     @Test
@@ -335,6 +405,70 @@ class RankViewModelTest {
         assertEquals(1, rankingRepository.undoCalls)
         assertFalse(viewModel.uiState.value.undoAvailable)
         assertEquals(RankVisualFeedback.None, viewModel.uiState.value.visualFeedback)
+        assertEquals(null, viewModel.uiState.value.ratingStep)
+    }
+
+    @Test
+    fun `winner with unrated songs opens winner then loser rating steps`() = runTest {
+        val rankingRepository = FakeRankingRepository()
+        val viewModel = RankViewModel(
+            songRepository = FakeRankSongRepository(
+                listOf(fakeSong(id = "1", title = "Dreams"), fakeSong(id = "2", title = "Go Your Own Way"))
+            ),
+            rankingRepository = rankingRepository
+        )
+        backgroundScope.launch(dispatcher) { viewModel.uiState.collect {} }
+
+        advanceUntilIdle()
+        viewModel.rankWinner("1", "2")
+        runCurrent()
+
+        var ratingStep = checkNotNull(viewModel.uiState.value.ratingStep)
+        assertEquals("1", ratingStep.song.id)
+        assertEquals(PostMatchRatingRole.Winner, ratingStep.role)
+        assertEquals(1, ratingStep.index)
+        assertEquals(2, ratingStep.total)
+
+        viewModel.updateRatingDraft(85)
+        viewModel.saveRatingStep()
+        runCurrent()
+
+        assertEquals(listOf("1" to 85), rankingRepository.savedScores)
+        ratingStep = checkNotNull(viewModel.uiState.value.ratingStep)
+        assertEquals("2", ratingStep.song.id)
+        assertEquals(PostMatchRatingRole.Loser, ratingStep.role)
+        assertEquals(2, ratingStep.index)
+        assertEquals(2, ratingStep.total)
+
+        viewModel.skipRatingStep()
+        runCurrent()
+
+        assertEquals(null, viewModel.uiState.value.ratingStep)
+        assertEquals(listOf("1" to 85), rankingRepository.savedScores)
+    }
+
+    @Test
+    fun `rating save failure keeps the current post match rating step`() = runTest {
+        val rankingRepository = FakeRankingRepository(
+            scoreResult = Result.failure(IllegalStateException("db failed"))
+        )
+        val viewModel = RankViewModel(
+            songRepository = FakeRankSongRepository(
+                listOf(fakeSong(id = "1", title = "Dreams"), fakeSong(id = "2", title = "Go Your Own Way"))
+            ),
+            rankingRepository = rankingRepository
+        )
+        backgroundScope.launch(dispatcher) { viewModel.uiState.collect {} }
+
+        advanceUntilIdle()
+        viewModel.rankWinner("1", "2")
+        runCurrent()
+        viewModel.updateRatingDraft(85)
+        viewModel.saveRatingStep()
+        runCurrent()
+
+        assertEquals("1", viewModel.uiState.value.ratingStep?.song?.id)
+        assertEquals("Could not save score. Try again.", viewModel.uiState.value.message)
     }
 
     @Test
@@ -361,8 +495,8 @@ class RankViewModelTest {
     @Test
     fun `skip resets streak and emits transient skip feedback`() = runTest {
         val songs = listOf(
-            fakeSong(id = "1", title = "Dreams"),
-            fakeSong(id = "2", title = "Go Your Own Way")
+            fakeSong(id = "1", title = "Dreams", scoreTenths = 80),
+            fakeSong(id = "2", title = "Go Your Own Way", scoreTenths = 80)
         )
         val rankingRepository = FakeRankingRepository()
         val viewModel = RankViewModel(
@@ -373,8 +507,6 @@ class RankViewModelTest {
 
         advanceUntilIdle()
         val matchup = checkNotNull(viewModel.uiState.value.matchup)
-        viewModel.rankWinner("1", "2")
-        runCurrent()
         viewModel.skip()
         runCurrent()
 
@@ -458,9 +590,15 @@ private class FakeSongPreviewPlayer : SongPreviewPlayer {
     private val mutableEvents = MutableSharedFlow<com.songladder.android.domain.repository.SongPreviewPlaybackEvent>(extraBufferCapacity = 1)
     override val events = mutableEvents
     var stopCount = 0
-    override fun play(songId: String, url: String) = Unit
+    val playedSongIds = mutableListOf<String>()
+    override fun play(songId: String, url: String) {
+        playedSongIds += songId
+    }
     override fun pause() = Unit
     override fun stop() { stopCount += 1 }
+    fun complete(songId: String) {
+        mutableEvents.tryEmit(com.songladder.android.domain.repository.SongPreviewPlaybackEvent(songId))
+    }
     fun fail(songId: String) {
         mutableEvents.tryEmit(com.songladder.android.domain.repository.SongPreviewPlaybackEvent(songId, failed = true))
     }
@@ -497,11 +635,13 @@ private class FakeRankingRepository(
     private val battleResult: Result<Unit> = Result.success(Unit),
     private val skipResult: Result<Unit> = Result.success(Unit),
     private val undoResult: Result<Boolean> = Result.success(true),
+    private val scoreResult: Result<ScoreSaveResult>? = null,
     initialEvents: List<MatchupEvent> = emptyList()
 ) : RankingRepository {
     private val stats = MutableStateFlow(AppStats())
     private val events = MutableStateFlow(initialEvents)
     val skippedSongIds = mutableListOf<String>()
+    val savedScores = mutableListOf<Pair<String, Int>>()
     var battleCalls = 0
     var undoCalls = 0
 
@@ -525,17 +665,36 @@ private class FakeRankingRepository(
         return skipResult
     }
 
+    override suspend fun saveScore(songId: String, scoreTenths: Int): Result<ScoreSaveResult> {
+        savedScores += songId to scoreTenths
+        return scoreResult ?: Result.success(ScoreSaveResult(songId = songId, scoreTenths = scoreTenths))
+    }
+
     override suspend fun undoLastWinner(): Result<Boolean> {
         undoCalls += 1
         return undoResult
     }
 }
 
-private fun fakeSong(id: String, title: String): Song {
+private class FakeSettingsRepository(
+    initialSettings: RankingSettings = RankingSettings()
+) : SettingsRepository {
+    private val settings = MutableStateFlow(initialSettings)
+
+    override fun observeSettings(): Flow<RankingSettings> = settings
+
+    override suspend fun saveSettings(settings: RankingSettings): Result<Unit> {
+        this.settings.value = settings
+        return Result.success(Unit)
+    }
+}
+
+private fun fakeSong(id: String, title: String, scoreTenths: Int? = null): Song {
     return Song(
         id = id,
         title = title,
         artist = "Artist $id",
-        createdAt = 1L
+        createdAt = 1L,
+        scoreTenths = scoreTenths
     )
 }

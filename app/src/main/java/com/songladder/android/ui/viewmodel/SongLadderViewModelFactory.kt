@@ -19,7 +19,8 @@ class SongLadderViewModelFactory(
                     container.songRepository,
                     container.rankingRepository,
                     container.songPreviewResolver,
-                    container.songPreviewPlayer
+                    container.songPreviewPlayer,
+                    container.settingsRepository
                 ) as T
             }
             modelClass.isAssignableFrom(LibraryViewModel::class.java) -> {
