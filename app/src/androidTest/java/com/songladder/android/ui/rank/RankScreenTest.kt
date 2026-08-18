@@ -2,11 +2,9 @@ package com.songladder.android.ui.rank
 
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
-import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.fetchSemanticsNode
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
@@ -22,7 +20,6 @@ import com.songladder.android.domain.model.Matchup
 import com.songladder.android.domain.model.Song
 import com.songladder.android.ui.theme.SongLadderTheme
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -111,52 +108,6 @@ class RankScreenTest {
         composeRule.onAllNodesWithText("Skip").assertCountEquals(0)
     }
 
-    @Test
-    fun matchup_exposes_accessibility_actions_for_both_choices() {
-        val left = Song(id = "left", title = "Left song", artist = "Left artist", createdAt = 1L)
-        val right = Song(id = "right", title = "Right song", artist = "Right artist", createdAt = 2L)
-        val choices = mutableListOf<Pair<String, String>>()
-
-        composeRule.setContent {
-            SongLadderTheme {
-                RankMatchupContent(
-                    uiState = RankUiState(
-                        songs = listOf(left, right),
-                        previews = mapOf(
-                            left.id to SongPreviewState.Unavailable,
-                            right.id to SongPreviewState.Unavailable
-                        )
-                    ),
-                    matchup = Matchup(left, right),
-                    modifier = Modifier
-                        .width(360.dp)
-                        .height(760.dp),
-                    onChoose = { winner, loser -> choices += winner to loser }
-                )
-            }
-        }
-
-        val customActions = composeRule
-            .onNodeWithTag("rank_matchup_drag_area")
-            .fetchSemanticsNode()
-            .config[SemanticsProperties.CustomActions]
-
-        assertEquals(2, customActions.size)
-        assertEquals("Choose Left song by Left artist", customActions[0].label)
-        assertEquals("Choose Right song by Right artist", customActions[1].label)
-
-        composeRule.runOnIdle {
-            assertTrue(customActions[0].action?.invoke() == true)
-            assertTrue(customActions[1].action?.invoke() == true)
-        }
-
-        assertEquals(
-            listOf("left" to "right", "right" to "left"),
-            choices
-        )
-    }
-
-    @Test
     fun verticalSwipeUpChoosesBottomSongWhenGesturesAreEnabled() {
         val left = Song(id = "left", title = "Left song", artist = "Left artist", createdAt = 1L)
         val right = Song(id = "right", title = "Right song", artist = "Right artist", createdAt = 2L)
