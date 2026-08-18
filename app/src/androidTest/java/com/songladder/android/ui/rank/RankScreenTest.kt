@@ -5,13 +5,19 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeLeft
+import androidx.compose.ui.test.swipeUp
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.songladder.android.domain.model.AppStats
@@ -84,8 +90,110 @@ class RankScreenTest {
             }
         ).assertHasClickAction().performClick()
         composeRule.onNodeWithContentDescription("Play preview of Dreams").assertIsDisplayed()
+        composeRule.onNodeWithText("Choose").assertIsDisplayed()
 
         composeRule.runOnIdle { assertEquals(1, choiceCount) }
+    }
+
+    @Test
+    fun matchup_keepsLabeledChooseButtonsForBothSongs() {
+        val left = Song(id = "left", title = "Left song", artist = "Left artist", createdAt = 1L)
+        val right = Song(id = "right", title = "Right song", artist = "Right artist", createdAt = 2L)
+
+        composeRule.setContent {
+            SongLadderTheme {
+                RankMatchupContent(
+                    uiState = RankUiState(
+                        songs = listOf(left, right),
+                        previews = mapOf(
+                            left.id to SongPreviewState.Unavailable,
+                            right.id to SongPreviewState.Unavailable
+                        )
+                    ),
+                    matchup = Matchup(left, right),
+                    modifier = Modifier
+                        .width(360.dp)
+                        .height(760.dp),
+                    onTogglePreview = {},
+                    onChoose = { _, _ -> },
+                    onSkip = {}
+                )
+            }
+        }
+
+        composeRule.onAllNodesWithText("Choose").assertCountEquals(2)
+    }
+
+    @Test
+    fun verticalSwipeUpChoosesBottomSongWhenGesturesAreEnabled() {
+        val left = Song(id = "left", title = "Left song", artist = "Left artist", createdAt = 1L)
+        val right = Song(id = "right", title = "Right song", artist = "Right artist", createdAt = 2L)
+        var chosen: Pair<String, String>? = null
+
+        composeRule.setContent {
+            SongLadderTheme {
+                RankMatchupContent(
+                    uiState = RankUiState(
+                        songs = listOf(left, right),
+                        previews = mapOf(
+                            left.id to SongPreviewState.Unavailable,
+                            right.id to SongPreviewState.Unavailable
+                        )
+                    ),
+                    matchup = Matchup(left, right),
+                    modifier = Modifier
+                        .width(360.dp)
+                        .height(760.dp),
+                    onTogglePreview = {},
+                    onChoose = { winner, loser -> chosen = winner to loser },
+                    onSkip = {}
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag("rank_matchup_drag_area").performTouchInput {
+            swipeUp()
+        }
+
+        composeRule.runOnIdle {
+            assertEquals("right" to "left", chosen)
+        }
+    }
+
+    @Test
+    fun wideSwipeLeftChoosesRightSongWhenGesturesAreEnabled() {
+        val left = Song(id = "left", title = "Left song", artist = "Left artist", createdAt = 1L)
+        val right = Song(id = "right", title = "Right song", artist = "Right artist", createdAt = 2L)
+        var chosen: Pair<String, String>? = null
+
+        composeRule.setContent {
+            SongLadderTheme {
+                RankMatchupContent(
+                    uiState = RankUiState(
+                        songs = listOf(left, right),
+                        previews = mapOf(
+                            left.id to SongPreviewState.Unavailable,
+                            right.id to SongPreviewState.Unavailable
+                        )
+                    ),
+                    matchup = Matchup(left, right),
+                    modifier = Modifier
+                        .width(760.dp)
+                        .height(700.dp),
+                    onTogglePreview = {},
+                    onChoose = { winner, loser -> chosen = winner to loser },
+                    onSkip = {}
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag("rank_matchup_drag_area").performTouchInput {
+            swipeLeft()
+        }
+
+        composeRule.runOnIdle {
+            assertEquals("right" to "left", chosen)
+        }
     }
 
     @Test
