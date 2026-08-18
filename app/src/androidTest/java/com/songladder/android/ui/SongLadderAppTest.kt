@@ -29,9 +29,9 @@ class SongLadderAppTest {
         }
 
         composeRule.onNodeWithText("Library content").assertIsDisplayed()
-        composeRule.onNodeWithText("Rank").assertDoesNotExist()
+        composeRule.onNodeWithText("Matchups").assertDoesNotExist()
         composeRule.onNodeWithText("Library").assertDoesNotExist()
-        composeRule.onNodeWithText("Leaderboard").assertDoesNotExist()
+        composeRule.onNodeWithText("Rankings").assertDoesNotExist()
     }
 
     @Test
@@ -48,8 +48,8 @@ class SongLadderAppTest {
             }
         }
 
-        composeRule.onNodeWithText("Rank").assertIsDisplayed()
+        composeRule.onNodeWithText("Matchups").assertIsDisplayed()
         composeRule.onNodeWithText("Library").assertIsDisplayed()
-        composeRule.onNodeWithText("Leaderboard").assertIsDisplayed()
+        composeRule.onNodeWithText("Rankings").assertIsDisplayed()
     }
 }

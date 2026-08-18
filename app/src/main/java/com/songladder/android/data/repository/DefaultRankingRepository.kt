@@ -12,6 +12,7 @@ import com.songladder.android.data.local.toDomain
 import com.songladder.android.data.local.toEntity
 import com.songladder.android.domain.engine.EloMatchupEngine
 import com.songladder.android.domain.model.AppStats
+import com.songladder.android.domain.model.DeletedRankingHistory
 import com.songladder.android.domain.model.MatchupOutcome
 import com.songladder.android.domain.model.MatchupEvent
 import com.songladder.android.domain.model.RankingHistoryDeletionResult
@@ -24,6 +25,7 @@ import com.songladder.android.domain.model.seedEloForScore
 import com.songladder.android.domain.model.validateScoreTenths
 import com.songladder.android.domain.repository.RankingRepository
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 
 class DefaultRankingRepository(
@@ -42,6 +44,23 @@ class DefaultRankingRepository(
 
     override fun observeMatchupEvents(): Flow<List<MatchupEvent>> =
         matchupEventDao.observeAll().map { events -> events.map { it.toDomain() } }
+
+    override fun observeDeletedRankingHistories(): Flow<List<DeletedRankingHistory>> =
+        combine(rankingSubjectDao.observeDeleted(), matchupEventDao.observeAll()) { subjects, events ->
+            subjects.map { subject ->
+                val eventCount = events.count {
+                    it.firstSubjectId == subject.id || it.secondSubjectId == subject.id
+                }
+                DeletedRankingHistory(
+                    rankingSubjectId = subject.id,
+                    title = subject.normalizedTitle,
+                    artist = subject.normalizedArtist,
+                    scoreTenths = subject.tombstoneScoreTenths ?: subject.scoreTenths,
+                    deletedAt = subject.tombstoneDeletedAt ?: 0L,
+                    eventCount = eventCount
+                )
+            }
+        }
 
     override suspend fun recordBattle(winnerId: String, loserId: String): Result<Unit> = runCatching {
         database.withTransaction {
