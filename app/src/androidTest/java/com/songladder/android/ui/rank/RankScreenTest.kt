@@ -235,7 +235,6 @@ class RankScreenTest {
         }
 
         composeRule.onNodeWithText("Skip")
-            .performScrollTo()
             .assertIsDisplayed()
         composeRule.onNodeWithText("Right song")
             .performScrollTo()
