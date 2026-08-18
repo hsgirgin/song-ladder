@@ -47,6 +47,7 @@ import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
@@ -254,6 +255,7 @@ private fun RankingsSongsContent(
     val gridState = rememberLazyGridState()
     val listState = rememberLazyListState()
     var previousPresentation by remember { mutableStateOf(uiState.presentation) }
+    var gridRatingSongId by rememberSaveable { mutableStateOf<String?>(null) }
 
     LaunchedEffect(uiState.presentation) {
         if (previousPresentation != uiState.presentation) {
@@ -278,13 +280,20 @@ private fun RankingsSongsContent(
         return
     }
 
+    val gridRatingSong = uiState.allSongs.firstOrNull { it.id == gridRatingSongId }
+    LaunchedEffect(gridRatingSongId, gridRatingSong) {
+        if (gridRatingSongId != null && gridRatingSong == null) {
+            gridRatingSongId = null
+        }
+    }
+
     when (uiState.presentation) {
         RankingPresentation.GRID -> RankingsGrid(
             uiState = uiState,
             onToggleUnrated = onToggleUnrated,
             onTogglePreview = onTogglePreview,
             onShowDetails = onShowDetails,
-            onSaveScore = onSaveScore,
+            onEditScore = { songId -> gridRatingSongId = songId },
             gridState = gridState,
             modifier = modifier
         )
@@ -299,6 +308,18 @@ private fun RankingsSongsContent(
             modifier = modifier
         )
     }
+
+    gridRatingSong?.let { song ->
+        GridScoreEditorSheet(
+            song = song,
+            isSaving = uiState.isSavingScore,
+            onDismiss = { gridRatingSongId = null },
+            onSaveScore = { scoreTenths ->
+                onSaveScore(song.id, scoreTenths)
+                gridRatingSongId = null
+            }
+        )
+    }
 }
 
 @Composable
@@ -307,7 +328,7 @@ private fun RankingsGrid(
     onToggleUnrated: () -> Unit,
     onTogglePreview: (String) -> Unit,
     onShowDetails: (String) -> Unit,
-    onSaveScore: (String, Int) -> Unit,
+    onEditScore: (String) -> Unit,
     gridState: LazyGridState,
     modifier: Modifier = Modifier
 ) {
@@ -333,7 +354,7 @@ private fun RankingsGrid(
                 isSaving = uiState.isSavingScore,
                 onTogglePreview = { onTogglePreview(rankedSong.song.id) },
                 onShowDetails = { onShowDetails(rankedSong.song.id) },
-                onSaveScore = { scoreTenths -> onSaveScore(rankedSong.song.id, scoreTenths) }
+                onEditScore = { onEditScore(rankedSong.song.id) }
             )
         }
         item(key = "unrated-header", span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
@@ -351,7 +372,7 @@ private fun RankingsGrid(
                     isSaving = uiState.isSavingScore,
                     onTogglePreview = { onTogglePreview(song.id) },
                     onShowDetails = { onShowDetails(song.id) },
-                    onSaveScore = { scoreTenths -> onSaveScore(song.id, scoreTenths) }
+                    onEditScore = { onEditScore(song.id) }
                 )
             }
         }
@@ -420,13 +441,10 @@ internal fun RankingsGridCard(
     isSaving: Boolean,
     onTogglePreview: () -> Unit,
     onShowDetails: () -> Unit,
-    onSaveScore: (Int) -> Unit,
+    onEditScore: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val detailsLabel = stringResource(R.string.rankings_open_details)
-    var draftScore by rememberSaveable(rankedSong.song.id, rankedSong.song.scoreTenths) {
-        mutableIntStateOf(rankedSong.song.scoreTenths ?: 55)
-    }
     Card(
         modifier = modifier
             .fillMaxWidth()
@@ -485,14 +503,93 @@ internal fun RankingsGridCard(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-                SongRatingControl(
-                    scoreTenths = draftScore,
-                    onScoreChange = { draftScore = it },
-                    onSave = { onSaveScore(draftScore) },
-                    onCancel = { draftScore = rankedSong.song.scoreTenths ?: 55 },
-                    enabled = !isSaving
+                GridScoreButton(
+                    song = rankedSong.song,
+                    enabled = !isSaving,
+                    onClick = onEditScore
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun GridScoreButton(
+    song: Song,
+    enabled: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val score = song.scoreTenths?.let { formatScoreTenths(it) }
+    FilledTonalButton(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = modifier.fillMaxWidth()
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(
+                text = score ?: stringResource(R.string.rankings_rate_song),
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1
+            )
+            Text(
+                text = score?.let { stringResource(R.string.rankings_score_label) }
+                    ?: stringResource(R.string.score_unrated),
+                style = MaterialTheme.typography.labelSmall,
+                maxLines = 1
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun GridScoreEditorSheet(
+    song: Song,
+    isSaving: Boolean,
+    onDismiss: () -> Unit,
+    onSaveScore: (Int) -> Unit
+) {
+    var draftScore by rememberSaveable(song.id, song.scoreTenths) {
+        mutableIntStateOf(song.scoreTenths ?: 55)
+    }
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp)
+                .padding(bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text(
+                text = stringResource(R.string.rankings_edit_score),
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.SemiBold
+            )
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    text = song.title,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = song.artist,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            SongRatingControl(
+                scoreTenths = draftScore,
+                onScoreChange = { draftScore = it },
+                onSave = { onSaveScore(draftScore) },
+                onCancel = onDismiss,
+                enabled = !isSaving
+            )
         }
     }
 }

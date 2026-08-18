@@ -42,6 +42,9 @@
     <string name="rankings_show_stats">Show stats</string>
     <string name="rankings_ranked_title">#%1$d %2$s</string>
     <string name="rankings_rank_badge">#%1$d</string>
+    <string name="rankings_score_label">Score</string>
+    <string name="rankings_rate_song">Rate song</string>
+    <string name="rankings_edit_score">Edit score</string>
     <string name="rankings_stats_summary">%1$dW %2$dL · %3$d skips</string>
     <string name="rankings_detail_rank_score">#%1$d · %2$s</string>
     <string name="rankings_delete_song">Delete song</string>
