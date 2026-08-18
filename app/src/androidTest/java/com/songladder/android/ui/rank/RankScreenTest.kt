@@ -3,20 +3,14 @@ package com.songladder.android.ui.rank
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.test.SemanticsMatcher
-import androidx.compose.ui.test.assertCountEquals
-import androidx.compose.ui.test.assertHasClickAction
+import androidx.compose.ui.test.assertDoesNotExist
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
-import androidx.compose.ui.test.onAllNodesWithText
-import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
-import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTouchInput
-import androidx.compose.ui.test.swipeLeft
+import androidx.compose.ui.test.swipeDown
 import androidx.compose.ui.test.swipeUp
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -58,8 +52,7 @@ class RankScreenTest {
     }
 
     @Test
-    fun songChoiceCard_exposesChoiceAsButtonWithoutHidingPreviewAction() {
-        var choiceCount = 0
+    fun songChoiceCard_showsOnlySongIdentity() {
         val song = Song(
             id = "song-1",
             title = "Dreams",
@@ -72,31 +65,19 @@ class RankScreenTest {
                 MinimalSongChoiceCard(
                     song = song,
                     artworkSize = 80.dp,
-                    reaction = CardReaction.Idle,
-                    previewState = SongPreviewState.Available,
-                    onTogglePreview = {},
-                    onChoose = { choiceCount++ }
+                    reaction = CardReaction.Idle
                 )
             }
         }
 
-        composeRule.onNode(
-            SemanticsMatcher.expectValue(
-                androidx.compose.ui.semantics.SemanticsProperties.Role,
-                Role.Button
-            ) and SemanticsMatcher("has labeled choose action") { node ->
-                node.config.getOrElseNullable(androidx.compose.ui.semantics.SemanticsActions.OnClick) { null }
-                    ?.label == "Choose Dreams by Fleetwood Mac as the winner"
-            }
-        ).assertHasClickAction().performClick()
-        composeRule.onNodeWithContentDescription("Play preview of Dreams").assertIsDisplayed()
-        composeRule.onNodeWithText("Choose").assertIsDisplayed()
-
-        composeRule.runOnIdle { assertEquals(1, choiceCount) }
+        composeRule.onNodeWithText("Dreams").assertIsDisplayed()
+        composeRule.onNodeWithText("Fleetwood Mac").assertIsDisplayed()
+        composeRule.onNodeWithText("Choose").assertDoesNotExist()
+        composeRule.onNodeWithText("Preview unavailable").assertDoesNotExist()
     }
 
     @Test
-    fun matchup_keepsLabeledChooseButtonsForBothSongs() {
+    fun matchup_showsOnlyTheTwoSongs() {
         val left = Song(id = "left", title = "Left song", artist = "Left artist", createdAt = 1L)
         val right = Song(id = "right", title = "Right song", artist = "Right artist", createdAt = 2L)
 
@@ -114,14 +95,16 @@ class RankScreenTest {
                     modifier = Modifier
                         .width(360.dp)
                         .height(760.dp),
-                    onTogglePreview = {},
-                    onChoose = { _, _ -> },
-                    onSkip = {}
+                    onChoose = { _, _ -> }
                 )
             }
         }
 
-        composeRule.onAllNodesWithText("Choose").assertCountEquals(2)
+        composeRule.onNodeWithText("Left song").assertIsDisplayed()
+        composeRule.onNodeWithText("Right song").assertIsDisplayed()
+        composeRule.onNodeWithText("Choose the song you prefer").assertDoesNotExist()
+        composeRule.onNodeWithText("Choose").assertDoesNotExist()
+        composeRule.onNodeWithText("Skip").assertDoesNotExist()
     }
 
     @Test
@@ -144,9 +127,7 @@ class RankScreenTest {
                     modifier = Modifier
                         .width(360.dp)
                         .height(760.dp),
-                    onTogglePreview = {},
-                    onChoose = { winner, loser -> chosen = winner to loser },
-                    onSkip = {}
+                    onChoose = { winner, loser -> chosen = winner to loser }
                 )
             }
         }
@@ -161,7 +142,7 @@ class RankScreenTest {
     }
 
     @Test
-    fun wideSwipeLeftChoosesRightSongWhenGesturesAreEnabled() {
+    fun verticalSwipeDownChoosesTopSongWhenGesturesAreEnabled() {
         val left = Song(id = "left", title = "Left song", artist = "Left artist", createdAt = 1L)
         val right = Song(id = "right", title = "Right song", artist = "Right artist", createdAt = 2L)
         var chosen: Pair<String, String>? = null
@@ -178,38 +159,34 @@ class RankScreenTest {
                     ),
                     matchup = Matchup(left, right),
                     modifier = Modifier
-                        .width(760.dp)
-                        .height(700.dp),
-                    onTogglePreview = {},
-                    onChoose = { winner, loser -> chosen = winner to loser },
-                    onSkip = {}
+                        .width(360.dp)
+                        .height(760.dp),
+                    onChoose = { winner, loser -> chosen = winner to loser }
                 )
             }
         }
 
         composeRule.onNodeWithTag("rank_matchup_drag_area").performTouchInput {
-            swipeLeft()
+            swipeDown()
         }
 
         composeRule.runOnIdle {
-            assertEquals("right" to "left", chosen)
+            assertEquals("left" to "right", chosen)
         }
     }
 
     @Test
-    fun matchup_keepsBothChoicesReachableAtCompactHeight() {
+    fun matchup_keepsBothSongsReachableAtCompactHeight() {
         val left = Song(
             id = "left",
             title = "Left song",
             artist = "Left artist",
-            album = "Left album",
             createdAt = 1L
         )
         val right = Song(
             id = "right",
             title = "Right song",
             artist = "Right artist",
-            album = "Right album",
             createdAt = 2L
         )
 
@@ -227,29 +204,20 @@ class RankScreenTest {
                     modifier = Modifier
                         .width(320.dp)
                         .height(320.dp),
-                    onTogglePreview = {},
-                    onChoose = { _, _ -> },
-                    onSkip = {}
+                    onChoose = { _, _ -> }
                 )
             }
         }
 
-        composeRule.onNodeWithText("Skip")
-            .assertIsDisplayed()
         composeRule.onNodeWithText("Right song")
             .performScrollTo()
             .assertIsDisplayed()
         composeRule.onNodeWithText("Left artist")
             .performScrollTo()
             .assertIsDisplayed()
-        composeRule.onNodeWithText("Left album")
-            .performScrollTo()
-            .assertIsDisplayed()
         composeRule.onNodeWithText("Right artist")
             .performScrollTo()
             .assertIsDisplayed()
-        composeRule.onNodeWithText("Right album")
-            .performScrollTo()
-            .assertIsDisplayed()
+        composeRule.onNodeWithText("Skip").assertDoesNotExist()
     }
 }
