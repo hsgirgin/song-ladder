@@ -52,7 +52,6 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
@@ -205,18 +204,16 @@ internal fun RankMatchupContent(
         } else {
             Modifier.pointerInput(matchup.left.id, matchup.right.id, wide) {
                 awaitEachGesture {
-                    awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
-                    var dragX = 0f
-                    var dragY = 0f
+                    val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                    var lastPosition = down.position
                     do {
                         val event = awaitPointerEvent(PointerEventPass.Initial)
-                        event.changes.forEach { change ->
-                            val delta = change.positionChange()
-                            dragX += delta.x
-                            dragY += delta.y
-                        }
+                        event.changes.firstOrNull { it.id == down.id }
+                            ?.let { lastPosition = it.position }
                     } while (event.changes.any { it.pressed })
 
+                    val dragX = lastPosition.x - down.position.x
+                    val dragY = lastPosition.y - down.position.y
                     if (wide) {
                         when {
                             dragX <= -dragThresholdPx -> onChoose(matchup.right.id, matchup.left.id)
