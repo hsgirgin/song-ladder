@@ -229,82 +229,87 @@ internal fun RankMatchupContent(
             }
         }
 
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
                 .testTag("rank_matchup_drag_area")
                 .then(gestureModifier)
-                .padding(bottom = 72.dp)
-                .then(
-                    if (compact) Modifier.verticalScroll(rememberScrollState()) else Modifier
-                ),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            Text(
-                text = stringResource(com.songladder.android.R.string.rank_choose_prompt),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold
-            )
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(bottom = 72.dp)
+                    .then(
+                        if (compact) Modifier.verticalScroll(rememberScrollState()) else Modifier
+                    ),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                Text(
+                    text = stringResource(com.songladder.android.R.string.rank_choose_prompt),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold
+                )
 
-            if (wide) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f),
-                    horizontalArrangement = Arrangement.spacedBy(14.dp)
-                ) {
+                if (wide) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                        horizontalArrangement = Arrangement.spacedBy(14.dp)
+                    ) {
+                        MinimalSongChoiceCard(
+                            modifier = Modifier.weight(1f),
+                            song = matchup.left,
+                            artworkSize = artworkSize,
+                            compact = false,
+                            reaction = uiState.visualFeedback.reactionFor(matchup.left.id),
+                            previewState = uiState.previews[matchup.left.id] ?: SongPreviewState.Loading,
+                            onTogglePreview = { onTogglePreview(matchup.left.id) },
+                            onChoose = { onChoose(matchup.left.id, matchup.right.id) }
+                        )
+                        MinimalSongChoiceCard(
+                            modifier = Modifier.weight(1f),
+                            song = matchup.right,
+                            artworkSize = artworkSize,
+                            compact = false,
+                            reaction = uiState.visualFeedback.reactionFor(matchup.right.id),
+                            previewState = uiState.previews[matchup.right.id] ?: SongPreviewState.Loading,
+                            onTogglePreview = { onTogglePreview(matchup.right.id) },
+                            onChoose = { onChoose(matchup.right.id, matchup.left.id) }
+                        )
+                    }
+                } else {
                     MinimalSongChoiceCard(
-                        modifier = Modifier.weight(1f),
+                        modifier = if (compact) Modifier.heightIn(min = 180.dp) else Modifier.weight(1f),
                         song = matchup.left,
                         artworkSize = artworkSize,
-                        compact = false,
+                        compact = compact,
                         reaction = uiState.visualFeedback.reactionFor(matchup.left.id),
                         previewState = uiState.previews[matchup.left.id] ?: SongPreviewState.Loading,
                         onTogglePreview = { onTogglePreview(matchup.left.id) },
                         onChoose = { onChoose(matchup.left.id, matchup.right.id) }
                     )
+                }
+
+                if (!wide) {
                     MinimalSongChoiceCard(
-                        modifier = Modifier.weight(1f),
+                        modifier = if (compact) Modifier.heightIn(min = 180.dp) else Modifier.weight(1f),
                         song = matchup.right,
                         artworkSize = artworkSize,
-                        compact = false,
+                        compact = compact,
                         reaction = uiState.visualFeedback.reactionFor(matchup.right.id),
                         previewState = uiState.previews[matchup.right.id] ?: SongPreviewState.Loading,
                         onTogglePreview = { onTogglePreview(matchup.right.id) },
                         onChoose = { onChoose(matchup.right.id, matchup.left.id) }
                     )
                 }
-            } else {
-                MinimalSongChoiceCard(
-                    modifier = if (compact) Modifier.heightIn(min = 180.dp) else Modifier.weight(1f),
-                    song = matchup.left,
-                    artworkSize = artworkSize,
-                    compact = compact,
-                    reaction = uiState.visualFeedback.reactionFor(matchup.left.id),
-                    previewState = uiState.previews[matchup.left.id] ?: SongPreviewState.Loading,
-                    onTogglePreview = { onTogglePreview(matchup.left.id) },
-                    onChoose = { onChoose(matchup.left.id, matchup.right.id) }
-                )
             }
-
-            if (!wide) {
-                MinimalSongChoiceCard(
-                    modifier = if (compact) Modifier.heightIn(min = 180.dp) else Modifier.weight(1f),
-                    song = matchup.right,
-                    artworkSize = artworkSize,
-                    compact = compact,
-                    reaction = uiState.visualFeedback.reactionFor(matchup.right.id),
-                    previewState = uiState.previews[matchup.right.id] ?: SongPreviewState.Loading,
-                    onTogglePreview = { onTogglePreview(matchup.right.id) },
-                    onChoose = { onChoose(matchup.right.id, matchup.left.id) }
-                )
+            FloatingActionButton(
+                onClick = onSkip,
+                modifier = Modifier.align(Alignment.BottomCenter)
+            ) {
+                Text(stringResource(com.songladder.android.R.string.rank_skip), style = MaterialTheme.typography.labelLarge)
             }
-        }
-        FloatingActionButton(
-            onClick = onSkip,
-            modifier = Modifier.align(Alignment.BottomCenter)
-        ) {
-            Text(stringResource(com.songladder.android.R.string.rank_skip), style = MaterialTheme.typography.labelLarge)
         }
     }
 }
