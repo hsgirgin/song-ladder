@@ -196,15 +196,13 @@ internal fun RankMatchupContent(
         val compact = maxHeight < 640.dp || LocalDensity.current.fontScale > 1.3f
         val wide = maxWidth >= 600.dp && !compact
         val artworkSize = if (compact) 80.dp else 112.dp
-        val dragThresholdPx = with(LocalDensity.current) {
-            (if (wide) maxWidth else maxHeight).toPx() / 4f
-        }
-        var dragX = 0f
-        var dragY = 0f
+        val dragThresholdPx = with(LocalDensity.current) { 96.dp.toPx() }
         val gestureModifier = if (compact) {
             Modifier
         } else {
             Modifier.pointerInput(matchup.left.id, matchup.right.id, wide) {
+                var dragX = 0f
+                var dragY = 0f
                 detectDragGestures(
                     onDragCancel = {
                         dragX = 0f
