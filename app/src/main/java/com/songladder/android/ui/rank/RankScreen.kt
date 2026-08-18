@@ -49,7 +49,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.pointer.consume
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
@@ -84,6 +83,7 @@ fun RankScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val matchup = uiState.matchup
+    val ratingStep = uiState.ratingStep
     val lifecycleOwner = LocalLifecycleOwner.current
 
     DisposableEffect(lifecycleOwner, matchup?.left?.id, matchup?.right?.id) {
@@ -128,9 +128,9 @@ fun RankScreen(
 
         if (uiState.caughtUp) {
             CaughtUpState(onContinueAnyway = viewModel::continueAnyway)
-        } else if (uiState.ratingStep != null) {
+        } else if (ratingStep != null) {
             PostMatchRatingContent(
-                ratingStep = uiState.ratingStep,
+                ratingStep = ratingStep,
                 enabled = !uiState.isSavingRating,
                 modifier = Modifier
                     .fillMaxWidth()
@@ -225,8 +225,7 @@ internal fun RankMatchupContent(
                         dragX = 0f
                         dragY = 0f
                     },
-                    onDrag = { change, dragAmount ->
-                        change.consume()
+                    onDrag = { _, dragAmount ->
                         dragX += dragAmount.x
                         dragY += dragAmount.y
                     }
