@@ -69,7 +69,7 @@ class SongLadderAppTest {
                             }
                         }
                     },
-                    libraryContent = {
+                    libraryContent = { _, _ ->
                         TestScreen("Library destination")
                     },
                     rankingsContent = {

@@ -2,30 +2,38 @@ package com.songladder.android.ui.library
 
 import android.content.ContentResolver
 import android.net.Uri
-import com.songladder.android.domain.model.MusicTrackCandidate
+import com.songladder.android.domain.model.AppStats
 import com.songladder.android.domain.model.MusicSourceType
+import com.songladder.android.domain.model.MusicTrackCandidate
 import com.songladder.android.domain.model.PlaylistImportPreview
+import com.songladder.android.domain.model.RankingSettings
+import com.songladder.android.domain.model.ScoreSaveResult
 import com.songladder.android.domain.model.Song
 import com.songladder.android.domain.model.SongInput
 import com.songladder.android.domain.repository.ImportRepository
 import com.songladder.android.domain.repository.MusicSourceClient
 import com.songladder.android.domain.repository.PlaylistSourceClient
+import com.songladder.android.domain.repository.RankingRepository
+import com.songladder.android.domain.repository.SettingsRepository
 import com.songladder.android.domain.repository.SongRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
 import org.junit.After
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 
@@ -46,9 +54,9 @@ class LibraryViewModelTest {
     @Test
     fun `search updates results and status message`() = runTest {
         val fakeSongRepository = FakeSongRepository()
-        val viewModel = LibraryViewModel(
+        val viewModel = viewModel(
             songRepository = fakeSongRepository,
-            importRepository = FakeImportRepository(),
+            importRepository = FakeImportRepository(fakeSongRepository),
             musicSourceClient = FakeMusicSourceClient(
                 listOf(
                     MusicTrackCandidate(
@@ -59,8 +67,7 @@ class LibraryViewModelTest {
                         sourceType = MusicSourceType.ITUNES
                     )
                 )
-            ),
-            playlistSourceClient = FakePlaylistSourceClient(Result.success(emptyPreview()))
+            )
         )
         backgroundScope.launch(dispatcher) { viewModel.uiState.collect {} }
 
@@ -77,12 +84,7 @@ class LibraryViewModelTest {
     @Test
     fun `short queries do not trigger search`() = runTest {
         val musicSourceClient = FakeMusicSourceClient(emptyList())
-        val viewModel = LibraryViewModel(
-            songRepository = FakeSongRepository(),
-            importRepository = FakeImportRepository(),
-            musicSourceClient = musicSourceClient,
-            playlistSourceClient = FakePlaylistSourceClient(Result.success(emptyPreview()))
-        )
+        val viewModel = viewModel(musicSourceClient = musicSourceClient)
         backgroundScope.launch(dispatcher) { viewModel.uiState.collect {} }
 
         viewModel.updateSearchQuery("a")
@@ -96,13 +98,9 @@ class LibraryViewModelTest {
 
     @Test
     fun `add search result uses import repository and reports success`() = runTest {
-        val fakeImportRepository = FakeImportRepository()
-        val viewModel = LibraryViewModel(
-            songRepository = FakeSongRepository(),
-            importRepository = fakeImportRepository,
-            musicSourceClient = FakeMusicSourceClient(emptyList()),
-            playlistSourceClient = FakePlaylistSourceClient(Result.success(emptyPreview()))
-        )
+        val songRepository = FakeSongRepository()
+        val importRepository = FakeImportRepository(songRepository)
+        val viewModel = viewModel(songRepository = songRepository, importRepository = importRepository)
         backgroundScope.launch(dispatcher) { viewModel.uiState.collect {} }
         val candidate = MusicTrackCandidate(
             externalId = "1",
@@ -115,44 +113,32 @@ class LibraryViewModelTest {
         viewModel.addSearchResult(candidate)
         runCurrent()
 
-        assertEquals(1, fakeImportRepository.imported.size)
+        assertEquals(1, importRepository.imported.size)
         assertEquals("Added Nights to your ladder.", viewModel.uiState.value.statusMessage)
         assertTrue("1" in viewModel.uiState.value.addedTrackIds)
     }
 
     @Test
-    fun `preview youtube music playlist updates preview state`() = runTest {
-        val preview = PlaylistImportPreview(
-            playlistTitle = "Drive Home",
-            importableTracks = listOf(
-                MusicTrackCandidate(
-                    externalId = "ytm-1",
-                    title = "Midnight City",
-                    artist = "M83",
-                    sourceType = MusicSourceType.YOUTUBE_MUSIC
-                )
-            ),
-            ambiguousTracks = emptyList()
-        )
-        val viewModel = LibraryViewModel(
-            songRepository = FakeSongRepository(),
-            importRepository = FakeImportRepository(),
-            musicSourceClient = FakeMusicSourceClient(emptyList()),
-            playlistSourceClient = FakePlaylistSourceClient(Result.success(preview))
-        )
+    fun `manual add opens a single-song rating queue`() = runTest {
+        val songRepository = FakeSongRepository()
+        val viewModel = viewModel(songRepository = songRepository)
         backgroundScope.launch(dispatcher) { viewModel.uiState.collect {} }
 
-        viewModel.updateYoutubeMusicPlaylistUrl("https://music.youtube.com/playlist?list=PL123")
-        viewModel.previewYoutubeMusicPlaylist()
+        viewModel.addSong(title = "Nights", artist = "Frank Ocean", album = "Blonde")
         advanceUntilIdle()
 
-        assertEquals("Drive Home", viewModel.uiState.value.youtubeMusicPreview?.playlistTitle)
-        assertEquals(1, viewModel.uiState.value.youtubeMusicPreview?.importableTracks?.size)
+        val queue = viewModel.uiState.value.ratingQueue
+        assertNotNull(queue)
+        assertEquals(ImportRatingQueueKind.SINGLE_SONG, queue?.kind)
+        assertEquals("Song added to your ladder.", viewModel.uiState.value.statusMessage)
+        assertEquals("Nights", viewModel.uiState.value.songs.single().title)
     }
 
     @Test
-    fun `confirm youtube music preview imports ready tracks only`() = runTest {
-        val fakeImportRepository = FakeImportRepository()
+    fun `playlist queue save and skip advance to completion summary`() = runTest {
+        val songRepository = FakeSongRepository()
+        val importRepository = FakeImportRepository(songRepository)
+        val rankingRepository = FakeRankingRepository()
         val preview = PlaylistImportPreview(
             playlistTitle = "Drive Home",
             importableTracks = listOf(
@@ -161,15 +147,21 @@ class LibraryViewModelTest {
                     title = "Midnight City",
                     artist = "M83",
                     sourceType = MusicSourceType.YOUTUBE_MUSIC
+                ),
+                MusicTrackCandidate(
+                    externalId = "ytm-2",
+                    title = "Intro",
+                    artist = "The xx",
+                    sourceType = MusicSourceType.YOUTUBE_MUSIC
                 )
             ),
             ambiguousTracks = emptyList()
         )
-        val viewModel = LibraryViewModel(
-            songRepository = FakeSongRepository(),
-            importRepository = fakeImportRepository,
-            musicSourceClient = FakeMusicSourceClient(emptyList()),
-            playlistSourceClient = FakePlaylistSourceClient(Result.success(preview))
+        val viewModel = viewModel(
+            songRepository = songRepository,
+            importRepository = importRepository,
+            playlistSourceClient = FakePlaylistSourceClient(Result.success(preview)),
+            rankingRepository = rankingRepository
         )
         backgroundScope.launch(dispatcher) { viewModel.uiState.collect {} }
 
@@ -179,18 +171,112 @@ class LibraryViewModelTest {
         viewModel.confirmYoutubeMusicPreviewImport()
         advanceUntilIdle()
 
-        assertEquals(1, fakeImportRepository.imported.size)
-        assertEquals(MusicSourceType.YOUTUBE_MUSIC, fakeImportRepository.imported.single().sourceType)
-        assertEquals("", viewModel.uiState.value.youtubeMusicPlaylistUrl)
+        assertEquals(ImportRatingQueueKind.PLAYLIST, viewModel.uiState.value.ratingQueue?.kind)
+
+        viewModel.updateQueueDraftScore(84)
+        runCurrent()
+        viewModel.saveQueueScore()
+        advanceUntilIdle()
+
+        assertEquals(listOf("Midnight City" to 84), rankingRepository.savedScores.map { (id, score) ->
+            songRepository.titleFor(id) to score
+        })
+        assertEquals(1, viewModel.uiState.value.ratingQueue?.currentIndex)
+
+        viewModel.skipQueueSong()
+        advanceUntilIdle()
+
+        val completion = viewModel.uiState.value.ratingQueue?.completion
+        assertNotNull(completion)
+        assertEquals(1, completion?.ratedCount)
+        assertEquals(1, completion?.skippedCount)
+    }
+
+    @Test
+    fun `import while a rating queue is active waits its turn instead of being dropped`() = runTest {
+        val songRepository = FakeSongRepository()
+        val viewModel = viewModel(songRepository = songRepository)
+        backgroundScope.launch(dispatcher) { viewModel.uiState.collect {} }
+
+        viewModel.addSong(title = "Dreams", artist = "Fleetwood Mac", album = "Rumours")
+        advanceUntilIdle()
+        val dreamsId = viewModel.uiState.value.ratingQueue?.currentSongId
+        assertEquals("Dreams", songRepository.titleFor(requireNotNull(dreamsId)))
+
+        viewModel.addSong(title = "Nights", artist = "Frank Ocean", album = "Blonde")
+        advanceUntilIdle()
+
+        assertEquals(
+            "Dreams queue must stay on screen; the second import should not silently replace it",
+            dreamsId,
+            viewModel.uiState.value.ratingQueue?.currentSongId
+        )
+
+        viewModel.dismissRatingQueue()
+        advanceUntilIdle()
+
+        val nightsId = viewModel.uiState.value.ratingQueue?.currentSongId
+        assertNotNull("second import must still launch its own queue once the first is dismissed", nightsId)
+        assertEquals("Nights", songRepository.titleFor(requireNotNull(nightsId)))
+    }
+
+    @Test
+    fun `dismissing the rating queue cancels remaining songs`() = runTest {
+        val songRepository = FakeSongRepository()
+        val viewModel = viewModel(songRepository = songRepository)
+        backgroundScope.launch(dispatcher) { viewModel.uiState.collect {} }
+
+        viewModel.addSong(title = "Dreams", artist = "Fleetwood Mac", album = "Rumours")
+        advanceUntilIdle()
+        assertNotNull(viewModel.uiState.value.ratingQueue)
+
+        viewModel.dismissRatingQueue()
+        advanceUntilIdle()
+
+        assertNull(viewModel.uiState.value.ratingQueue)
+    }
+
+    @Test
+    fun `queue save failure keeps the current song in place`() = runTest {
+        val songRepository = FakeSongRepository()
+        val rankingRepository = FakeRankingRepository(
+            saveScoreResult = Result.failure(IllegalStateException("db failed"))
+        )
+        val viewModel = viewModel(
+            songRepository = songRepository,
+            rankingRepository = rankingRepository
+        )
+        backgroundScope.launch(dispatcher) { viewModel.uiState.collect {} }
+
+        viewModel.addSong(title = "Dreams", artist = "Fleetwood Mac", album = "Rumours")
+        advanceUntilIdle()
+        viewModel.updateQueueDraftScore(90)
+        viewModel.saveQueueScore()
+        advanceUntilIdle()
+
+        assertEquals("Dreams", viewModel.uiState.value.songs.first { it.id == viewModel.uiState.value.ratingQueue?.currentSongId }.title)
+        assertEquals("Could not save score. Try again.", viewModel.uiState.value.ratingQueue?.errorMessage)
+    }
+
+    @Test
+    fun `dismissing tips persists showTips off`() = runTest {
+        val settingsRepository = FakeSettingsRepository()
+        val viewModel = viewModel(settingsRepository = settingsRepository)
+        backgroundScope.launch(dispatcher) { viewModel.uiState.collect {} }
+
+        viewModel.dismissTips()
+        advanceUntilIdle()
+
+        assertEquals(false, settingsRepository.settings.value.showTips)
+        assertEquals(true, settingsRepository.settings.value.autoPlayMatchupPreviews)
     }
 
     @Test
     fun `json import exposes repaired ranking record count`() = runTest {
-        val viewModel = LibraryViewModel(
-            songRepository = FakeSongRepository(),
-            importRepository = FakeImportRepository(),
-            musicSourceClient = FakeMusicSourceClient(emptyList()),
-            playlistSourceClient = FakePlaylistSourceClient(Result.success(emptyPreview()))
+        val songRepository = FakeSongRepository()
+        val viewModel = viewModel(
+            songRepository = songRepository,
+            importRepository = FakeImportRepository(songRepository)
         )
         backgroundScope.launch(dispatcher) { viewModel.uiState.collect {} }
 
@@ -199,21 +285,91 @@ class LibraryViewModelTest {
 
         assertEquals(2, viewModel.uiState.value.jsonImportRepairedCount)
     }
+
+    private fun viewModel(
+        songRepository: FakeSongRepository = FakeSongRepository(),
+        importRepository: FakeImportRepository = FakeImportRepository(songRepository),
+        musicSourceClient: FakeMusicSourceClient = FakeMusicSourceClient(emptyList()),
+        playlistSourceClient: FakePlaylistSourceClient = FakePlaylistSourceClient(Result.success(emptyPreview())),
+        rankingRepository: FakeRankingRepository = FakeRankingRepository(),
+        settingsRepository: FakeSettingsRepository = FakeSettingsRepository()
+    ): LibraryViewModel = LibraryViewModel(
+        songRepository = songRepository,
+        importRepository = importRepository,
+        musicSourceClient = musicSourceClient,
+        playlistSourceClient = playlistSourceClient,
+        rankingRepository = rankingRepository,
+        settingsRepository = settingsRepository
+    )
 }
 
 private class FakeSongRepository : SongRepository {
     private val songs = MutableStateFlow<List<Song>>(emptyList())
+    private var nextId = 0
 
     override fun observeSongs(): Flow<List<Song>> = songs
 
-    override suspend fun addSong(input: SongInput): Result<Unit> = Result.success(Unit)
+    override suspend fun addSong(input: SongInput): Result<Unit> {
+        val id = "song-${nextId++}"
+        songs.value = songs.value + Song(
+            id = id,
+            rankingSubjectId = id,
+            externalId = input.externalId,
+            sourceType = input.sourceType,
+            title = input.title.trim(),
+            artist = input.artist.trim(),
+            album = input.album,
+            artworkUrl = input.artworkUrl,
+            createdAt = nextId.toLong()
+        )
+        return Result.success(Unit)
+    }
 
-    override suspend fun removeSong(songId: String): Result<Unit> = Result.success(Unit)
+    override suspend fun removeSong(songId: String): Result<Unit> {
+        songs.value = songs.value.filterNot { it.id == songId }
+        return Result.success(Unit)
+    }
 
-    override suspend fun resetLibrary(): Result<Unit> = Result.success(Unit)
+    override suspend fun resetLibrary(): Result<Unit> {
+        songs.value = emptyList()
+        return Result.success(Unit)
+    }
+
+    fun importCandidates(candidates: List<MusicTrackCandidate>): Int {
+        var inserted = 0
+        candidates
+            .filter { it.title.isNotBlank() && it.artist.isNotBlank() }
+            .distinctBy { "${it.title.trim().lowercase()}::${it.artist.trim().lowercase()}" }
+            .forEach { candidate ->
+                val duplicate = songs.value.any {
+                    it.title.trim().equals(candidate.title.trim(), ignoreCase = true) &&
+                        it.artist.trim().equals(candidate.artist.trim(), ignoreCase = true)
+                }
+                if (!duplicate) {
+                    val id = "song-${nextId++}"
+                    songs.value = songs.value + Song(
+                        id = id,
+                        rankingSubjectId = id,
+                        externalId = candidate.externalId,
+                        sourceType = candidate.sourceType,
+                        title = candidate.title.trim(),
+                        artist = candidate.artist.trim(),
+                        album = candidate.album,
+                        artworkUrl = candidate.artworkUrl,
+                        createdAt = nextId.toLong()
+                    )
+                    inserted += 1
+                }
+            }
+        return inserted
+    }
+
+    fun titleFor(songId: String): String =
+        songs.value.first { it.id == songId }.title
 }
 
 private class FakeImportRepository(
+    private val songRepository: FakeSongRepository,
     private val importJsonResult: Result<Int> = Result.success(0)
 ) : ImportRepository {
     val imported = mutableListOf<MusicTrackCandidate>()
@@ -222,12 +378,42 @@ private class FakeImportRepository(
 
     override suspend fun importTracks(candidates: List<MusicTrackCandidate>, sourceLabel: String): Result<Int> {
         imported += candidates
-        return Result.success(candidates.size)
+        return Result.success(songRepository.importCandidates(candidates))
     }
 
     override suspend fun importFromJson(contentResolver: ContentResolver, uri: Uri): Result<Int> = importJsonResult
 
     override suspend fun exportToJson(contentResolver: ContentResolver, uri: Uri): Result<Unit> = Result.success(Unit)
+}
+
+private class FakeRankingRepository(
+    private val saveScoreResult: Result<ScoreSaveResult>? = null
+) : RankingRepository {
+    val savedScores = mutableListOf<Pair<String, Int>>()
+
+    override fun observeStats(): Flow<AppStats> = flowOf(AppStats())
+
+    override suspend fun recordBattle(winnerId: String, loserId: String): Result<Unit> = Result.success(Unit)
+
+    override suspend fun recordSkip(songIds: List<String>): Result<Unit> = Result.success(Unit)
+
+    override suspend fun saveScore(songId: String, scoreTenths: Int): Result<ScoreSaveResult> {
+        savedScores += songId to scoreTenths
+        return saveScoreResult ?: Result.success(ScoreSaveResult(songId = songId, scoreTenths = scoreTenths))
+    }
+}
+
+private class FakeSettingsRepository(
+    initialSettings: RankingSettings = RankingSettings()
+) : SettingsRepository {
+    val settings = MutableStateFlow(initialSettings)
+
+    override fun observeSettings(): Flow<RankingSettings> = settings
+
+    override suspend fun saveSettings(settings: RankingSettings): Result<Unit> {
+        this.settings.value = settings
+        return Result.success(Unit)
+    }
 }
 
 private class FakeMusicSourceClient(
