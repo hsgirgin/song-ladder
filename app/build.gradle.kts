@@ -9,12 +9,26 @@ android {
     namespace = "com.songladder.android"
     compileSdk = 35
 
+    val releaseKeystorePath = providers.environmentVariable("SONG_LADDER_KEYSTORE_PATH")
+    val releaseKeystorePassword = providers.environmentVariable("SONG_LADDER_KEYSTORE_PASSWORD")
+    val releaseKeyAlias = providers.environmentVariable("SONG_LADDER_KEY_ALIAS")
+    val releaseKeyPassword = providers.environmentVariable("SONG_LADDER_KEY_PASSWORD")
+
+    signingConfigs {
+        create("release") {
+            storeFile = releaseKeystorePath.orNull?.let(::file)
+            storePassword = releaseKeystorePassword.orNull
+            keyAlias = releaseKeyAlias.orNull
+            keyPassword = releaseKeyPassword.orNull
+        }
+    }
+
     defaultConfig {
         applicationId = "com.songladder.android"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 2
+        versionName = "1.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
@@ -23,6 +37,7 @@ android {
 
     buildTypes {
         release {
+            signingConfig = signingConfigs.getByName("release")
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
