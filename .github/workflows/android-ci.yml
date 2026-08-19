@@ -41,6 +41,38 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+      - name: Prepare release signing
+        if: github.event_name != 'pull_request'
+        env:
+          RELEASE_KEYSTORE_BASE64: ${{ secrets.SONG_LADDER_KEYSTORE_BASE64 }}
+          RELEASE_KEYSTORE_PASSWORD: ${{ secrets.SONG_LADDER_KEYSTORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.SONG_LADDER_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.SONG_LADDER_KEY_PASSWORD }}
+        run: |
+          test -n "$RELEASE_KEYSTORE_BASE64" || { echo "SONG_LADDER_KEYSTORE_BASE64 is not configured"; exit 1; }
+          test -n "$RELEASE_KEYSTORE_PASSWORD" || { echo "SONG_LADDER_KEYSTORE_PASSWORD is not configured"; exit 1; }
+          test -n "$RELEASE_KEY_ALIAS" || { echo "SONG_LADDER_KEY_ALIAS is not configured"; exit 1; }
+          test -n "$RELEASE_KEY_PASSWORD" || { echo "SONG_LADDER_KEY_PASSWORD is not configured"; exit 1; }
+          echo "$RELEASE_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/song-ladder-release.jks"
+
+      - name: Assemble signed release APK
+        if: github.event_name != 'pull_request'
+        env:
+          SONG_LADDER_KEYSTORE_PATH: ${{ runner.temp }}/song-ladder-release.jks
+          SONG_LADDER_KEYSTORE_PASSWORD: ${{ secrets.SONG_LADDER_KEYSTORE_PASSWORD }}
+          SONG_LADDER_KEY_ALIAS: ${{ secrets.SONG_LADDER_KEY_ALIAS }}
+          SONG_LADDER_KEY_PASSWORD: ${{ secrets.SONG_LADDER_KEY_PASSWORD }}
+        run: ./gradlew assembleRelease --stacktrace
+
+      - name: Upload signed release APK
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@v7
+        with:
+          name: song-ladder-release-apk
+          path: app/build/outputs/apk/release/*.apk
+          if-no-files-found: error
+          retention-days: 14
+
       - name: Upload unit test and lint reports on failure
         if: failure()
         uses: actions/upload-artifact@v7

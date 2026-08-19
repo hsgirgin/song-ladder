@@ -18,6 +18,17 @@ Song Ladder is a native Android app built with Kotlin, Jetpack Compose, Room, an
 2. Sync the project with the checked-in Gradle wrapper.
 3. Build and run the `app` module on an emulator or device.
 
+## Release APK updates
+
+Release APKs must be signed with the same keystore for Android to accept them as
+updates. CI reads the keystore and credentials from the
+`SONG_LADDER_KEYSTORE_BASE64`, `SONG_LADDER_KEYSTORE_PASSWORD`,
+`SONG_LADDER_KEY_ALIAS`, and `SONG_LADDER_KEY_PASSWORD` GitHub Actions secrets,
+and publishes the signed release APK for pushes and manual runs. Increment
+`versionCode` in `app/build.gradle.kts` for each release. Existing debug APK
+installations may need one uninstall before the first signed release can be
+installed.
+
 ## Import
 
 Use the Library screen to search iTunes, add songs manually, load the sample pack, preview a public YouTube Music playlist, or import/export a Song Ladder JSON backup.
