@@ -73,6 +73,8 @@ internal enum class CardReaction {
     Skip
 }
 
+private const val SWIPE_SELECTION_THRESHOLD = 0.08f
+
 @Composable
 fun RankScreen(
     viewModel: RankViewModel,
@@ -255,6 +257,7 @@ internal fun RankMatchupContent(
                     modifier = if (compact) Modifier.heightIn(min = 152.dp) else Modifier.weight(1f),
                     song = matchup.left,
                     compact = compact,
+                    isTopCard = true,
                     reaction = uiState.visualFeedback.reactionFor(matchup.left.id),
                     previewState = uiState.previews[matchup.left.id],
                     swipeProgress = (dragOffset / dragThresholdPx).coerceIn(-1.35f, 1.35f),
@@ -264,9 +267,10 @@ internal fun RankMatchupContent(
                     modifier = if (compact) Modifier.heightIn(min = 152.dp) else Modifier.weight(1f),
                     song = matchup.right,
                     compact = compact,
+                    isTopCard = false,
                     reaction = uiState.visualFeedback.reactionFor(matchup.right.id),
                     previewState = uiState.previews[matchup.right.id],
-                    swipeProgress = (-dragOffset / dragThresholdPx).coerceIn(-1.35f, 1.35f),
+                    swipeProgress = (dragOffset / dragThresholdPx).coerceIn(-1.35f, 1.35f),
                     onPreview = { onPreview(matchup.right.id) }
                 )
             }
@@ -451,11 +455,18 @@ internal fun MinimalSongChoiceCard(
     modifier: Modifier = Modifier,
     song: Song,
     compact: Boolean = false,
+    isTopCard: Boolean = true,
     reaction: CardReaction,
     previewState: SongPreviewState? = null,
     swipeProgress: Float = 0f,
     onPreview: () -> Unit = {}
 ) {
+    val dragStrength = kotlin.math.abs(swipeProgress).coerceIn(0f, 1f)
+    val selectingThisCard = if (isTopCard) {
+        swipeProgress > SWIPE_SELECTION_THRESHOLD
+    } else {
+        swipeProgress < -SWIPE_SELECTION_THRESHOLD
+    }
     val scale by animateFloatAsState(
         targetValue = when (reaction) {
             CardReaction.Winner -> 1.02f
@@ -496,13 +507,39 @@ internal fun MinimalSongChoiceCard(
         animationSpec = tween(durationMillis = 280),
         label = "rankCardContainer"
     )
+    val swipeBorderColor by animateColorAsState(
+        targetValue = if (selectingThisCard) {
+            MaterialTheme.colorScheme.primary
+        } else {
+            borderColor
+        },
+        animationSpec = tween(100),
+        label = "rankSwipeBorder"
+    )
+    val swipeContainerColor by animateColorAsState(
+        targetValue = if (selectingThisCard) {
+            MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
+        } else {
+            containerColor
+        },
+        animationSpec = tween(100),
+        label = "rankSwipeContainer"
+    )
     val swipeScale by animateFloatAsState(
-        targetValue = 1f + (kotlin.math.abs(swipeProgress) * 0.04f),
+        targetValue = when {
+            selectingThisCard -> 1f + (dragStrength * 0.08f)
+            dragStrength > SWIPE_SELECTION_THRESHOLD -> 1f - (dragStrength * 0.05f)
+            else -> 1f
+        },
         animationSpec = tween(100),
         label = "rankSwipeScale"
     )
     val swipeAlpha by animateFloatAsState(
-        targetValue = 1f - (kotlin.math.abs(swipeProgress) * 0.12f),
+        targetValue = when {
+            selectingThisCard -> 1f
+            dragStrength > SWIPE_SELECTION_THRESHOLD -> 1f - (dragStrength * 0.38f)
+            else -> 1f
+        },
         animationSpec = tween(100),
         label = "rankSwipeAlpha"
     )
@@ -512,15 +549,17 @@ internal fun MinimalSongChoiceCard(
             .fillMaxWidth()
             .scale(scale * swipeScale)
             .alpha(alpha * swipeAlpha)
-            .graphicsLayer { translationY = swipeProgress * 36.dp.toPx() },
+            .graphicsLayer {
+                translationY = swipeProgress * if (selectingThisCard) 56.dp.toPx() else -20.dp.toPx()
+            },
         shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = containerColor),
+        colors = CardDefaults.cardColors(containerColor = swipeContainerColor),
         onClick = onPreview
     ) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .border(1.dp, borderColor, RoundedCornerShape(20.dp))
+                .border(2.dp, swipeBorderColor, RoundedCornerShape(20.dp))
         ) {
             SongArtwork(
                 artworkUrl = song.artworkUrl,
@@ -544,6 +583,23 @@ internal fun MinimalSongChoiceCard(
                 tint = MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier.align(Alignment.TopEnd).padding(16.dp)
             )
+            if (selectingThisCard) {
+                Surface(
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(16.dp),
+                    color = MaterialTheme.colorScheme.primary,
+                    shape = MaterialTheme.shapes.small
+                ) {
+                    Text(
+                        text = stringResource(com.songladder.android.R.string.rank_swipe_selecting),
+                        color = MaterialTheme.colorScheme.onPrimary,
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                    )
+                }
+            }
         }
     }
 }
