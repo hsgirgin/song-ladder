@@ -83,7 +83,8 @@ class RankingsScreenTest {
                     onDismissTip = {},
                     onDeleteSong = {},
                     onUndoDelete = {},
-                    onOpenSettings = {}
+                    onOpenSettings = {},
+                    onOpenLibrary = {}
                 )
             }
         }
@@ -125,7 +126,8 @@ class RankingsScreenTest {
                     onDismissTip = { dismissedTip = true },
                     onDeleteSong = {},
                     onUndoDelete = {},
-                    onOpenSettings = { openedSettings = true }
+                    onOpenSettings = { openedSettings = true },
+                    onOpenLibrary = {}
                 )
             }
         }
@@ -167,7 +169,8 @@ class RankingsScreenTest {
                     onDismissTip = {},
                     onDeleteSong = {},
                     onUndoDelete = {},
-                    onOpenSettings = {}
+                    onOpenSettings = {},
+                    onOpenLibrary = {}
                 )
             }
         }
@@ -201,7 +204,8 @@ class RankingsScreenTest {
                     onDismissTip = {},
                     onDeleteSong = {},
                     onUndoDelete = {},
-                    onOpenSettings = {}
+                    onOpenSettings = {},
+                    onOpenLibrary = {}
                 )
             }
         }

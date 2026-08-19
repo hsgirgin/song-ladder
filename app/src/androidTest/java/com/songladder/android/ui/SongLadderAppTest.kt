@@ -23,23 +23,40 @@ class SongLadderAppTest {
         composeRule.setContent {
             SongLadderTheme {
                 SongLadderScaffold(
-                    currentRoute = SongLadderDestination.Library.route,
+                    currentRoute = SongLadderDestination.Matchups.route,
                     isImeVisible = true,
                     onDestinationSelected = {}
                 ) {
-                    Text("Library content")
+                    Text("Matchups content")
                 }
             }
         }
 
-        composeRule.onNodeWithText("Library content").assertIsDisplayed()
+        composeRule.onNodeWithText("Matchups content").assertIsDisplayed()
         composeRule.onNodeWithText("Matchups").assertDoesNotExist()
-        composeRule.onNodeWithText("Library").assertDoesNotExist()
         composeRule.onNodeWithText("Rankings").assertDoesNotExist()
     }
 
     @Test
     fun bottomNavigationIsVisibleWhenKeyboardIsHidden() {
+        composeRule.setContent {
+            SongLadderTheme {
+                SongLadderScaffold(
+                    currentRoute = SongLadderDestination.Matchups.route,
+                    isImeVisible = false,
+                    onDestinationSelected = {}
+                ) {
+                    Text("Matchups content")
+                }
+            }
+        }
+
+        composeRule.onNodeWithText("Matchups").assertIsDisplayed()
+        composeRule.onNodeWithText("Rankings").assertIsDisplayed()
+    }
+
+    @Test
+    fun bottomNavigationIsHiddenOnLibraryRoute() {
         composeRule.setContent {
             SongLadderTheme {
                 SongLadderScaffold(
@@ -52,13 +69,13 @@ class SongLadderAppTest {
             }
         }
 
-        composeRule.onNodeWithText("Matchups").assertIsDisplayed()
-        composeRule.onNodeWithText("Library").assertIsDisplayed()
-        composeRule.onNodeWithText("Rankings").assertIsDisplayed()
+        composeRule.onNodeWithText("Library content").assertIsDisplayed()
+        composeRule.onNodeWithText("Matchups").assertDoesNotExist()
+        composeRule.onNodeWithText("Rankings").assertDoesNotExist()
     }
 
     @Test
-    fun openLibraryFromMatchupsDoesNotMakeLibrarySticky() {
+    fun openLibraryFromMatchupsPushesAndBackReturns() {
         composeRule.setContent {
             SongLadderTheme {
                 SongLadderAppContent(
@@ -69,10 +86,14 @@ class SongLadderAppTest {
                             }
                         }
                     },
-                    libraryContent = { _, _ ->
-                        TestScreen("Library destination")
+                    libraryContent = { _, onBack, _ ->
+                        TestScreen("Library destination") {
+                            Button(onClick = onBack) {
+                                Text("Back")
+                            }
+                        }
                     },
-                    rankingsContent = {
+                    rankingsContent = { _, _ ->
                         TestScreen("Rankings destination")
                     },
                     settingsContent = {}
@@ -84,12 +105,9 @@ class SongLadderAppTest {
         composeRule.onNodeWithText("Open Library").performClick()
         composeRule.onNodeWithText("Library destination").assertIsDisplayed()
 
-        composeRule.onNodeWithText("Matchups").performClick()
+        composeRule.onNodeWithText("Back").performClick()
         composeRule.onNodeWithText("Matchups destination").assertIsDisplayed()
         composeRule.onNodeWithText("Library destination").assertDoesNotExist()
-
-        composeRule.onNodeWithText("Library").performClick()
-        composeRule.onNodeWithText("Library destination").assertIsDisplayed()
     }
 }
 

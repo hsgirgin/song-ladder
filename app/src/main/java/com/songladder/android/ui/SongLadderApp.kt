@@ -52,17 +52,19 @@ fun SongLadderApp(
                     onOpenLibrary = onOpenLibrary
                 )
             },
-            libraryContent = { onOpenSettings, onOpenRankings ->
+            libraryContent = { onOpenSettings, onBack, onOpenRankings ->
                 LibraryScreen(
                     viewModel = libraryViewModel,
                     onOpenSettings = onOpenSettings,
+                    onBack = onBack,
                     onOpenRankings = onOpenRankings
                 )
             },
-            rankingsContent = { onOpenSettings ->
+            rankingsContent = { onOpenSettings, onOpenLibrary ->
                 RankingsScreen(
                     viewModel = rankingsViewModel,
-                    onOpenSettings = onOpenSettings
+                    onOpenSettings = onOpenSettings,
+                    onOpenLibrary = onOpenLibrary
                 )
             },
             settingsContent = { onDismiss ->
@@ -78,8 +80,8 @@ fun SongLadderApp(
 @Composable
 internal fun SongLadderAppContent(
     matchupsContent: @Composable (onOpenSettings: () -> Unit, onOpenLibrary: () -> Unit) -> Unit,
-    libraryContent: @Composable (onOpenSettings: () -> Unit, onOpenRankings: () -> Unit) -> Unit,
-    rankingsContent: @Composable (onOpenSettings: () -> Unit) -> Unit,
+    libraryContent: @Composable (onOpenSettings: () -> Unit, onBack: () -> Unit, onOpenRankings: () -> Unit) -> Unit,
+    rankingsContent: @Composable (onOpenSettings: () -> Unit, onOpenLibrary: () -> Unit) -> Unit,
     settingsContent: @Composable (onDismiss: () -> Unit) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -92,6 +94,7 @@ internal fun SongLadderAppContent(
     val navigateToTopLevel: (SongLadderDestination) -> Unit = { destination ->
         navController.navigateToTopLevelDestination(destination, currentRoute)
     }
+    val openLibrary = { navController.navigate(SongLadderDestination.Library.route) }
 
     SongLadderScaffold(
         currentRoute = currentRoute,
@@ -104,17 +107,15 @@ internal fun SongLadderAppContent(
             modifier = modifier.padding(innerPadding)
         ) {
             composable(SongLadderDestination.Matchups.route) {
-                matchupsContent(openSettings) {
-                    navigateToTopLevel(SongLadderDestination.Library)
-                }
+                matchupsContent(openSettings, openLibrary)
             }
             composable(SongLadderDestination.Library.route) {
-                libraryContent(openSettings) {
+                libraryContent(openSettings, { navController.popBackStack() }) {
                     navigateToTopLevel(SongLadderDestination.Rankings)
                 }
             }
             composable(SongLadderDestination.Rankings.route) {
-                rankingsContent(openSettings)
+                rankingsContent(openSettings, openLibrary)
             }
         }
     }
@@ -149,7 +150,7 @@ internal fun SongLadderScaffold(
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         bottomBar = {
-            if (!isImeVisible) {
+            if (!isImeVisible && currentRoute != SongLadderDestination.Library.route) {
                 NavigationBar {
                     topLevelDestinations.forEach { destination ->
                         val label = stringResource(destination.labelRes)

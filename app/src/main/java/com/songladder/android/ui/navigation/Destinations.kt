@@ -19,6 +19,5 @@ sealed class SongLadderDestination(
 
 val topLevelDestinations = listOf(
     SongLadderDestination.Matchups,
-    SongLadderDestination.Library,
     SongLadderDestination.Rankings
 )
