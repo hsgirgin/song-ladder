@@ -43,20 +43,26 @@ jobs:
 
       - name: Prepare release signing
         if: github.event_name != 'pull_request'
+        id: prepare-release-signing
         env:
           RELEASE_KEYSTORE_BASE64: ${{ secrets.SONG_LADDER_KEYSTORE_BASE64 }}
           RELEASE_KEYSTORE_PASSWORD: ${{ secrets.SONG_LADDER_KEYSTORE_PASSWORD }}
           RELEASE_KEY_ALIAS: ${{ secrets.SONG_LADDER_KEY_ALIAS }}
           RELEASE_KEY_PASSWORD: ${{ secrets.SONG_LADDER_KEY_PASSWORD }}
         run: |
-          test -n "$RELEASE_KEYSTORE_BASE64" || { echo "SONG_LADDER_KEYSTORE_BASE64 is not configured"; exit 1; }
-          test -n "$RELEASE_KEYSTORE_PASSWORD" || { echo "SONG_LADDER_KEYSTORE_PASSWORD is not configured"; exit 1; }
-          test -n "$RELEASE_KEY_ALIAS" || { echo "SONG_LADDER_KEY_ALIAS is not configured"; exit 1; }
-          test -n "$RELEASE_KEY_PASSWORD" || { echo "SONG_LADDER_KEY_PASSWORD is not configured"; exit 1; }
+          if [ -z "$RELEASE_KEYSTORE_BASE64" ] || \
+             [ -z "$RELEASE_KEYSTORE_PASSWORD" ] || \
+             [ -z "$RELEASE_KEY_ALIAS" ] || \
+             [ -z "$RELEASE_KEY_PASSWORD" ]; then
+            echo "Release signing secrets are not configured; skipping signed release APK."
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           echo "$RELEASE_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/song-ladder-release.jks"
+          echo "configured=true" >> "$GITHUB_OUTPUT"
 
       - name: Assemble signed release APK
-        if: github.event_name != 'pull_request'
+        if: steps.prepare-release-signing.outputs.configured == 'true'
         env:
           SONG_LADDER_KEYSTORE_PATH: ${{ runner.temp }}/song-ladder-release.jks
           SONG_LADDER_KEYSTORE_PASSWORD: ${{ secrets.SONG_LADDER_KEYSTORE_PASSWORD }}
@@ -65,7 +71,7 @@ jobs:
         run: ./gradlew assembleRelease --stacktrace
 
       - name: Upload signed release APK
-        if: github.event_name != 'pull_request'
+        if: steps.prepare-release-signing.outputs.configured == 'true'
         uses: actions/upload-artifact@v7
         with:
           name: song-ladder-release-apk
