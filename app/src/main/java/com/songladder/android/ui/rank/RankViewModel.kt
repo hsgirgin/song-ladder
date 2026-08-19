@@ -12,6 +12,8 @@ import com.songladder.android.domain.repository.RankingRepository
 import com.songladder.android.domain.repository.SongPreviewPlayer
 import com.songladder.android.domain.repository.SongPreviewResolver
 import com.songladder.android.domain.repository.SongRepository
+import com.songladder.android.ui.NoOpPreviewPlayer
+import com.songladder.android.ui.UnavailablePreviewResolver
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -536,17 +538,6 @@ private fun Matchup?.hasSamePairAs(other: Matchup): Boolean {
     if (this == null) return false
     return setOf(left.rankingSubjectId, right.rankingSubjectId) ==
         setOf(other.left.rankingSubjectId, other.right.rankingSubjectId)
-}
-
-private data object UnavailablePreviewResolver : SongPreviewResolver {
-    override suspend fun resolve(song: Song): String? = null
-}
-
-private data object NoOpPreviewPlayer : SongPreviewPlayer {
-    override val events = kotlinx.coroutines.flow.emptyFlow<com.songladder.android.domain.repository.SongPreviewPlaybackEvent>()
-    override fun play(songId: String, url: String) = Unit
-    override fun pause() = Unit
-    override fun stop() = Unit
 }
 
 private data object DefaultRankSettingsRepository : SettingsRepository {

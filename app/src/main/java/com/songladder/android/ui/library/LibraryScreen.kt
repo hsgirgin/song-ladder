@@ -70,7 +70,8 @@ private enum class LibraryTab(val label: String) {
 @Composable
 fun LibraryScreen(
     viewModel: LibraryViewModel,
-    onOpenSettings: () -> Unit = {}
+    onOpenSettings: () -> Unit = {},
+    onOpenRankings: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -89,111 +90,141 @@ fun LibraryScreen(
         uri?.let { viewModel.exportJson(contentResolver = context.contentResolver, uri = it) }
     }
 
-    Column(
+    Box(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
-            .padding(horizontal = 20.dp)
-            .padding(top = 12.dp, bottom = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Surface(
-            color = MaterialTheme.colorScheme.surface,
-            shape = RoundedCornerShape(28.dp)
-        ) {
-            Column(
-                modifier = Modifier.padding(horizontal = 18.dp, vertical = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text("Library", style = MaterialTheme.typography.headlineMedium)
-                    IconButton(onClick = onOpenSettings) {
-                        Icon(
-                            imageVector = Icons.Rounded.Settings,
-                            contentDescription = stringResource(com.songladder.android.R.string.settings_title)
-                        )
-                    }
-                }
-                Text(
-                    "Search first, add fast, and manage the ladder without digging through one long screen.",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
-
-        LibraryReadinessBanner(songCount = uiState.songs.size)
-
-        val jsonImportMessage = uiState.jsonImportRepairedCount?.let { repairedCount ->
-            pluralStringResource(
-                com.songladder.android.R.plurals.library_json_import_repaired_count,
-                repairedCount,
-                repairedCount
-            )
-        }
-        val statusMessage = uiState.statusMessage.takeIf { it.isNotBlank() && !uiState.isSearchMessage() }
-            ?: jsonImportMessage
-        if (!statusMessage.isNullOrBlank()) {
-            LibraryStatusBanner(message = statusMessage)
-        }
-
-        TabRow(selectedTabIndex = selectedTab.ordinal) {
-            LibraryTab.entries.forEach { tab ->
-                Tab(
-                    selected = selectedTab == tab,
-                    onClick = { selectedTab = tab },
-                    text = { Text(tab.label) }
-                )
-            }
-        }
-
-        Box(
+        Column(
             modifier = Modifier
-                .weight(1f)
-                .imePadding()
+                .fillMaxSize()
+                .padding(horizontal = 20.dp)
+                .padding(top = 12.dp, bottom = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            when (selectedTab) {
-                LibraryTab.Search -> SearchTabContent(
-                    uiState = uiState,
-                    onSearchQueryChange = viewModel::updateSearchQuery,
-                    onAddTrack = viewModel::addSearchResult
-                )
-
-                LibraryTab.Add -> AddTabContent(
-                    title = title,
-                    artist = artist,
-                    album = album,
-                    onTitleChange = { title = it },
-                    onArtistChange = { artist = it },
-                    onAlbumChange = { album = it },
-                    onAddSong = {
-                        viewModel.addSong(title, artist, album)
-                    },
-                    onLoadSamplePack = viewModel::seedSampleSongs
-                )
-
-                LibraryTab.Manage -> ManageTabContent(
-                    songs = uiState.songs,
-                    youtubeMusicPlaylistUrl = uiState.youtubeMusicPlaylistUrl,
-                    isPreviewLoading = uiState.isPreviewLoading,
-                    youtubeMusicPreview = uiState.youtubeMusicPreview,
-                    previewError = uiState.previewError,
-                    isImportingPreview = uiState.isImportingPreview,
-                    onYoutubeMusicPlaylistUrlChange = viewModel::updateYoutubeMusicPlaylistUrl,
-                    onPreviewYoutubeMusicPlaylist = viewModel::previewYoutubeMusicPlaylist,
-                    onConfirmYoutubeMusicPreview = viewModel::confirmYoutubeMusicPreviewImport,
-                    onClearYoutubeMusicPreview = viewModel::clearYoutubeMusicPreview,
-                    onImportJson = { showImportConfirm = true },
-                    onExportJson = { exportLauncher.launch("song-ladder-export.json") },
-                    onResetLibrary = { showResetConfirm = true },
-                    onRemoveSong = { songId ->
-                        songPendingRemoval = uiState.songs.firstOrNull { it.id == songId }
+            Surface(
+                color = MaterialTheme.colorScheme.surface,
+                shape = RoundedCornerShape(28.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(horizontal = 18.dp, vertical = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Library", style = MaterialTheme.typography.headlineMedium)
+                        IconButton(onClick = onOpenSettings) {
+                            Icon(
+                                imageVector = Icons.Rounded.Settings,
+                                contentDescription = stringResource(com.songladder.android.R.string.settings_title)
+                            )
+                        }
                     }
+                    Text(
+                        "Search first, add fast, and manage the ladder without digging through one long screen.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            LibraryReadinessBanner(songCount = uiState.songs.size)
+
+            val jsonImportMessage = uiState.jsonImportRepairedCount?.let { repairedCount ->
+                pluralStringResource(
+                    com.songladder.android.R.plurals.library_json_import_repaired_count,
+                    repairedCount,
+                    repairedCount
                 )
             }
+            val statusMessage = uiState.statusMessage.takeIf { it.isNotBlank() && !uiState.isSearchMessage() }
+                ?: jsonImportMessage
+            if (!statusMessage.isNullOrBlank()) {
+                LibraryStatusBanner(message = statusMessage)
+            }
+
+            if (uiState.settings.showTips) {
+                LibraryTipBanner(
+                    selectedTab = selectedTab,
+                    onDismiss = viewModel::dismissTips
+                )
+            }
+
+            TabRow(selectedTabIndex = selectedTab.ordinal) {
+                LibraryTab.entries.forEach { tab ->
+                    Tab(
+                        selected = selectedTab == tab,
+                        onClick = { selectedTab = tab },
+                        text = { Text(tab.label) }
+                    )
+                }
+            }
+
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .imePadding()
+            ) {
+                when (selectedTab) {
+                    LibraryTab.Search -> SearchTabContent(
+                        uiState = uiState,
+                        onSearchQueryChange = viewModel::updateSearchQuery,
+                        onAddTrack = viewModel::addSearchResult
+                    )
+
+                    LibraryTab.Add -> AddTabContent(
+                        title = title,
+                        artist = artist,
+                        album = album,
+                        onTitleChange = { title = it },
+                        onArtistChange = { artist = it },
+                        onAlbumChange = { album = it },
+                        onAddSong = {
+                            viewModel.addSong(title, artist, album)
+                        },
+                        onLoadSamplePack = viewModel::seedSampleSongs
+                    )
+
+                    LibraryTab.Manage -> ManageTabContent(
+                        songs = uiState.songs,
+                        youtubeMusicPlaylistUrl = uiState.youtubeMusicPlaylistUrl,
+                        isPreviewLoading = uiState.isPreviewLoading,
+                        youtubeMusicPreview = uiState.youtubeMusicPreview,
+                        previewError = uiState.previewError,
+                        isImportingPreview = uiState.isImportingPreview,
+                        onYoutubeMusicPlaylistUrlChange = viewModel::updateYoutubeMusicPlaylistUrl,
+                        onPreviewYoutubeMusicPlaylist = viewModel::previewYoutubeMusicPlaylist,
+                        onConfirmYoutubeMusicPreview = viewModel::confirmYoutubeMusicPreviewImport,
+                        onClearYoutubeMusicPreview = viewModel::clearYoutubeMusicPreview,
+                        onImportJson = { showImportConfirm = true },
+                        onExportJson = { exportLauncher.launch("song-ladder-export.json") },
+                        onResetLibrary = { showResetConfirm = true },
+                        onRemoveSong = { songId ->
+                            songPendingRemoval = uiState.songs.firstOrNull { it.id == songId }
+                        }
+                    )
+                }
+            }
+        }
+
+        uiState.ratingQueue?.let { queue ->
+            ImportRatingQueueScreen(
+                queue = queue,
+                currentSong = uiState.songs.firstOrNull { it.id == queue.currentSongId },
+                showTips = uiState.settings.showTips,
+                onDismissTips = viewModel::dismissTips,
+                onDismiss = viewModel::dismissRatingQueue,
+                onPreviewToggle = viewModel::toggleQueuePreview,
+                onScoreChange = viewModel::updateQueueDraftScore,
+                onSave = viewModel::saveQueueScore,
+                onSkip = viewModel::skipQueueSong,
+                onViewRankings = {
+                    viewModel.dismissRatingQueue()
+                    onOpenRankings()
+                }
+            )
         }
     }
 
@@ -331,6 +362,40 @@ private fun LibraryStatusBanner(message: String) {
             color = MaterialTheme.colorScheme.primary,
             fontWeight = FontWeight.SemiBold
         )
+    }
+}
+
+@Composable
+private fun LibraryTipBanner(
+    selectedTab: LibraryTab,
+    onDismiss: () -> Unit
+) {
+    val message = when (selectedTab) {
+        LibraryTab.Search -> stringResource(com.songladder.android.R.string.library_tip_search)
+        LibraryTab.Add -> stringResource(com.songladder.android.R.string.library_tip_add)
+        LibraryTab.Manage -> stringResource(com.songladder.android.R.string.library_tip_manage)
+    }
+    Surface(
+        color = MaterialTheme.colorScheme.tertiaryContainer,
+        shape = RoundedCornerShape(20.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = message,
+                modifier = Modifier.weight(1f),
+                color = MaterialTheme.colorScheme.onTertiaryContainer,
+                style = MaterialTheme.typography.bodyMedium
+            )
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(com.songladder.android.R.string.rankings_dismiss_tip))
+            }
+        }
     }
 }
 
@@ -736,15 +801,6 @@ private fun ItunesSearchResultRow(
             }
         }
     }
-}
-
-private fun LibraryUiState.isSearchMessage(): Boolean {
-    return isSearching ||
-        statusMessage.startsWith("Found ") ||
-        statusMessage.startsWith("No songs found") ||
-        statusMessage.startsWith("Keep typing") ||
-        statusMessage.startsWith("Searching iTunes") ||
-        statusMessage.startsWith("iTunes search failed")
 }
 
 @Composable

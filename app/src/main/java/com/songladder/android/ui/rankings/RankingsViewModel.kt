@@ -14,13 +14,14 @@ import com.songladder.android.domain.repository.SongPreviewPlaybackEvent
 import com.songladder.android.domain.repository.SongPreviewPlayer
 import com.songladder.android.domain.repository.SongPreviewResolver
 import com.songladder.android.domain.repository.SongRepository
+import com.songladder.android.ui.NoOpPreviewPlayer
+import com.songladder.android.ui.UnavailablePreviewResolver
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -362,15 +363,4 @@ private fun List<Song>.filterByQuery(query: String): List<Song> {
             song.artist.contains(normalizedQuery, ignoreCase = true) ||
             song.album.contains(normalizedQuery, ignoreCase = true)
     }
-}
-
-private data object UnavailablePreviewResolver : SongPreviewResolver {
-    override suspend fun resolve(song: Song): String? = null
-}
-
-private data object NoOpPreviewPlayer : SongPreviewPlayer {
-    override val events = emptyFlow<SongPreviewPlaybackEvent>()
-    override fun play(songId: String, url: String) = Unit
-    override fun pause() = Unit
-    override fun stop() = Unit
 }
