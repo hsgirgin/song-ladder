@@ -12,7 +12,7 @@ import com.songladder.android.ui.theme.SongLadderTheme
 import org.junit.Rule
 import org.junit.Test
 
-class LibraryScreenTest {
+class AddSongSheetTest {
 
     @get:Rule
     val composeRule = createComposeRule()

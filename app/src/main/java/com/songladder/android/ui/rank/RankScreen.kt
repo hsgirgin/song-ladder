@@ -80,7 +80,7 @@ private const val SWIPE_SELECTION_THRESHOLD = 0.08f
 fun RankScreen(
     viewModel: RankViewModel,
     onOpenSettings: () -> Unit = {},
-    onOpenLibrary: () -> Unit = {}
+    onAddSongs: () -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val matchup = uiState.matchup
@@ -142,7 +142,7 @@ fun RankScreen(
             if (uiState.caughtUp) {
                 CaughtUpState(onContinueAnyway = viewModel::continueAnyway)
             } else {
-                EmptyRankState(onOpenLibrary = onOpenLibrary)
+                EmptyRankState(onAddSongs = onAddSongs)
             }
         }
     }
@@ -613,7 +613,7 @@ internal fun MinimalSongChoiceCard(
 }
 
 @Composable
-private fun EmptyRankState(onOpenLibrary: () -> Unit) {
+private fun EmptyRankState(onAddSongs: () -> Unit) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
         color = MaterialTheme.colorScheme.surface,
@@ -624,8 +624,8 @@ private fun EmptyRankState(onOpenLibrary: () -> Unit) {
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Text("No matchup yet", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            Button(onClick = onOpenLibrary) {
-                Text("Open Library")
+            Button(onClick = onAddSongs) {
+                Text("Add songs")
             }
         }
     }

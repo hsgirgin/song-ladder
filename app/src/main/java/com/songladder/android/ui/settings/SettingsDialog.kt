@@ -1,17 +1,23 @@
 package com.songladder.android.ui.settings
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -22,6 +28,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -30,14 +37,51 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.songladder.android.R
 import com.songladder.android.domain.model.DeletedRankingHistory
+import com.songladder.android.domain.model.PlaylistImportPreview
+import com.songladder.android.domain.model.Song
 import com.songladder.android.domain.model.formatScoreTenths
+import com.songladder.android.ui.components.SongArtwork
+import com.songladder.android.ui.library.LibraryViewModel
+
+data class LibrarySettingsState(
+    val songs: List<Song> = emptyList(),
+    val youtubeMusicPlaylistUrl: String = "",
+    val isPreviewLoading: Boolean = false,
+    val youtubeMusicPreview: PlaylistImportPreview? = null,
+    val previewError: String? = null,
+    val isImportingPreview: Boolean = false
+)
+
+data class LibrarySettingsActions(
+    val onYoutubeMusicPlaylistUrlChange: (String) -> Unit = {},
+    val onPreviewYoutubeMusicPlaylist: () -> Unit = {},
+    val onConfirmYoutubeMusicPreview: () -> Unit = {},
+    val onClearYoutubeMusicPreview: () -> Unit = {},
+    val onImportJson: () -> Unit = {},
+    val onExportJson: () -> Unit = {},
+    val onResetLibrary: () -> Unit = {},
+    val onRemoveSong: (String) -> Unit = {}
+)
 
 @Composable
 fun SettingsDialog(
     viewModel: SettingsViewModel,
+    libraryViewModel: LibraryViewModel,
     onDismiss: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val libraryUiState by libraryViewModel.uiState.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+    var showImportConfirm by rememberSaveable { mutableStateOf(false) }
+    var showResetConfirm by rememberSaveable { mutableStateOf(false) }
+    var songPendingRemoval by rememberSaveable { mutableStateOf<String?>(null) }
+
+    val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri?.let { libraryViewModel.importJson(contentResolver = context.contentResolver, uri = it) }
+    }
+    val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+        uri?.let { libraryViewModel.exportJson(contentResolver = context.contentResolver, uri = it) }
+    }
 
     SettingsDialogContent(
         uiState = uiState,
@@ -46,8 +90,96 @@ fun SettingsDialog(
         onShowTipsAgain = viewModel::showTipsAgain,
         onHistorySelectionChanged = viewModel::toggleDeletedHistorySelection,
         onClearSelection = viewModel::clearSelection,
-        onDeleteSelected = viewModel::deleteSelectedRankingHistory
+        onDeleteSelected = viewModel::deleteSelectedRankingHistory,
+        libraryState = LibrarySettingsState(
+            songs = libraryUiState.songs,
+            youtubeMusicPlaylistUrl = libraryUiState.youtubeMusicPlaylistUrl,
+            isPreviewLoading = libraryUiState.isPreviewLoading,
+            youtubeMusicPreview = libraryUiState.youtubeMusicPreview,
+            previewError = libraryUiState.previewError,
+            isImportingPreview = libraryUiState.isImportingPreview
+        ),
+        libraryActions = LibrarySettingsActions(
+            onYoutubeMusicPlaylistUrlChange = libraryViewModel::updateYoutubeMusicPlaylistUrl,
+            onPreviewYoutubeMusicPlaylist = libraryViewModel::previewYoutubeMusicPlaylist,
+            onConfirmYoutubeMusicPreview = libraryViewModel::confirmYoutubeMusicPreviewImport,
+            onClearYoutubeMusicPreview = libraryViewModel::clearYoutubeMusicPreview,
+            onImportJson = { showImportConfirm = true },
+            onExportJson = { exportLauncher.launch("song-ladder-export.json") },
+            onResetLibrary = { showResetConfirm = true },
+            onRemoveSong = { songId -> songPendingRemoval = songId }
+        )
     )
+
+    if (showImportConfirm) {
+        AlertDialog(
+            onDismissRequest = { showImportConfirm = false },
+            title = { Text("Replace library?") },
+            text = { Text("Importing JSON replaces the current library and ranking history with the selected file.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showImportConfirm = false
+                        importLauncher.launch(arrayOf("application/json"))
+                    }
+                ) {
+                    Text("Import")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showImportConfirm = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    if (showResetConfirm) {
+        AlertDialog(
+            onDismissRequest = { showResetConfirm = false },
+            title = { Text("Reset library?") },
+            text = { Text("This removes every song and clears ranking progress.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showResetConfirm = false
+                        libraryViewModel.resetLibrary()
+                    }
+                ) {
+                    Text("Reset")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showResetConfirm = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    songPendingRemoval?.let { songId ->
+        val song = libraryUiState.songs.firstOrNull { it.id == songId }
+        AlertDialog(
+            onDismissRequest = { songPendingRemoval = null },
+            title = { Text("Remove song?") },
+            text = { Text("${song?.title ?: "This song"} will be removed from your ladder and rankings.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        songPendingRemoval = null
+                        libraryViewModel.removeSong(songId)
+                    }
+                ) {
+                    Text("Remove")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { songPendingRemoval = null }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
 }
 
 @Composable
@@ -59,6 +191,8 @@ internal fun SettingsDialogContent(
     onHistorySelectionChanged: (String) -> Unit,
     onClearSelection: () -> Unit,
     onDeleteSelected: () -> Unit,
+    libraryState: LibrarySettingsState = LibrarySettingsState(),
+    libraryActions: LibrarySettingsActions = LibrarySettingsActions(),
     modifier: Modifier = Modifier
 ) {
     var showDeleteConfirm by rememberSaveable { mutableStateOf(false) }
@@ -84,6 +218,49 @@ internal fun SettingsDialogContent(
                 item {
                     OutlinedButton(onClick = onShowTipsAgain, modifier = Modifier.fillMaxWidth()) {
                         Text(stringResource(R.string.settings_show_tips_again))
+                    }
+                }
+                item {
+                    Text(
+                        text = "Your library",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+                item {
+                    YoutubeMusicImportCard(
+                        youtubeMusicPlaylistUrl = libraryState.youtubeMusicPlaylistUrl,
+                        isPreviewLoading = libraryState.isPreviewLoading,
+                        youtubeMusicPreview = libraryState.youtubeMusicPreview,
+                        previewError = libraryState.previewError,
+                        isImportingPreview = libraryState.isImportingPreview,
+                        onYoutubeMusicPlaylistUrlChange = libraryActions.onYoutubeMusicPlaylistUrlChange,
+                        onPreviewYoutubeMusicPlaylist = libraryActions.onPreviewYoutubeMusicPlaylist,
+                        onConfirmYoutubeMusicPreview = libraryActions.onConfirmYoutubeMusicPreview,
+                        onClearYoutubeMusicPreview = libraryActions.onClearYoutubeMusicPreview
+                    )
+                }
+                if (libraryState.songs.isNotEmpty()) {
+                    items(libraryState.songs, key = { it.id }) { song ->
+                        LibrarySongRow(song = song, onRemoveSong = { libraryActions.onRemoveSong(song.id) })
+                    }
+                }
+                item {
+                    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Text("Backup and reset", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                OutlinedButton(onClick = libraryActions.onImportJson, modifier = Modifier.weight(1f)) {
+                                    Text("Import JSON")
+                                }
+                                OutlinedButton(onClick = libraryActions.onExportJson, modifier = Modifier.weight(1f)) {
+                                    Text("Export JSON")
+                                }
+                            }
+                            OutlinedButton(onClick = libraryActions.onResetLibrary, modifier = Modifier.fillMaxWidth()) {
+                                Text("Reset library")
+                            }
+                        }
                     }
                 }
                 item {
@@ -267,4 +444,135 @@ private fun SettingsStatusText(status: SettingsStatus) {
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         style = MaterialTheme.typography.labelMedium
     )
+}
+
+@Composable
+private fun YoutubeMusicImportCard(
+    youtubeMusicPlaylistUrl: String,
+    isPreviewLoading: Boolean,
+    youtubeMusicPreview: PlaylistImportPreview?,
+    previewError: String?,
+    isImportingPreview: Boolean,
+    onYoutubeMusicPlaylistUrlChange: (String) -> Unit,
+    onPreviewYoutubeMusicPlaylist: () -> Unit,
+    onConfirmYoutubeMusicPreview: () -> Unit,
+    onClearYoutubeMusicPreview: () -> Unit
+) {
+    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("Experimental playlist import", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Text(
+                "Paste a public YouTube Music playlist link to preview tracks before import.",
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            OutlinedTextField(
+                value = youtubeMusicPlaylistUrl,
+                onValueChange = onYoutubeMusicPlaylistUrlChange,
+                label = { Text("YouTube Music playlist URL") },
+                modifier = Modifier.fillMaxWidth()
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Button(
+                    onClick = onPreviewYoutubeMusicPlaylist,
+                    enabled = !isPreviewLoading && !isImportingPreview,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text(if (isPreviewLoading) "Previewing..." else "Preview playlist")
+                }
+                if (youtubeMusicPreview != null || previewError != null) {
+                    TextButton(onClick = onClearYoutubeMusicPreview) {
+                        Text("Clear")
+                    }
+                }
+            }
+            if (!previewError.isNullOrBlank()) {
+                Text(previewError, color = MaterialTheme.colorScheme.error)
+            }
+            youtubeMusicPreview?.let { preview ->
+                YoutubeMusicPreviewCard(
+                    preview = preview,
+                    isImporting = isImportingPreview,
+                    onConfirmImport = onConfirmYoutubeMusicPreview
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun YoutubeMusicPreviewCard(
+    preview: PlaylistImportPreview,
+    isImporting: Boolean,
+    onConfirmImport: () -> Unit
+) {
+    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text(preview.playlistTitle, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text(
+                "${preview.importableTracks.size} ready to import",
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            if (preview.ambiguousTracks.isNotEmpty()) {
+                Text(
+                    "${preview.ambiguousTracks.size} need review and will be skipped",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                preview.ambiguousTracks.take(3).forEach { track ->
+                    Text(
+                        "• ${track.rawTitle.ifBlank { "Unknown title" }} — ${track.rawArtist.ifBlank { track.reason }}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+            if (preview.unsupportedCount > 0) {
+                Text(
+                    "${preview.unsupportedCount} unsupported items were ignored",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Button(
+                onClick = onConfirmImport,
+                enabled = preview.importableTracks.isNotEmpty() && !isImporting,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(if (isImporting) "Importing..." else "Import ready tracks")
+            }
+        }
+    }
+}
+
+@Composable
+private fun LibrarySongRow(song: Song, onRemoveSong: () -> Unit) {
+    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            SongArtwork(
+                artworkUrl = song.artworkUrl,
+                modifier = Modifier.size(64.dp)
+            )
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Text(song.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text("${song.artist} - ${song.album.ifBlank { "Single" }}", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                val score = song.scoreTenths
+                    ?.let { formatScoreTenths(it) }
+                    ?: stringResource(R.string.score_unrated)
+                Text(
+                    "${stringResource(R.string.score_value, score)} - ${song.wins}W ${song.losses}L"
+                )
+            }
+            OutlinedButton(onClick = onRemoveSong) {
+                Text("Remove")
+            }
+        }
+    }
 }
