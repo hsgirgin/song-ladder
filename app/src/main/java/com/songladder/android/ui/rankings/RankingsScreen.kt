@@ -86,7 +86,7 @@ import com.songladder.android.ui.components.SongRatingControl
 fun RankingsScreen(
     viewModel: RankingsViewModel,
     onOpenSettings: () -> Unit = {},
-    onOpenLibrary: () -> Unit = {}
+    onAddSongs: () -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
@@ -113,7 +113,7 @@ fun RankingsScreen(
         onDeleteSong = viewModel::deleteSong,
         onUndoDelete = viewModel::undoDelete,
         onOpenSettings = onOpenSettings,
-        onOpenLibrary = onOpenLibrary
+        onAddSongs = onAddSongs
     )
 }
 
@@ -135,7 +135,7 @@ internal fun RankingsScreenContent(
     onDeleteSong: (Song) -> Unit,
     onUndoDelete: () -> Unit,
     onOpenSettings: () -> Unit,
-    onOpenLibrary: () -> Unit,
+    onAddSongs: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -194,7 +194,7 @@ internal fun RankingsScreenContent(
                         )
                     }
                 }
-                IconButton(onClick = onOpenLibrary) {
+                IconButton(onClick = onAddSongs) {
                     Icon(
                         imageVector = Icons.Rounded.Add,
                         contentDescription = stringResource(R.string.rankings_open_library)

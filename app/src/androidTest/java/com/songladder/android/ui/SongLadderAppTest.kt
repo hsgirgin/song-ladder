@@ -56,58 +56,39 @@ class SongLadderAppTest {
     }
 
     @Test
-    fun bottomNavigationIsHiddenOnLibraryRoute() {
-        composeRule.setContent {
-            SongLadderTheme {
-                SongLadderScaffold(
-                    currentRoute = SongLadderDestination.Library.route,
-                    isImeVisible = false,
-                    onDestinationSelected = {}
-                ) {
-                    Text("Library content")
-                }
-            }
-        }
-
-        composeRule.onNodeWithText("Library content").assertIsDisplayed()
-        composeRule.onNodeWithText("Matchups").assertDoesNotExist()
-        composeRule.onNodeWithText("Rankings").assertDoesNotExist()
-    }
-
-    @Test
-    fun openLibraryFromMatchupsPushesAndBackReturns() {
+    fun addSongsSheetOpensFromMatchupsAndDismisses() {
         composeRule.setContent {
             SongLadderTheme {
                 SongLadderAppContent(
-                    matchupsContent = { _, onOpenLibrary ->
+                    matchupsContent = { _, onAddSongs ->
                         TestScreen("Matchups destination") {
-                            Button(onClick = onOpenLibrary) {
-                                Text("Open Library")
-                            }
-                        }
-                    },
-                    libraryContent = { _, onBack, _ ->
-                        TestScreen("Library destination") {
-                            Button(onClick = onBack) {
-                                Text("Back")
+                            Button(onClick = onAddSongs) {
+                                Text("Add songs")
                             }
                         }
                     },
                     rankingsContent = { _, _ ->
                         TestScreen("Rankings destination")
                     },
-                    settingsContent = {}
+                    settingsContent = {},
+                    addSongsContent = { onDismiss ->
+                        TestScreen("Add songs destination") {
+                            Button(onClick = onDismiss) {
+                                Text("Dismiss")
+                            }
+                        }
+                    }
                 )
             }
         }
 
         composeRule.onNodeWithText("Matchups destination").assertIsDisplayed()
-        composeRule.onNodeWithText("Open Library").performClick()
-        composeRule.onNodeWithText("Library destination").assertIsDisplayed()
+        composeRule.onNodeWithText("Add songs").performClick()
+        composeRule.onNodeWithText("Add songs destination").assertIsDisplayed()
 
-        composeRule.onNodeWithText("Back").performClick()
+        composeRule.onNodeWithText("Dismiss").performClick()
+        composeRule.onNodeWithText("Add songs destination").assertDoesNotExist()
         composeRule.onNodeWithText("Matchups destination").assertIsDisplayed()
-        composeRule.onNodeWithText("Library destination").assertDoesNotExist()
     }
 }
 
