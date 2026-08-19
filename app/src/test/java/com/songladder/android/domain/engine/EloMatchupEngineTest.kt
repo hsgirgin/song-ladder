@@ -278,6 +278,29 @@ class EloMatchupEngineTest {
     }
 
     @Test
+    fun `falls back to an unrated pair when the only rated pair is cooled down`() {
+        val songs = listOf(
+            song(id = "one", scoreTenths = 80),
+            song(id = "two", scoreTenths = 80),
+            song(id = "three"),
+            song(id = "four")
+        )
+        val displayed = Matchup(left = songs[0], right = songs[1])
+
+        val selection = EloMatchupEngine(Random(1)).selectMatchup(
+            songs = songs,
+            displayedMatchups = listOf(displayed),
+            displayedMatchupCount = 1
+        )
+
+        assertTrue(selection.matchup != null)
+        assertTrue(
+            selection.matchup?.left?.scoreTenths == null ||
+                selection.matchup?.right?.scoreTenths == null
+        )
+    }
+
+    @Test
     fun `replay counts only events after the persisted responsiveness epoch boundary`() {
         val result = EloMatchupEngine().replay(
             subjects = listOf(
