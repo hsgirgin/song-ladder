@@ -56,5 +56,19 @@ fun SongArtwork(
 }
 
 internal fun String.upgradeArtworkUrl(): String {
-    return replace(Regex("""(?<!\d)\d{2,4}x\d{2,4}(?=bb)"""), "1200x1200")
+    return upgradeItunesArtworkUrl()
+        .upgradeYoutubeArtworkUrl()
+}
+
+private fun String.upgradeItunesArtworkUrl(): String =
+    replace(Regex("""(?<!\d)\d{2,4}x\d{2,4}(?=bb)"""), "1200x1200")
+
+private fun String.upgradeYoutubeArtworkUrl(): String {
+    val host = substringBefore('?', this)
+    if (!host.contains("googleusercontent.com") && !host.contains("ggpht.com") && !host.contains("ytimg.com")) {
+        return this
+    }
+
+    return replace(Regex("""([=-])w\d+-h\d+"""), "$1w1200-h1200")
+        .replace(Regex("""([=-])s\d+(?=($|[-=]))"""), "$1s1200")
 }

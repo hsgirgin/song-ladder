@@ -18,4 +18,16 @@ class SongArtworkTest {
 
         assertEquals(url, url.upgradeArtworkUrl())
     }
+
+    @Test
+    fun `youtube artwork urls are upgraded to a higher resolution source`() {
+        assertEquals(
+            "https://lh3.googleusercontent.com/example=w1200-h1200-l90-rj",
+            "https://lh3.googleusercontent.com/example=w60-h60-l90-rj".upgradeArtworkUrl()
+        )
+        assertEquals(
+            "https://i.ytimg.com/vi/example/sddefault.jpg=s1200-c-k-c0x00ffffff-no-rj",
+            "https://i.ytimg.com/vi/example/sddefault.jpg=s60-c-k-c0x00ffffff-no-rj".upgradeArtworkUrl()
+        )
+    }
 }

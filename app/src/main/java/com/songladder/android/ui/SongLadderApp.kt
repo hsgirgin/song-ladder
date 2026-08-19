@@ -52,10 +52,11 @@ fun SongLadderApp(
                     onOpenLibrary = onOpenLibrary
                 )
             },
-            libraryContent = { onOpenSettings ->
+            libraryContent = { onOpenSettings, onOpenRankings ->
                 LibraryScreen(
                     viewModel = libraryViewModel,
-                    onOpenSettings = onOpenSettings
+                    onOpenSettings = onOpenSettings,
+                    onOpenRankings = onOpenRankings
                 )
             },
             rankingsContent = { onOpenSettings ->
@@ -77,7 +78,7 @@ fun SongLadderApp(
 @Composable
 internal fun SongLadderAppContent(
     matchupsContent: @Composable (onOpenSettings: () -> Unit, onOpenLibrary: () -> Unit) -> Unit,
-    libraryContent: @Composable (onOpenSettings: () -> Unit) -> Unit,
+    libraryContent: @Composable (onOpenSettings: () -> Unit, onOpenRankings: () -> Unit) -> Unit,
     rankingsContent: @Composable (onOpenSettings: () -> Unit) -> Unit,
     settingsContent: @Composable (onDismiss: () -> Unit) -> Unit,
     modifier: Modifier = Modifier
@@ -108,7 +109,9 @@ internal fun SongLadderAppContent(
                 }
             }
             composable(SongLadderDestination.Library.route) {
-                libraryContent(openSettings)
+                libraryContent(openSettings) {
+                    navigateToTopLevel(SongLadderDestination.Rankings)
+                }
             }
             composable(SongLadderDestination.Rankings.route) {
                 rankingsContent(openSettings)

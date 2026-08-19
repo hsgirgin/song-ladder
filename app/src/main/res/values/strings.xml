@@ -84,6 +84,21 @@
     <string name="library_restore_history_action">Restore %1$s by %2$s</string>
     <string name="library_start_fresh_action">Start fresh</string>
     <string name="library_cancel_import_action">Cancel import</string>
+    <string name="library_tip_search">Imported songs can open a rating step right away, so you can score them before leaving Library.</string>
+    <string name="library_tip_add">Manual additions can be rated immediately after they are saved.</string>
+    <string name="library_tip_manage">Playlist imports open a one-song-at-a-time rating queue with progress and skip controls.</string>
+    <string name="library_queue_playlist_title">Rate imported songs</string>
+    <string name="library_queue_single_title">Rate this song</string>
+    <string name="library_queue_progress_label">Song %1$d of %2$d</string>
+    <string name="library_queue_close">Close rating queue</string>
+    <string name="library_queue_tip">Tap Play once to arm autoplay. Save or skip to move through the queue.</string>
+    <string name="library_queue_play_preview">Play preview</string>
+    <string name="library_queue_pause_preview">Pause preview</string>
+    <string name="library_queue_loading_preview">Loading preview...</string>
+    <string name="library_queue_preview_unavailable">Preview unavailable</string>
+    <string name="library_queue_complete_title">Queue complete</string>
+    <string name="library_queue_view_rankings">View Rankings</string>
+    <string name="library_queue_done">Done</string>
     <string name="rank_stat_separator">\u0020·\u0020</string>
     <plurals name="rank_song_count">
         <item quantity="one">%1$d song</item>
@@ -120,5 +135,9 @@
     <plurals name="library_json_import_repaired_count">
         <item quantity="one">Imported JSON. Repaired %1$d ranking record.</item>
         <item quantity="other">Imported JSON. Repaired %1$d ranking records.</item>
+    </plurals>
+    <plurals name="library_queue_complete_summary">
+        <item quantity="one">Rated %1$d song and skipped %2$d for now.</item>
+        <item quantity="other">Rated %1$d songs and skipped %2$d for now.</item>
     </plurals>
 </resources>
