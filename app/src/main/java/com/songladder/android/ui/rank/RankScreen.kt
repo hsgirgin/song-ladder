@@ -57,6 +57,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -196,7 +197,7 @@ internal fun RankMatchupContent(
     BoxWithConstraints(modifier = modifier) {
         val compact = maxHeight < 520.dp || LocalDensity.current.fontScale > 1.3f
         val dragThresholdPx = with(LocalDensity.current) { 96.dp.toPx() }
-        var dragOffset by remember { mutableFloatStateOf(0f) }
+        var dragOffset by remember(matchup.left.id, matchup.right.id) { mutableFloatStateOf(0f) }
         val chooseTopLabel = stringResource(
             com.songladder.android.R.string.rank_choose_song_action,
             matchup.left.title,
@@ -228,8 +229,14 @@ internal fun RankMatchupContent(
 
                         val dragY = lastPosition.y - down.position.y
                         when {
-                            dragY <= -dragThresholdPx -> onChoose(matchup.right.id, matchup.left.id)
-                            dragY >= dragThresholdPx -> onChoose(matchup.left.id, matchup.right.id)
+                            dragY <= -dragThresholdPx -> {
+                                dragOffset = 0f
+                                onChoose(matchup.right.id, matchup.left.id)
+                            }
+                            dragY >= dragThresholdPx -> {
+                                dragOffset = 0f
+                                onChoose(matchup.left.id, matchup.right.id)
+                            }
                             else -> dragOffset = 0f
                         }
                     }
@@ -547,6 +554,7 @@ internal fun MinimalSongChoiceCard(
     Card(
         modifier = modifier
             .fillMaxWidth()
+            .zIndex(if (selectingThisCard) 1f else 0f)
             .scale(scale * swipeScale)
             .alpha(alpha * swipeAlpha)
             .graphicsLayer {
