@@ -71,6 +71,7 @@ private enum class LibraryTab(val label: String) {
 fun LibraryScreen(
     viewModel: LibraryViewModel,
     onOpenSettings: () -> Unit = {},
+    onBack: () -> Unit = {},
     onOpenRankings: () -> Unit = {}
 ) {
     val context = LocalContext.current
@@ -115,7 +116,15 @@ fun LibraryScreen(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("Library", style = MaterialTheme.typography.headlineMedium)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            IconButton(onClick = onBack) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
+                                    contentDescription = stringResource(com.songladder.android.R.string.library_back)
+                                )
+                            }
+                            Text("Library", style = MaterialTheme.typography.headlineMedium)
+                        }
                         IconButton(onClick = onOpenSettings) {
                             Icon(
                                 imageVector = Icons.Rounded.Settings,
