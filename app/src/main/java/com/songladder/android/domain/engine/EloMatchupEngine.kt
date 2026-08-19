@@ -78,7 +78,15 @@ class EloMatchupEngine(
             pair.first.rankingSubjectId in temporarilyExcludedSubjectIds ||
                 pair.second.rankingSubjectId in temporarilyExcludedSubjectIds
         }
-        val availablePairs = eligiblePairs.filterNot { it.key() in blocked }
+        var availablePairs = eligiblePairs.filterNot { it.key() in blocked }
+        if (availablePairs.isEmpty() && !continueAnyway) {
+            availablePairs = allPairs(songs)
+                .filterNot { pair ->
+                    pair.first.rankingSubjectId in temporarilyExcludedSubjectIds ||
+                        pair.second.rankingSubjectId in temporarilyExcludedSubjectIds
+                }
+                .filterNot { it.key() in blocked }
+        }
 
         if (availablePairs.isEmpty() && continueAnyway) {
             val forcedCandidates = candidatePairs.filter { it.key() in blocked }.ifEmpty { candidatePairs }
