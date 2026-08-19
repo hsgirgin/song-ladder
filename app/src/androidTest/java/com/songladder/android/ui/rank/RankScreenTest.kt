@@ -3,6 +3,9 @@ package com.songladder.android.ui.rank
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
 import androidx.compose.ui.Modifier
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -109,6 +112,33 @@ class RankScreenTest {
     }
 
     @Test
+    fun selectingSong_resetsChoosingAnimationForTheNextMatchup() {
+        val first = Matchup(
+            Song(id = "left", title = "Left song", artist = "Left artist", createdAt = 1L),
+            Song(id = "right", title = "Right song", artist = "Right artist", createdAt = 2L)
+        )
+        val next = Matchup(
+            Song(id = "next-left", title = "Next left", artist = "Next artist", createdAt = 3L),
+            Song(id = "next-right", title = "Next right", artist = "Next artist", createdAt = 4L)
+        )
+        var matchup by mutableStateOf(first)
+
+        composeRule.setContent {
+            SongLadderTheme {
+                RankMatchupContent(
+                    uiState = RankUiState(),
+                    matchup = matchup,
+                    modifier = Modifier.width(360.dp).height(760.dp),
+                    onChoose = { _, _ -> matchup = next }
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag("rank_matchup_drag_area").performTouchInput { swipeDown() }
+        composeRule.onAllNodesWithText("Choosing").assertCountEquals(0)
+    }
+
+    @Test
     fun songCard_clickRequestsPreviewForThatSong() {
         val song = Song(id = "song-1", title = "Dreams", artist = "Fleetwood Mac", createdAt = 1L)
         var previewedSongId: String? = null
@@ -130,6 +160,7 @@ class RankScreenTest {
         }
     }
 
+    @Test
     fun verticalSwipeUpChoosesBottomSongWhenGesturesAreEnabled() {
         val left = Song(id = "left", title = "Left song", artist = "Left artist", createdAt = 1L)
         val right = Song(id = "right", title = "Right song", artist = "Right artist", createdAt = 2L)
