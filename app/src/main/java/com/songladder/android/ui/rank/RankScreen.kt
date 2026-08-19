@@ -1,7 +1,6 @@
 package com.songladder.android.ui.rank
 
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -38,6 +37,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -46,7 +46,6 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.input.pointer.consume
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
@@ -194,7 +193,7 @@ internal fun RankMatchupContent(
     BoxWithConstraints(modifier = modifier) {
         val compact = maxHeight < 520.dp || LocalDensity.current.fontScale > 1.3f
         val dragThresholdPx = with(LocalDensity.current) { 96.dp.toPx() }
-        val dragOffset = remember { Animatable(0f) }
+        var dragOffset by remember { mutableFloatStateOf(0f) }
         val chooseTopLabel = stringResource(
             com.songladder.android.R.string.rank_choose_song_action,
             matchup.left.title,
@@ -219,11 +218,8 @@ internal fun RankMatchupContent(
                             event.changes.firstOrNull { it.id == down.id }
                                 ?.let {
                                     lastPosition = it.position
-                                    dragOffset.snapTo(
-                                        (lastPosition.y - down.position.y)
-                                            .coerceIn(-dragThresholdPx * 1.35f, dragThresholdPx * 1.35f)
-                                    )
-                                    it.consume()
+                                    dragOffset = (lastPosition.y - down.position.y)
+                                        .coerceIn(-dragThresholdPx * 1.35f, dragThresholdPx * 1.35f)
                                 }
                         } while (event.changes.any { it.pressed })
 
@@ -231,7 +227,7 @@ internal fun RankMatchupContent(
                         when {
                             dragY <= -dragThresholdPx -> onChoose(matchup.right.id, matchup.left.id)
                             dragY >= dragThresholdPx -> onChoose(matchup.left.id, matchup.right.id)
-                            else -> dragOffset.animateTo(0f, tween(180))
+                            else -> dragOffset = 0f
                         }
                     }
                 }
@@ -260,7 +256,7 @@ internal fun RankMatchupContent(
                     compact = compact,
                     reaction = uiState.visualFeedback.reactionFor(matchup.left.id),
                     previewState = uiState.previews[matchup.left.id],
-                    swipeProgress = (dragOffset.value / dragThresholdPx).coerceIn(-1.35f, 1.35f),
+                    swipeProgress = (dragOffset / dragThresholdPx).coerceIn(-1.35f, 1.35f),
                     onPreview = { onPreview(matchup.left.id) }
                 )
                 MinimalSongChoiceCard(
@@ -269,7 +265,7 @@ internal fun RankMatchupContent(
                     compact = compact,
                     reaction = uiState.visualFeedback.reactionFor(matchup.right.id),
                     previewState = uiState.previews[matchup.right.id],
-                    swipeProgress = (-dragOffset.value / dragThresholdPx).coerceIn(-1.35f, 1.35f),
+                    swipeProgress = (-dragOffset / dragThresholdPx).coerceIn(-1.35f, 1.35f),
                     onPreview = { onPreview(matchup.right.id) }
                 )
             }
