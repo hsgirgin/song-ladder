@@ -13,21 +13,25 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
+import coil.size.Size
 
 @Composable
 fun SongArtwork(
     artworkUrl: String?,
     modifier: Modifier = Modifier
 ) {
+    val highResolutionUrl = artworkUrl?.upgradeArtworkUrl()
     Box(
         modifier = modifier
             .clip(MaterialTheme.shapes.large)
             .background(MaterialTheme.colorScheme.surfaceVariant),
         contentAlignment = Alignment.Center
     ) {
-        if (artworkUrl.isNullOrBlank()) {
+        if (highResolutionUrl.isNullOrBlank()) {
             Icon(
                 imageVector = Icons.Rounded.MusicNote,
                 contentDescription = null,
@@ -36,7 +40,11 @@ fun SongArtwork(
             )
         } else {
             AsyncImage(
-                model = artworkUrl.upgradeArtworkUrl(),
+                model = ImageRequest.Builder(LocalContext.current)
+                    .data(highResolutionUrl)
+                    .size(Size.ORIGINAL)
+                    .crossfade(180)
+                    .build(),
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize()
@@ -45,9 +53,6 @@ fun SongArtwork(
     }
 }
 
-private fun String.upgradeArtworkUrl(): String {
-    return replace(Regex("""/\d+x\d+bb(-\d+)?\.""")) { match ->
-        val suffix = match.groupValues[1]
-        "/1200x1200bb$suffix."
-    }
+internal fun String.upgradeArtworkUrl(): String {
+    return replace(Regex("""(?<!\d)\d{2,4}x\d{2,4}(?=bb)"""), "1200x1200")
 }

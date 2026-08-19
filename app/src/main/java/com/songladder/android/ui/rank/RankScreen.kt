@@ -13,16 +13,16 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Pause
+import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -33,13 +33,18 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.AlertDialog
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
@@ -67,6 +72,8 @@ internal enum class CardReaction {
     Loser,
     Skip
 }
+
+private const val SWIPE_SELECTION_THRESHOLD = 0.08f
 
 @Composable
 fun RankScreen(
@@ -113,7 +120,8 @@ fun RankScreen(
                 .fillMaxSize()
                 .background(MaterialTheme.colorScheme.background)
                 .padding(16.dp),
-            onChoose = viewModel::rankWinner
+            onChoose = viewModel::rankWinner,
+            onPreview = viewModel::togglePreview
         )
     } else {
         Column(
@@ -132,21 +140,21 @@ fun RankScreen(
 
             if (uiState.caughtUp) {
                 CaughtUpState(onContinueAnyway = viewModel::continueAnyway)
-            } else if (ratingStep != null) {
-                PostMatchRatingContent(
-                    ratingStep = ratingStep,
-                    enabled = !uiState.isSavingRating,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f),
-                    onScoreChange = viewModel::updateRatingDraft,
-                    onSave = viewModel::saveRatingStep,
-                    onSkip = viewModel::skipRatingStep
-                )
             } else {
                 EmptyRankState(onOpenLibrary = onOpenLibrary)
             }
         }
+    }
+
+    if (ratingStep != null) {
+        PostMatchRatingDialog(
+            ratingStep = ratingStep,
+            enabled = !uiState.isSavingRating,
+            onDismiss = viewModel::skipRatingStep,
+            onScoreChange = viewModel::updateRatingDraft,
+            onSave = viewModel::saveRatingStep,
+            onSkip = viewModel::skipRatingStep
+        )
     }
 }
 
@@ -182,12 +190,13 @@ internal fun RankMatchupContent(
     uiState: RankUiState,
     matchup: Matchup,
     modifier: Modifier = Modifier,
-    onChoose: (String, String) -> Unit
+    onChoose: (String, String) -> Unit,
+    onPreview: (String) -> Unit = {}
 ) {
     BoxWithConstraints(modifier = modifier) {
         val compact = maxHeight < 520.dp || LocalDensity.current.fontScale > 1.3f
-        val artworkSize = if (compact) 72.dp else 112.dp
         val dragThresholdPx = with(LocalDensity.current) { 96.dp.toPx() }
+        var dragOffset by remember { mutableFloatStateOf(0f) }
         val chooseTopLabel = stringResource(
             com.songladder.android.R.string.rank_choose_song_action,
             matchup.left.title,
@@ -210,13 +219,18 @@ internal fun RankMatchupContent(
                         do {
                             val event = awaitPointerEvent(PointerEventPass.Initial)
                             event.changes.firstOrNull { it.id == down.id }
-                                ?.let { lastPosition = it.position }
+                                ?.let {
+                                    lastPosition = it.position
+                                    dragOffset = (lastPosition.y - down.position.y)
+                                        .coerceIn(-dragThresholdPx * 1.35f, dragThresholdPx * 1.35f)
+                                }
                         } while (event.changes.any { it.pressed })
 
                         val dragY = lastPosition.y - down.position.y
                         when {
                             dragY <= -dragThresholdPx -> onChoose(matchup.right.id, matchup.left.id)
                             dragY >= dragThresholdPx -> onChoose(matchup.left.id, matchup.right.id)
+                            else -> dragOffset = 0f
                         }
                     }
                 }
@@ -242,16 +256,22 @@ internal fun RankMatchupContent(
                 MinimalSongChoiceCard(
                     modifier = if (compact) Modifier.heightIn(min = 152.dp) else Modifier.weight(1f),
                     song = matchup.left,
-                    artworkSize = artworkSize,
                     compact = compact,
-                    reaction = uiState.visualFeedback.reactionFor(matchup.left.id)
+                    isTopCard = true,
+                    reaction = uiState.visualFeedback.reactionFor(matchup.left.id),
+                    previewState = uiState.previews[matchup.left.id],
+                    swipeProgress = (dragOffset / dragThresholdPx).coerceIn(-1.35f, 1.35f),
+                    onPreview = { onPreview(matchup.left.id) }
                 )
                 MinimalSongChoiceCard(
                     modifier = if (compact) Modifier.heightIn(min = 152.dp) else Modifier.weight(1f),
                     song = matchup.right,
-                    artworkSize = artworkSize,
                     compact = compact,
-                    reaction = uiState.visualFeedback.reactionFor(matchup.right.id)
+                    isTopCard = false,
+                    reaction = uiState.visualFeedback.reactionFor(matchup.right.id),
+                    previewState = uiState.previews[matchup.right.id],
+                    swipeProgress = (dragOffset / dragThresholdPx).coerceIn(-1.35f, 1.35f),
+                    onPreview = { onPreview(matchup.right.id) }
                 )
             }
         }
@@ -317,6 +337,33 @@ private fun PostMatchRatingContent(
             }
         }
     }
+}
+
+@Composable
+private fun PostMatchRatingDialog(
+    ratingStep: PostMatchRatingStep,
+    enabled: Boolean,
+    onDismiss: () -> Unit,
+    onScoreChange: (Int) -> Unit,
+    onSave: () -> Unit,
+    onSkip: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = null,
+        text = {
+            PostMatchRatingContent(
+                ratingStep = ratingStep,
+                enabled = enabled,
+                modifier = Modifier.fillMaxWidth(),
+                onScoreChange = onScoreChange,
+                onSave = onSave,
+                onSkip = onSkip
+            )
+        },
+        confirmButton = {},
+        dismissButton = {}
+    )
 }
 
 @Composable
@@ -407,10 +454,19 @@ internal fun MinimalRankHeader(
 internal fun MinimalSongChoiceCard(
     modifier: Modifier = Modifier,
     song: Song,
-    artworkSize: androidx.compose.ui.unit.Dp,
     compact: Boolean = false,
-    reaction: CardReaction
+    isTopCard: Boolean = true,
+    reaction: CardReaction,
+    previewState: SongPreviewState? = null,
+    swipeProgress: Float = 0f,
+    onPreview: () -> Unit = {}
 ) {
+    val dragStrength = kotlin.math.abs(swipeProgress).coerceIn(0f, 1f)
+    val selectingThisCard = if (isTopCard) {
+        swipeProgress > SWIPE_SELECTION_THRESHOLD
+    } else {
+        swipeProgress < -SWIPE_SELECTION_THRESHOLD
+    }
     val scale by animateFloatAsState(
         targetValue = when (reaction) {
             CardReaction.Winner -> 1.02f
@@ -451,43 +507,99 @@ internal fun MinimalSongChoiceCard(
         animationSpec = tween(durationMillis = 280),
         label = "rankCardContainer"
     )
+    val swipeBorderColor by animateColorAsState(
+        targetValue = if (selectingThisCard) {
+            MaterialTheme.colorScheme.primary
+        } else {
+            borderColor
+        },
+        animationSpec = tween(100),
+        label = "rankSwipeBorder"
+    )
+    val swipeContainerColor by animateColorAsState(
+        targetValue = if (selectingThisCard) {
+            MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
+        } else {
+            containerColor
+        },
+        animationSpec = tween(100),
+        label = "rankSwipeContainer"
+    )
+    val swipeScale by animateFloatAsState(
+        targetValue = when {
+            selectingThisCard -> 1f + (dragStrength * 0.08f)
+            dragStrength > SWIPE_SELECTION_THRESHOLD -> 1f - (dragStrength * 0.05f)
+            else -> 1f
+        },
+        animationSpec = tween(100),
+        label = "rankSwipeScale"
+    )
+    val swipeAlpha by animateFloatAsState(
+        targetValue = when {
+            selectingThisCard -> 1f
+            dragStrength > SWIPE_SELECTION_THRESHOLD -> 1f - (dragStrength * 0.38f)
+            else -> 1f
+        },
+        animationSpec = tween(100),
+        label = "rankSwipeAlpha"
+    )
 
     Card(
         modifier = modifier
             .fillMaxWidth()
-            .scale(scale)
-            .alpha(alpha),
+            .scale(scale * swipeScale)
+            .alpha(alpha * swipeAlpha)
+            .graphicsLayer {
+                translationY = swipeProgress * if (selectingThisCard) 56.dp.toPx() else -20.dp.toPx()
+            },
         shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = containerColor)
+        colors = CardDefaults.cardColors(containerColor = swipeContainerColor),
+        onClick = onPreview
     ) {
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
-                .border(1.dp, borderColor, RoundedCornerShape(20.dp))
-                .padding(horizontal = 20.dp, vertical = 16.dp),
-            verticalArrangement = Arrangement.Center,
-            horizontalAlignment = Alignment.CenterHorizontally
+                .border(2.dp, swipeBorderColor, RoundedCornerShape(20.dp))
         ) {
             SongArtwork(
                 artworkUrl = song.artworkUrl,
-                modifier = Modifier.size(artworkSize)
+                modifier = Modifier.fillMaxSize()
             )
-            Spacer(modifier = Modifier.size(if (compact) 12.dp else 16.dp))
-            Text(
-                text = song.title,
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Bold,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis
+            Surface(
+                modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth(),
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f)
+            ) {
+                Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = if (compact) 12.dp else 16.dp)) {
+                    Text(song.title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Text(song.artist, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+            }
+            Icon(
+                imageVector = if (previewState == SongPreviewState.Playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
+                contentDescription = stringResource(
+                    if (previewState == SongPreviewState.Playing) com.songladder.android.R.string.rank_pause_preview
+                    else com.songladder.android.R.string.rank_preview_action
+                ),
+                tint = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.align(Alignment.TopEnd).padding(16.dp)
             )
-            Spacer(modifier = Modifier.size(4.dp))
-            Text(
-                text = song.artist,
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
+            if (selectingThisCard) {
+                Surface(
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(16.dp),
+                    color = MaterialTheme.colorScheme.primary,
+                    shape = MaterialTheme.shapes.small
+                ) {
+                    Text(
+                        text = stringResource(com.songladder.android.R.string.rank_swipe_selecting),
+                        color = MaterialTheme.colorScheme.onPrimary,
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                    )
+                }
+            }
         }
     }
 }

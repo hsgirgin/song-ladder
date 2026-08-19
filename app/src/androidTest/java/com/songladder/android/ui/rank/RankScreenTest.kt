@@ -10,6 +10,7 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeDown
 import androidx.compose.ui.test.swipeUp
@@ -65,7 +66,6 @@ class RankScreenTest {
             SongLadderTheme {
                 MinimalSongChoiceCard(
                     song = song,
-                    artworkSize = 80.dp,
                     reaction = CardReaction.Idle
                 )
             }
@@ -106,6 +106,28 @@ class RankScreenTest {
         composeRule.onAllNodesWithText("Choose the song you prefer").assertCountEquals(0)
         composeRule.onAllNodesWithText("Choose").assertCountEquals(0)
         composeRule.onAllNodesWithText("Skip").assertCountEquals(0)
+    }
+
+    @Test
+    fun songCard_clickRequestsPreviewForThatSong() {
+        val song = Song(id = "song-1", title = "Dreams", artist = "Fleetwood Mac", createdAt = 1L)
+        var previewedSongId: String? = null
+
+        composeRule.setContent {
+            SongLadderTheme {
+                MinimalSongChoiceCard(
+                    song = song,
+                    reaction = CardReaction.Idle,
+                    onPreview = { previewedSongId = song.id }
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("Dreams").performClick()
+
+        composeRule.runOnIdle {
+            assertEquals("song-1", previewedSongId)
+        }
     }
 
     fun verticalSwipeUpChoosesBottomSongWhenGesturesAreEnabled() {
