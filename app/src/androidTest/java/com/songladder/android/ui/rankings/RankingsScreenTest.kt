@@ -50,7 +50,9 @@ class RankingsScreenTest {
             }
         }
 
-        composeRule.onNodeWithText("8.0").assertIsDisplayed()
+        // "8.0" appears twice while expanded: once in the row's ScoreBadge and once
+        // in the inline SongRatingControl's pre-filled value readout.
+        composeRule.onAllNodesWithText("8.0").assertCountEquals(2)
         composeRule.onNodeWithText("12W 3L · 5 skips").assertIsDisplayed()
         composeRule.onNodeWithText("Preview unavailable").assertIsDisplayed()
     }

@@ -86,8 +86,10 @@ class DefaultRankingRepositoryTest {
         val loser = database.rankingSubjectDao().get("subject-b") ?: error("Missing loser")
         assertEquals(59, winner.scoreTenths)
         assertEquals(51, loser.scoreTenths)
-        assertEquals(100L, winner.lastRatedAt)
-        assertEquals(100L, loser.lastRatedAt)
+        // The battle event itself consumes timestamp 100; deriveScoreIfUnrated's
+        // own nextEventTimestamp() call sees that event and bumps to 101.
+        assertEquals(101L, winner.lastRatedAt)
+        assertEquals(101L, loser.lastRatedAt)
     }
 
     @Test
