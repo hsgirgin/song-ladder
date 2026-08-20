@@ -59,15 +59,49 @@ class DefaultRankingRepositoryTest {
     }
 
     @Test
-    fun battleDoesNotChangeLastRatedTimestamps() = runBlocking {
+    fun battleBetweenAlreadyRatedSongsDoesNotChangeLastRatedTimestamps() = runBlocking {
+        insertSong(songId = "song-a", subjectId = "subject-a")
+        insertSong(songId = "song-b", subjectId = "subject-b")
+        val repository = repository()
+        repository.saveScore("song-a", 80).getOrThrow()
+        repository.saveScore("song-b", 80).getOrThrow()
+        val ratedAtA = database.rankingSubjectDao().get("subject-a")?.lastRatedAt
+        val ratedAtB = database.rankingSubjectDao().get("subject-b")?.lastRatedAt
+
+        repository.recordBattle("song-a", "song-b").getOrThrow()
+
+        assertEquals(ratedAtA, database.rankingSubjectDao().get("subject-a")?.lastRatedAt)
+        assertEquals(ratedAtB, database.rankingSubjectDao().get("subject-b")?.lastRatedAt)
+    }
+
+    @Test
+    fun recordBattleAutoDerivesScoreForFirstTimeWinnerAndLoser() = runBlocking {
         insertSong(songId = "song-a", subjectId = "subject-a")
         insertSong(songId = "song-b", subjectId = "subject-b")
         val repository = repository()
 
         repository.recordBattle("song-a", "song-b").getOrThrow()
 
-        assertEquals(null, database.rankingSubjectDao().get("subject-a")?.lastRatedAt)
-        assertEquals(null, database.rankingSubjectDao().get("subject-b")?.lastRatedAt)
+        val winner = database.rankingSubjectDao().get("subject-a") ?: error("Missing winner")
+        val loser = database.rankingSubjectDao().get("subject-b") ?: error("Missing loser")
+        assertEquals(59, winner.scoreTenths)
+        assertEquals(51, loser.scoreTenths)
+        assertEquals(100L, winner.lastRatedAt)
+        assertEquals(100L, loser.lastRatedAt)
+    }
+
+    @Test
+    fun recordBattleDoesNotOverwriteAnExistingScore() = runBlocking {
+        insertSong(songId = "song-a", subjectId = "subject-a")
+        insertSong(songId = "song-b", subjectId = "subject-b")
+        val repository = repository()
+        repository.saveScore("song-a", 80).getOrThrow()
+        repository.saveScore("song-b", 80).getOrThrow()
+
+        repository.recordBattle("song-a", "song-b").getOrThrow()
+
+        assertEquals(80, database.rankingSubjectDao().get("subject-a")?.scoreTenths)
+        assertEquals(80, database.rankingSubjectDao().get("subject-b")?.scoreTenths)
     }
 
     @Test
@@ -153,6 +187,11 @@ class DefaultRankingRepositoryTest {
 
     @Test
     fun undoRemovesOnlyTheLatestWinnerAndRebuildsDerivedState() = runBlocking {
+        // Both songs are unrated, so recordBattle auto-derives scoreTenths from the
+        // post-battle elo (59 for the winner). Undo removes the event and replays, but
+        // it re-seeds elo from that now-persisted scoreTenths rather than BASE_ELO -
+        // undo does not revert an auto-derived score to "unrated", matching the existing
+        // behavior for manually-saved scores (saveScore isn't reverted by undo either).
         insertSong(songId = "song-a", subjectId = "subject-a")
         insertSong(songId = "song-b", subjectId = "subject-b")
         val repository = repository()
@@ -164,7 +203,8 @@ class DefaultRankingRepositoryTest {
         assertEquals(0, database.rankingSubjectDao().get("subject-a")?.wins)
         assertEquals(0, database.rankingSubjectDao().get("subject-b")?.losses)
         assertEquals(0, database.appStatsDao().getAppStats()?.matchCount)
-        assertEquals(1200.0, database.rankingSubjectDao().get("subject-a")?.elo ?: 0.0, 0.0)
+        assertEquals(59, database.rankingSubjectDao().get("subject-a")?.scoreTenths)
+        assertEquals(1232.0, database.rankingSubjectDao().get("subject-a")?.elo ?: 0.0, 0.0)
         assertTrue(!repository.undoLastWinner().getOrThrow())
     }
 

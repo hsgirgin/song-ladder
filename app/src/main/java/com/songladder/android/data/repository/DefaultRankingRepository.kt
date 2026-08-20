@@ -21,6 +21,7 @@ import com.songladder.android.domain.model.ResponsivenessEpoch
 import com.songladder.android.domain.model.ScoreSaveResult
 import com.songladder.android.domain.model.TimeSource
 import com.songladder.android.domain.model.scoreFirstComparator
+import com.songladder.android.domain.model.scoreTenthsForElo
 import com.songladder.android.domain.model.seedEloForScore
 import com.songladder.android.domain.model.validateScoreTenths
 import com.songladder.android.domain.repository.RankingRepository
@@ -88,7 +89,31 @@ class DefaultRankingRepository(
                 )
             )
             rebuildCaches()
+            deriveScoreIfUnrated(winnerSubject.id)
+            deriveScoreIfUnrated(loserSubject.id)
         }
+    }
+
+    /**
+     * Seeds scoreTenths from the subject's just-rebuilt elo, for songs that have
+     * never been explicitly rated. Must run after rebuildCaches() and must not
+     * trigger another rebuild, or the new seed would double-apply this event's
+     * elo delta on replay.
+     */
+    private suspend fun deriveScoreIfUnrated(subjectId: String) {
+        val entity = rankingSubjectDao.get(subjectId) ?: return
+        val subject = entity.toDomain()
+        if (subject.scoreTenths != null) return
+        val epochSequence = matchupEventDao.getAll().maxOfOrNull { it.sequenceId } ?: 0L
+        rankingSubjectDao.update(
+            subject.copy(
+                scoreTenths = scoreTenthsForElo(subject.elo),
+                responsivenessEpoch = ResponsivenessEpoch.NEW,
+                completedMatchupsInEpoch = 0,
+                responsivenessEpochSequence = epochSequence,
+                lastRatedAt = nextEventTimestamp()
+            ).toEntity()
+        )
     }
 
     override suspend fun recordSkip(songIds: List<String>): Result<Unit> = runCatching {

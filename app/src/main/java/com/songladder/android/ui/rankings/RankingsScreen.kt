@@ -79,6 +79,7 @@ import com.songladder.android.R
 import com.songladder.android.domain.model.RankingPresentation
 import com.songladder.android.domain.model.Song
 import com.songladder.android.domain.model.formatScoreTenths
+import com.songladder.android.ui.components.ScoreBadge
 import com.songladder.android.ui.components.SongArtwork
 import com.songladder.android.ui.components.SongRatingControl
 
@@ -542,27 +543,13 @@ private fun GridScoreButton(
     FilledTonalButton(
         onClick = onClick,
         enabled = enabled,
+        contentPadding = PaddingValues(4.dp),
         modifier = modifier
-            .fillMaxWidth()
-            .heightIn(min = 48.dp)
             .semantics {
                 stateDescription = scoreStateDescription
             }
     ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(
-                text = score ?: stringResource(R.string.rankings_rate_song),
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold,
-                maxLines = 1
-            )
-            Text(
-                text = score?.let { stringResource(R.string.rankings_score_label) }
-                    ?: stringResource(R.string.score_unrated),
-                style = MaterialTheme.typography.labelSmall,
-                maxLines = 1
-            )
-        }
+        ScoreBadge(scoreTenths = song.scoreTenths)
     }
 }
 
@@ -682,9 +669,9 @@ internal fun RankingsListRow(
                 }
                 FilledTonalButton(
                     onClick = onToggleStats,
-                    modifier = Modifier.heightIn(min = 48.dp)
+                    contentPadding = PaddingValues(4.dp)
                 ) {
-                    Text(scoreText(rankedSong.song), maxLines = 1)
+                    ScoreBadge(scoreTenths = rankedSong.song.scoreTenths, size = 40.dp)
                 }
                 IconButton(onClick = onToggleStats) {
                     Icon(
@@ -765,13 +752,19 @@ private fun SongDetailDialog(
                         .aspectRatio(1f)
                 )
                 Text(song.artist, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(
-                    text = rank?.let {
-                        stringResource(R.string.rankings_detail_rank_score, it, scoreText(song))
-                    } ?: scoreText(song),
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold
-                )
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    ScoreBadge(scoreTenths = song.scoreTenths, size = 40.dp)
+                    if (rank != null && rank > 0) {
+                        Text(
+                            text = stringResource(R.string.rankings_rank_badge, rank),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
                 Text(
                     text = stringResource(R.string.rankings_stats_summary, song.wins, song.losses, song.skips),
                     style = MaterialTheme.typography.labelMedium,
@@ -911,12 +904,6 @@ private fun ComingSoonContent(modifier: Modifier = Modifier) {
     Box(modifier = modifier.fillMaxSize().padding(20.dp), contentAlignment = Alignment.Center) {
         Text(stringResource(R.string.rankings_coming_soon), style = MaterialTheme.typography.titleMedium)
     }
-}
-
-@Composable
-private fun scoreText(song: Song): String {
-    val score = song.scoreTenths?.let { formatScoreTenths(it) } ?: stringResource(R.string.score_unrated)
-    return stringResource(R.string.score_value, score)
 }
 
 private fun LazyGridState.firstVisibleSongKey(): String? =

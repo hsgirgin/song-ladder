@@ -50,7 +50,7 @@ class RankingsScreenTest {
             }
         }
 
-        composeRule.onNodeWithText("Score 8.0").assertIsDisplayed()
+        composeRule.onNodeWithText("8.0").assertIsDisplayed()
         composeRule.onNodeWithText("12W 3L · 5 skips").assertIsDisplayed()
         composeRule.onNodeWithText("Preview unavailable").assertIsDisplayed()
     }
@@ -98,6 +98,41 @@ class RankingsScreenTest {
             assertEquals("song-1" to 80, savedScore)
             assertEquals(0, previewTaps)
         }
+    }
+
+    @Test
+    fun gridMode_unratedSongShowsNeutralScoreBadge() {
+        val song = rankingsSong(id = "song-1", scoreTenths = null)
+
+        composeRule.setContent {
+            SongLadderTheme {
+                RankingsScreenContent(
+                    uiState = RankingsUiState(
+                        allSongs = listOf(song),
+                        rankedSongs = listOf(RankedSong(0, song)),
+                        selectedTab = RankingsTab.SONGS,
+                        presentation = RankingPresentation.GRID
+                    ),
+                    onTabSelected = {},
+                    onSearchActiveChanged = {},
+                    onSearchQueryChanged = {},
+                    onPresentationChanged = {},
+                    onToggleUnrated = {},
+                    onToggleStats = {},
+                    onTogglePreview = {},
+                    onShowDetails = {},
+                    onHideDetails = {},
+                    onSaveScore = { _, _ -> },
+                    onDismissTip = {},
+                    onDeleteSong = {},
+                    onUndoDelete = {},
+                    onOpenSettings = {},
+                    onAddSongs = {}
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("Rate").assertIsDisplayed()
     }
 
     @Test

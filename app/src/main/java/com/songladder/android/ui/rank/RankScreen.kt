@@ -33,7 +33,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.AlertDialog
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -64,7 +63,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.songladder.android.domain.model.Matchup
 import com.songladder.android.domain.model.Song
-import com.songladder.android.ui.components.SongRatingControl
 import com.songladder.android.ui.components.SongArtwork
 
 internal enum class CardReaction {
@@ -84,7 +82,6 @@ fun RankScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val matchup = uiState.matchup
-    val ratingStep = uiState.ratingStep
     val lifecycleOwner = LocalLifecycleOwner.current
 
     DisposableEffect(lifecycleOwner, matchup?.left?.id, matchup?.right?.id) {
@@ -113,7 +110,7 @@ fun RankScreen(
         }
     }
 
-    if (uiState.isReady && matchup != null && ratingStep == null && !uiState.caughtUp) {
+    if (uiState.isReady && matchup != null && !uiState.caughtUp) {
         RankMatchupContent(
             uiState = uiState,
             matchup = matchup,
@@ -145,17 +142,6 @@ fun RankScreen(
                 EmptyRankState(onAddSongs = onAddSongs)
             }
         }
-    }
-
-    if (ratingStep != null) {
-        PostMatchRatingDialog(
-            ratingStep = ratingStep,
-            enabled = !uiState.isSavingRating,
-            onDismiss = viewModel::skipRatingStep,
-            onScoreChange = viewModel::updateRatingDraft,
-            onSave = viewModel::saveRatingStep,
-            onSkip = viewModel::skipRatingStep
-        )
     }
 }
 
@@ -283,94 +269,6 @@ internal fun RankMatchupContent(
             }
         }
     }
-}
-
-@Composable
-private fun PostMatchRatingContent(
-    ratingStep: PostMatchRatingStep,
-    enabled: Boolean,
-    modifier: Modifier = Modifier,
-    onScoreChange: (Int) -> Unit,
-    onSave: () -> Unit,
-    onSkip: () -> Unit
-) {
-    Surface(
-        modifier = modifier,
-        color = MaterialTheme.colorScheme.surface,
-        shape = RoundedCornerShape(18.dp)
-    ) {
-        Column(
-            modifier = Modifier.padding(18.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
-        ) {
-            Text(
-                text = stringResource(
-                    when (ratingStep.role) {
-                        PostMatchRatingRole.Winner -> com.songladder.android.R.string.rank_rate_winner
-                        PostMatchRatingRole.Loser -> com.songladder.android.R.string.rank_rate_loser
-                    },
-                    ratingStep.song.title
-                ),
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.SemiBold
-            )
-            Text(
-                text = stringResource(
-                    com.songladder.android.R.string.rank_rating_step_progress,
-                    ratingStep.index,
-                    ratingStep.total
-                ),
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Text(
-                text = ratingStep.song.artist,
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            SongRatingControl(
-                scoreTenths = ratingStep.draftScoreTenths,
-                onScoreChange = onScoreChange,
-                onSave = onSave,
-                onCancel = { onScoreChange(ratingStep.song.scoreTenths ?: 55) },
-                enabled = enabled
-            )
-            TextButton(
-                onClick = onSkip,
-                enabled = enabled,
-                modifier = Modifier.align(Alignment.End)
-            ) {
-                Text(stringResource(com.songladder.android.R.string.rank_skip_for_now))
-            }
-        }
-    }
-}
-
-@Composable
-private fun PostMatchRatingDialog(
-    ratingStep: PostMatchRatingStep,
-    enabled: Boolean,
-    onDismiss: () -> Unit,
-    onScoreChange: (Int) -> Unit,
-    onSave: () -> Unit,
-    onSkip: () -> Unit
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = null,
-        text = {
-            PostMatchRatingContent(
-                ratingStep = ratingStep,
-                enabled = enabled,
-                modifier = Modifier.fillMaxWidth(),
-                onScoreChange = onScoreChange,
-                onSave = onSave,
-                onSkip = onSkip
-            )
-        },
-        confirmButton = {},
-        dismissButton = {}
-    )
 }
 
 @Composable

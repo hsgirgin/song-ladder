@@ -405,11 +405,10 @@ class RankViewModelTest {
         assertEquals(1, rankingRepository.undoCalls)
         assertFalse(viewModel.uiState.value.undoAvailable)
         assertEquals(RankVisualFeedback.None, viewModel.uiState.value.visualFeedback)
-        assertEquals(null, viewModel.uiState.value.ratingStep)
     }
 
     @Test
-    fun `winner with unrated songs opens winner then loser rating steps`() = runTest {
+    fun `winner returns straight to a normal matchup with no pending state`() = runTest {
         val rankingRepository = FakeRankingRepository()
         val viewModel = RankViewModel(
             songRepository = FakeRankSongRepository(
@@ -423,52 +422,12 @@ class RankViewModelTest {
         viewModel.rankWinner("1", "2")
         runCurrent()
 
-        var ratingStep = checkNotNull(viewModel.uiState.value.ratingStep)
-        assertEquals("1", ratingStep.song.id)
-        assertEquals(PostMatchRatingRole.Winner, ratingStep.role)
-        assertEquals(1, ratingStep.index)
-        assertEquals(2, ratingStep.total)
-
-        viewModel.updateRatingDraft(85)
-        viewModel.saveRatingStep()
-        runCurrent()
-
-        assertEquals(listOf("1" to 85), rankingRepository.savedScores)
-        ratingStep = checkNotNull(viewModel.uiState.value.ratingStep)
-        assertEquals("2", ratingStep.song.id)
-        assertEquals(PostMatchRatingRole.Loser, ratingStep.role)
-        assertEquals(2, ratingStep.index)
-        assertEquals(2, ratingStep.total)
-
-        viewModel.skipRatingStep()
-        runCurrent()
-
-        assertEquals(null, viewModel.uiState.value.ratingStep)
-        assertEquals(listOf("1" to 85), rankingRepository.savedScores)
-    }
-
-    @Test
-    fun `rating save failure keeps the current post match rating step`() = runTest {
-        val rankingRepository = FakeRankingRepository(
-            scoreResult = Result.failure(IllegalStateException("db failed"))
-        )
-        val viewModel = RankViewModel(
-            songRepository = FakeRankSongRepository(
-                listOf(fakeSong(id = "1", title = "Dreams"), fakeSong(id = "2", title = "Go Your Own Way"))
-            ),
-            rankingRepository = rankingRepository
-        )
-        backgroundScope.launch(dispatcher) { viewModel.uiState.collect {} }
+        assertEquals(1, rankingRepository.battleCalls)
+        assertEquals(RankVisualFeedback.Choice("1", "2"), viewModel.uiState.value.visualFeedback)
 
         advanceUntilIdle()
-        viewModel.rankWinner("1", "2")
-        runCurrent()
-        viewModel.updateRatingDraft(85)
-        viewModel.saveRatingStep()
-        runCurrent()
 
-        assertEquals("1", viewModel.uiState.value.ratingStep?.song?.id)
-        assertEquals("Could not save score. Try again.", viewModel.uiState.value.message)
+        assertEquals(RankVisualFeedback.None, viewModel.uiState.value.visualFeedback)
     }
 
     @Test
@@ -635,13 +594,11 @@ private class FakeRankingRepository(
     private val battleResult: Result<Unit> = Result.success(Unit),
     private val skipResult: Result<Unit> = Result.success(Unit),
     private val undoResult: Result<Boolean> = Result.success(true),
-    private val scoreResult: Result<ScoreSaveResult>? = null,
     initialEvents: List<MatchupEvent> = emptyList()
 ) : RankingRepository {
     private val stats = MutableStateFlow(AppStats())
     private val events = MutableStateFlow(initialEvents)
     val skippedSongIds = mutableListOf<String>()
-    val savedScores = mutableListOf<Pair<String, Int>>()
     var battleCalls = 0
     var undoCalls = 0
 
@@ -666,8 +623,7 @@ private class FakeRankingRepository(
     }
 
     override suspend fun saveScore(songId: String, scoreTenths: Int): Result<ScoreSaveResult> {
-        savedScores += songId to scoreTenths
-        return scoreResult ?: Result.success(ScoreSaveResult(songId = songId, scoreTenths = scoreTenths))
+        return Result.success(ScoreSaveResult(songId = songId, scoreTenths = scoreTenths))
     }
 
     override suspend fun undoLastWinner(): Result<Boolean> {

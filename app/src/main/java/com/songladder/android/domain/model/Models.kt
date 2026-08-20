@@ -1,6 +1,7 @@
 package com.songladder.android.domain.model
 
 import kotlinx.serialization.Serializable
+import kotlin.math.roundToInt
 
 const val BASE_RATING = 1200
 const val K_FACTOR = 32
@@ -10,6 +11,11 @@ const val MAX_SCORE_TENTHS = 100
 
 fun seedEloForScore(scoreTenths: Int?): Double =
     BASE_ELO + 80.0 * ((scoreTenths ?: 55) / 10.0 - 5.5)
+
+fun scoreTenthsForElo(elo: Double): Int =
+    (((elo - BASE_ELO) / 80.0 + 5.5) * 10.0)
+        .roundToInt()
+        .coerceIn(MIN_SCORE_TENTHS, MAX_SCORE_TENTHS)
 
 fun validateScoreTenths(scoreTenths: Int) {
     require(scoreTenths in MIN_SCORE_TENTHS..MAX_SCORE_TENTHS) {

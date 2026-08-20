@@ -43,25 +43,11 @@ enum class UndoStatus {
     Failed
 }
 
-enum class PostMatchRatingRole {
-    Winner,
-    Loser
-}
-
-data class PostMatchRatingStep(
-    val song: Song,
-    val role: PostMatchRatingRole,
-    val index: Int,
-    val total: Int,
-    val draftScoreTenths: Int
-)
-
 data class RankUiState(
     val songs: List<Song> = emptyList(),
     val stats: AppStats = AppStats(),
     val settings: RankingSettings = RankingSettings(),
     val matchup: Matchup? = null,
-    val ratingStep: PostMatchRatingStep? = null,
     val message: String = "",
     val isReady: Boolean = false,
     val caughtUp: Boolean = false,
@@ -70,13 +56,7 @@ data class RankUiState(
     val visualFeedback: RankVisualFeedback = RankVisualFeedback.None,
     val streakCount: Int = 0,
     val autoplayArmed: Boolean = false,
-    val isSavingRating: Boolean = false,
     val previews: Map<String, SongPreviewState> = emptyMap()
-)
-
-private data class PendingPostMatchRating(
-    val song: Song,
-    val role: PostMatchRatingRole
 )
 
 private data class RankSessionState(
@@ -85,10 +65,6 @@ private data class RankSessionState(
     val recentDisplayedMatchups: List<Matchup> = emptyList(),
     val displayedMatchupCount: Int = 0,
     val continueAnyway: Boolean = false,
-    val pendingRatingSteps: List<PendingPostMatchRating> = emptyList(),
-    val ratingDraftScoreTenths: Int = 55,
-    val ratingTotalSteps: Int = 0,
-    val isSavingRating: Boolean = false,
     val undoAvailable: Boolean = false,
     val undoStatus: UndoStatus = UndoStatus.None,
     val visualFeedback: RankVisualFeedback = RankVisualFeedback.None,
@@ -130,9 +106,7 @@ class RankViewModel(
         val activeSongIds = songs.mapTo(mutableSetOf()) { it.id }
         val currentMatchup = session.currentMatchup
             ?.takeIf { it.left.id in activeSongIds && it.right.id in activeSongIds }
-        val selection = if (session.pendingRatingSteps.isNotEmpty()) {
-            com.songladder.android.domain.model.MatchupSelection(null)
-        } else if (session.visualFeedback == RankVisualFeedback.None) {
+        val selection = if (session.visualFeedback == RankVisualFeedback.None) {
             currentMatchup?.let { com.songladder.android.domain.model.MatchupSelection(it) }
                 ?: matchupEngine.selectMatchup(
                     songs = songs,
@@ -146,21 +120,11 @@ class RankViewModel(
             com.songladder.android.domain.model.MatchupSelection(session.previousMatchup)
         }
         val matchup = selection.matchup
-        val ratingStep = session.pendingRatingSteps.firstOrNull()?.let { pending ->
-            PostMatchRatingStep(
-                song = pending.song,
-                role = pending.role,
-                index = session.ratingTotalSteps - session.pendingRatingSteps.size + 1,
-                total = session.ratingTotalSteps,
-                draftScoreTenths = session.ratingDraftScoreTenths
-            )
-        }
         RankUiState(
             songs = songs,
             stats = stats,
             settings = settings,
             matchup = matchup,
-            ratingStep = ratingStep,
             message = when {
                 session.transientMessage.isNotBlank() -> session.transientMessage
                 songs.size < 2 -> "Add at least two songs to start ranking."
@@ -173,8 +137,7 @@ class RankViewModel(
             undoStatus = session.undoStatus,
             visualFeedback = session.visualFeedback,
             streakCount = session.streakCount,
-            autoplayArmed = session.autoplayArmed,
-            isSavingRating = session.isSavingRating
+            autoplayArmed = session.autoplayArmed
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), RankUiState())
 
@@ -258,7 +221,7 @@ class RankViewModel(
 
     fun rankWinner(winnerId: String, loserId: String) {
         if (mutationInFlight) return
-        if (uiState.value.visualFeedback != RankVisualFeedback.None || uiState.value.ratingStep != null) return
+        if (uiState.value.visualFeedback != RankVisualFeedback.None) return
         mutationInFlight = true
         stopPreview()
         viewModelScope.launch {
@@ -266,15 +229,11 @@ class RankViewModel(
                 val currentMatchup = uiState.value.matchup ?: return@launch
                 rankingRepository.recordBattle(winnerId, loserId)
                     .onSuccess {
-                        val ratingSteps = currentMatchup.postMatchRatingSteps(winnerId, loserId)
                         sessionState.update {
                             it.copy(
                                 currentMatchup = null,
                                 previousMatchup = currentMatchup,
                                 continueAnyway = false,
-                                pendingRatingSteps = ratingSteps,
-                                ratingDraftScoreTenths = ratingSteps.firstOrNull()?.song?.scoreTenths ?: 55,
-                                ratingTotalSteps = ratingSteps.size,
                                 undoAvailable = true,
                                 undoStatus = UndoStatus.None,
                                 visualFeedback = RankVisualFeedback.Choice(winnerId, loserId),
@@ -298,7 +257,7 @@ class RankViewModel(
 
     fun skip() {
         if (mutationInFlight) return
-        if (uiState.value.visualFeedback != RankVisualFeedback.None || uiState.value.ratingStep != null) return
+        if (uiState.value.visualFeedback != RankVisualFeedback.None) return
         mutationInFlight = true
         stopPreview()
         viewModelScope.launch {
@@ -331,59 +290,6 @@ class RankViewModel(
         }
     }
 
-    fun updateRatingDraft(scoreTenths: Int) {
-        sessionState.update { it.copy(ratingDraftScoreTenths = scoreTenths) }
-    }
-
-    fun saveRatingStep() {
-        if (mutationInFlight) return
-        val session = sessionState.value
-        val step = session.pendingRatingSteps.firstOrNull() ?: return
-        val scoreTenths = session.ratingDraftScoreTenths
-        mutationInFlight = true
-        sessionState.update { it.copy(isSavingRating = true, transientMessage = "") }
-        viewModelScope.launch {
-            try {
-                rankingRepository.saveScore(step.song.id, scoreTenths)
-                    .onSuccess {
-                        advanceRatingStep()
-                    }
-                    .onFailure {
-                        sessionState.update { state ->
-                            state.copy(
-                                isSavingRating = false,
-                                transientMessage = "Could not save score. Try again."
-                            )
-                        }
-                    }
-            } finally {
-                mutationInFlight = false
-            }
-        }
-    }
-
-    fun skipRatingStep() {
-        if (mutationInFlight) return
-        advanceRatingStep()
-    }
-
-    private fun advanceRatingStep() {
-        sessionState.update { state ->
-            val remaining = state.pendingRatingSteps.drop(1)
-            state.copy(
-                pendingRatingSteps = remaining,
-                ratingDraftScoreTenths = remaining.firstOrNull()?.song?.scoreTenths ?: 55,
-                ratingTotalSteps = if (remaining.isEmpty()) 0 else state.ratingTotalSteps,
-                isSavingRating = false,
-                visualFeedback = if (remaining.isEmpty()) RankVisualFeedback.None else state.visualFeedback,
-                transientMessage = ""
-            )
-        }
-        if (sessionState.value.pendingRatingSteps.isEmpty()) {
-            maybeStartArmedAutoplay()
-        }
-    }
-
     fun continueAnyway() {
         sessionState.update { it.copy(continueAnyway = true, transientMessage = "") }
     }
@@ -400,10 +306,6 @@ class RankViewModel(
                             it.copy(
                                 previousMatchup = null,
                                 continueAnyway = false,
-                                pendingRatingSteps = emptyList(),
-                                ratingDraftScoreTenths = 55,
-                                ratingTotalSteps = 0,
-                                isSavingRating = false,
                                 undoAvailable = false,
                                 undoStatus = if (undone) UndoStatus.None else UndoStatus.Unavailable,
                                 visualFeedback = RankVisualFeedback.None,
@@ -457,7 +359,6 @@ class RankViewModel(
 
     private fun maybeStartArmedAutoplay() {
         if (!sessionState.value.autoplayArmed || !uiState.value.settings.autoPlayMatchupPreviews) return
-        if (uiState.value.ratingStep != null) return
         val matchup = uiState.value.matchup ?: return
         val states = previewStates.value
         val matchupSongIds = setOf(matchup.left.id, matchup.right.id)
@@ -519,18 +420,6 @@ class RankViewModel(
             delay(delayMillis)
             sessionState.update { it.copy(visualFeedback = RankVisualFeedback.None, transientMessage = "") }
         }
-    }
-}
-
-private fun Matchup.postMatchRatingSteps(
-    winnerId: String,
-    loserId: String
-): List<PendingPostMatchRating> = buildList {
-    listOf(left, right).firstOrNull { it.id == winnerId && it.scoreTenths == null }?.let {
-        add(PendingPostMatchRating(it, PostMatchRatingRole.Winner))
-    }
-    listOf(left, right).firstOrNull { it.id == loserId && it.scoreTenths == null }?.let {
-        add(PendingPostMatchRating(it, PostMatchRatingRole.Loser))
     }
 }
 
