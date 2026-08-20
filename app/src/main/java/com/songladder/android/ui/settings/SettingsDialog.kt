@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
@@ -36,20 +35,13 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.songladder.android.R
 import com.songladder.android.domain.model.DeletedRankingHistory
-import com.songladder.android.domain.model.Song
 import com.songladder.android.domain.model.formatScoreTenths
-import com.songladder.android.ui.components.SongArtwork
 import com.songladder.android.ui.library.LibraryViewModel
-
-data class LibrarySettingsState(
-    val songs: List<Song> = emptyList()
-)
 
 data class LibrarySettingsActions(
     val onImportJson: () -> Unit = {},
     val onExportJson: () -> Unit = {},
-    val onResetLibrary: () -> Unit = {},
-    val onRemoveSong: (String) -> Unit = {}
+    val onResetLibrary: () -> Unit = {}
 )
 
 @Composable
@@ -59,11 +51,9 @@ fun SettingsDialog(
     onDismiss: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    val libraryUiState by libraryViewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
     var showImportConfirm by rememberSaveable { mutableStateOf(false) }
     var showResetConfirm by rememberSaveable { mutableStateOf(false) }
-    var songPendingRemoval by rememberSaveable { mutableStateOf<String?>(null) }
 
     val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let { libraryViewModel.importJson(contentResolver = context.contentResolver, uri = it) }
@@ -80,14 +70,10 @@ fun SettingsDialog(
         onHistorySelectionChanged = viewModel::toggleDeletedHistorySelection,
         onClearSelection = viewModel::clearSelection,
         onDeleteSelected = viewModel::deleteSelectedRankingHistory,
-        libraryState = LibrarySettingsState(
-            songs = libraryUiState.songs
-        ),
         libraryActions = LibrarySettingsActions(
             onImportJson = { showImportConfirm = true },
             onExportJson = { exportLauncher.launch("song-ladder-export.json") },
-            onResetLibrary = { showResetConfirm = true },
-            onRemoveSong = { songId -> songPendingRemoval = songId }
+            onResetLibrary = { showResetConfirm = true }
         )
     )
 
@@ -136,30 +122,6 @@ fun SettingsDialog(
             }
         )
     }
-
-    songPendingRemoval?.let { songId ->
-        val song = libraryUiState.songs.firstOrNull { it.id == songId }
-        AlertDialog(
-            onDismissRequest = { songPendingRemoval = null },
-            title = { Text("Remove song?") },
-            text = { Text("${song?.title ?: "This song"} will be removed from your ladder and rankings.") },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        songPendingRemoval = null
-                        libraryViewModel.removeSong(songId)
-                    }
-                ) {
-                    Text("Remove")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { songPendingRemoval = null }) {
-                    Text("Cancel")
-                }
-            }
-        )
-    }
 }
 
 @Composable
@@ -171,7 +133,6 @@ internal fun SettingsDialogContent(
     onHistorySelectionChanged: (String) -> Unit,
     onClearSelection: () -> Unit,
     onDeleteSelected: () -> Unit,
-    libraryState: LibrarySettingsState = LibrarySettingsState(),
     libraryActions: LibrarySettingsActions = LibrarySettingsActions(),
     modifier: Modifier = Modifier
 ) {
@@ -198,18 +159,6 @@ internal fun SettingsDialogContent(
                 item {
                     OutlinedButton(onClick = onShowTipsAgain, modifier = Modifier.fillMaxWidth()) {
                         Text(stringResource(R.string.settings_show_tips_again))
-                    }
-                }
-                item {
-                    Text(
-                        text = "Your library",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                }
-                if (libraryState.songs.isNotEmpty()) {
-                    items(libraryState.songs, key = { it.id }) { song ->
-                        LibrarySongRow(song = song, onRemoveSong = { libraryActions.onRemoveSong(song.id) })
                     }
                 }
                 item {
@@ -413,36 +362,3 @@ private fun SettingsStatusText(status: SettingsStatus) {
     )
 }
 
-@Composable
-private fun LibrarySongRow(song: Song, onRemoveSong: () -> Unit) {
-    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(14.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            SongArtwork(
-                artworkUrl = song.artworkUrl,
-                modifier = Modifier.size(64.dp)
-            )
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                Text(song.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                Text("${song.artist} - ${song.album.ifBlank { "Single" }}", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                val score = song.scoreTenths
-                    ?.let { formatScoreTenths(it) }
-                    ?: stringResource(R.string.score_unrated)
-                Text(
-                    "${stringResource(R.string.score_value, score)} - ${song.wins}W ${song.losses}L"
-                )
-            }
-            OutlinedButton(onClick = onRemoveSong) {
-                Text("Remove")
-            }
-        }
-    }
-}
