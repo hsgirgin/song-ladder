@@ -29,7 +29,6 @@ class AddSongSheetTest {
                     onArtistChange = {},
                     onAlbumChange = {},
                     onAddSong = {},
-                    onLoadSamplePack = {},
                     modifier = Modifier
                         .width(320.dp)
                         .height(280.dp)
@@ -37,7 +36,7 @@ class AddSongSheetTest {
             }
         }
 
-        composeRule.onNodeWithText("Load sample pack")
+        composeRule.onNodeWithText("Add to ladder")
             .performScrollTo()
             .assertIsDisplayed()
     }

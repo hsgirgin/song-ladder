@@ -53,10 +53,12 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.songladder.android.domain.model.MusicTrackCandidate
+import com.songladder.android.domain.model.PlaylistImportPreview
 import com.songladder.android.ui.components.SongArtwork
 
 private enum class AddSongTab(val label: String) {
     Search("Search"),
+    YoutubeMusic("YouTube Music"),
     Add("Add")
 }
 
@@ -100,18 +102,9 @@ fun AddSongSheet(
                 }
             }
 
-            LibraryReadinessBanner(songCount = uiState.songs.size)
-
             val searchStatusMessage = uiState.statusMessage.takeIf { uiState.isSearchMessage() }
             if (!searchStatusMessage.isNullOrBlank()) {
                 LibraryStatusBanner(message = searchStatusMessage)
-            }
-
-            if (uiState.settings.showTips) {
-                AddSongTipBanner(
-                    selectedTab = selectedTab,
-                    onDismiss = viewModel::dismissTips
-                )
             }
 
             SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
@@ -137,6 +130,14 @@ fun AddSongSheet(
                         onAddTrack = viewModel::addSearchResult
                     )
 
+                    AddSongTab.YoutubeMusic -> YoutubeMusicTabContent(
+                        uiState = uiState,
+                        onUrlChange = viewModel::updateYoutubeMusicPlaylistUrl,
+                        onPreview = viewModel::previewYoutubeMusicPlaylist,
+                        onConfirmImport = viewModel::confirmYoutubeMusicPreviewImport,
+                        onClearPreview = viewModel::clearYoutubeMusicPreview
+                    )
+
                     AddSongTab.Add -> AddTabContent(
                         title = title,
                         artist = artist,
@@ -146,8 +147,7 @@ fun AddSongSheet(
                         onAlbumChange = { album = it },
                         onAddSong = {
                             viewModel.addSong(title, artist, album)
-                        },
-                        onLoadSamplePack = viewModel::seedSampleSongs
+                        }
                     )
                 }
             }
@@ -167,39 +167,6 @@ private fun LibraryStatusBanner(message: String) {
             color = MaterialTheme.colorScheme.primary,
             fontWeight = FontWeight.SemiBold
         )
-    }
-}
-
-@Composable
-private fun AddSongTipBanner(
-    selectedTab: AddSongTab,
-    onDismiss: () -> Unit
-) {
-    val message = when (selectedTab) {
-        AddSongTab.Search -> stringResource(com.songladder.android.R.string.library_tip_search)
-        AddSongTab.Add -> stringResource(com.songladder.android.R.string.library_tip_add)
-    }
-    Surface(
-        color = MaterialTheme.colorScheme.tertiaryContainer,
-        shape = RoundedCornerShape(20.dp)
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 14.dp, vertical = 12.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = message,
-                modifier = Modifier.weight(1f),
-                color = MaterialTheme.colorScheme.onTertiaryContainer,
-                style = MaterialTheme.typography.bodyMedium
-            )
-            TextButton(onClick = onDismiss) {
-                Text(stringResource(com.songladder.android.R.string.rankings_dismiss_tip))
-            }
-        }
     }
 }
 
@@ -296,8 +263,7 @@ internal fun AddTabContent(
     onTitleChange: (String) -> Unit,
     onArtistChange: (String) -> Unit,
     onAlbumChange: (String) -> Unit,
-    onAddSong: () -> Unit,
-    onLoadSamplePack: () -> Unit
+    onAddSong: () -> Unit
 ) {
     LazyColumn(
         modifier = modifier.fillMaxSize(),
@@ -306,11 +272,7 @@ internal fun AddTabContent(
         item {
             Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text("Quick start your ladder", style = MaterialTheme.typography.titleLarge)
-                    Text(
-                        "Add one manually or drop in a sample pack so you can get to ranking fast.",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    Text("Add manually", style = MaterialTheme.typography.titleLarge)
                     OutlinedTextField(value = title, onValueChange = onTitleChange, label = { Text("Title") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                     OutlinedTextField(value = artist, onValueChange = onArtistChange, label = { Text("Artist") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                     OutlinedTextField(value = album, onValueChange = onAlbumChange, label = { Text("Album") }, singleLine = true, modifier = Modifier.fillMaxWidth())
@@ -320,9 +282,6 @@ internal fun AddTabContent(
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Text("Add to ladder")
-                    }
-                    OutlinedButton(onClick = onLoadSamplePack, modifier = Modifier.fillMaxWidth()) {
-                        Text("Load sample pack")
                     }
                 }
             }
@@ -433,27 +392,101 @@ private fun ItunesSearchResultRow(
 }
 
 @Composable
-private fun LibraryReadinessBanner(songCount: Int) {
-    val ready = songCount >= 2
-    val message = if (ready) {
-        "Ready to rank. $songCount songs in your ladder."
-    } else {
-        "Add ${2 - songCount} more song${if (songCount == 1) "" else "s"} to start ranking."
-    }
-
-    Surface(
-        color = if (ready) {
-            MaterialTheme.colorScheme.secondary.copy(alpha = 0.12f)
-        } else {
-            MaterialTheme.colorScheme.surface
-        },
-        shape = RoundedCornerShape(20.dp)
+private fun YoutubeMusicTabContent(
+    uiState: LibraryUiState,
+    onUrlChange: (String) -> Unit,
+    onPreview: () -> Unit,
+    onConfirmImport: () -> Unit,
+    onClearPreview: () -> Unit
+) {
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Text(
-            text = message,
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
-            color = if (ready) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.onSurface,
-            fontWeight = FontWeight.SemiBold
-        )
+        item {
+            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("Import from YouTube Music", style = MaterialTheme.typography.titleLarge)
+                    OutlinedTextField(
+                        value = uiState.youtubeMusicPlaylistUrl,
+                        onValueChange = onUrlChange,
+                        label = { Text("Playlist URL") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Button(
+                            onClick = onPreview,
+                            enabled = !uiState.isPreviewLoading && !uiState.isImportingPreview,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text(if (uiState.isPreviewLoading) "Previewing..." else "Preview playlist")
+                        }
+                        if (uiState.youtubeMusicPreview != null || uiState.previewError != null) {
+                            TextButton(onClick = onClearPreview) {
+                                Text("Clear")
+                            }
+                        }
+                    }
+                    if (!uiState.previewError.isNullOrBlank()) {
+                        Text(uiState.previewError, color = MaterialTheme.colorScheme.error)
+                    }
+                }
+            }
+        }
+        uiState.youtubeMusicPreview?.let { preview ->
+            item {
+                YoutubeMusicPreviewCard(
+                    preview = preview,
+                    isImporting = uiState.isImportingPreview,
+                    onConfirmImport = onConfirmImport
+                )
+            }
+        }
+        item { Spacer(modifier = Modifier.height(8.dp)) }
+    }
+}
+
+@Composable
+private fun YoutubeMusicPreviewCard(
+    preview: PlaylistImportPreview,
+    isImporting: Boolean,
+    onConfirmImport: () -> Unit
+) {
+    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text(preview.playlistTitle, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text(
+                "${preview.importableTracks.size} ready to import",
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            if (preview.ambiguousTracks.isNotEmpty()) {
+                Text(
+                    "${preview.ambiguousTracks.size} need review and will be skipped",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                preview.ambiguousTracks.take(3).forEach { track ->
+                    Text(
+                        "• ${track.rawTitle.ifBlank { "Unknown title" }} — ${track.rawArtist.ifBlank { track.reason }}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+            if (preview.unsupportedCount > 0) {
+                Text(
+                    "${preview.unsupportedCount} unsupported items were ignored",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Button(
+                onClick = onConfirmImport,
+                enabled = preview.importableTracks.isNotEmpty() && !isImporting,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(if (isImporting) "Importing..." else "Import ready tracks")
+            }
+        }
     }
 }
