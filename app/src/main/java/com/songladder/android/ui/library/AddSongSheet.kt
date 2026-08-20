@@ -18,19 +18,25 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.Clear
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -80,7 +86,19 @@ fun AddSongSheet(
                 .imePadding(),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Text("Add songs", style = MaterialTheme.typography.headlineSmall)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("Add songs", style = MaterialTheme.typography.headlineSmall)
+                IconButton(onClick = onDismiss) {
+                    Icon(
+                        Icons.Rounded.Close,
+                        contentDescription = stringResource(com.songladder.android.R.string.add_song_sheet_close)
+                    )
+                }
+            }
 
             LibraryReadinessBanner(songCount = uiState.songs.size)
 
@@ -96,13 +114,18 @@ fun AddSongSheet(
                 )
             }
 
-            TabRow(selectedTabIndex = selectedTab.ordinal) {
+            SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
                 AddSongTab.entries.forEach { tab ->
-                    Tab(
+                    SegmentedButton(
                         selected = selectedTab == tab,
                         onClick = { selectedTab = tab },
-                        text = { Text(tab.label) }
-                    )
+                        shape = SegmentedButtonDefaults.itemShape(
+                            index = tab.ordinal,
+                            count = AddSongTab.entries.size
+                        )
+                    ) {
+                        Text(tab.label)
+                    }
                 }
             }
 
@@ -197,11 +220,30 @@ private fun SearchTabContent(
                     value = uiState.searchQuery,
                     onValueChange = onSearchQueryChange,
                     label = { Text("Song or artist") },
+                    leadingIcon = {
+                        Icon(
+                            Icons.Rounded.Search,
+                            contentDescription = stringResource(com.songladder.android.R.string.add_song_search_icon)
+                        )
+                    },
+                    trailingIcon = {
+                        if (uiState.isSearching) {
+                            CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                        } else if (uiState.searchQuery.isNotEmpty()) {
+                            IconButton(onClick = { onSearchQueryChange("") }) {
+                                Icon(
+                                    Icons.Rounded.Clear,
+                                    contentDescription = stringResource(com.songladder.android.R.string.add_song_search_clear)
+                                )
+                            }
+                        }
+                    },
                     supportingText = {
                         Text(
                             if (uiState.isSearching) "Searching automatically..." else "Search starts automatically as you type."
                         )
                     },
+                    singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
             }
@@ -269,10 +311,14 @@ internal fun AddTabContent(
                         "Add one manually or drop in a sample pack so you can get to ranking fast.",
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    OutlinedTextField(value = title, onValueChange = onTitleChange, label = { Text("Title") }, modifier = Modifier.fillMaxWidth())
-                    OutlinedTextField(value = artist, onValueChange = onArtistChange, label = { Text("Artist") }, modifier = Modifier.fillMaxWidth())
-                    OutlinedTextField(value = album, onValueChange = onAlbumChange, label = { Text("Album") }, modifier = Modifier.fillMaxWidth())
-                    Button(onClick = onAddSong, modifier = Modifier.fillMaxWidth()) {
+                    OutlinedTextField(value = title, onValueChange = onTitleChange, label = { Text("Title") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(value = artist, onValueChange = onArtistChange, label = { Text("Artist") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(value = album, onValueChange = onAlbumChange, label = { Text("Album") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    Button(
+                        onClick = onAddSong,
+                        enabled = title.isNotBlank(),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
                         Text("Add to ladder")
                     }
                     OutlinedButton(onClick = onLoadSamplePack, modifier = Modifier.fillMaxWidth()) {
@@ -370,14 +416,17 @@ private fun ItunesSearchResultRow(
                 onClick = onAdd,
                 enabled = !isAdding && !isAdded
             ) {
-                Text(
-                    when {
-                        isAdding -> "Adding..."
-                        isAdded -> "Added"
-                        isDuplicate -> "Added"
-                        else -> "Add"
-                    }
-                )
+                if (isAdding) {
+                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                } else {
+                    Text(
+                        when {
+                            isAdded -> "Added"
+                            isDuplicate -> "Added"
+                            else -> "Add"
+                        }
+                    )
+                }
             }
         }
     }
