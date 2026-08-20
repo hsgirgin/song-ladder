@@ -1,6 +1,7 @@
 package com.songladder.android.domain.engine
 
 import com.songladder.android.domain.model.EloMatchupResult
+import com.songladder.android.domain.model.EloReplayResult
 import com.songladder.android.domain.model.Matchup
 import com.songladder.android.domain.model.MatchupEvent
 import com.songladder.android.domain.model.MatchupOutcome
