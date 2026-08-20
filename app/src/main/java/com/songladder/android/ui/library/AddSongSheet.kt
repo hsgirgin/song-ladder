@@ -16,13 +16,11 @@ import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Clear
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.ExpandLess
 import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.Search
-import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -99,11 +97,6 @@ fun AddSongSheet(
                 }
             }
 
-            val searchStatusMessage = uiState.statusMessage.takeIf { uiState.isSearchMessage() }
-            if (!searchStatusMessage.isNullOrBlank()) {
-                LibraryStatusBanner(message = searchStatusMessage)
-            }
-
             LazyColumn(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -173,21 +166,6 @@ fun AddSongSheet(
                 item { Spacer(modifier = Modifier.height(8.dp)) }
             }
         }
-    }
-}
-
-@Composable
-private fun LibraryStatusBanner(message: String) {
-    Surface(
-        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
-        shape = RoundedCornerShape(20.dp)
-    ) {
-        Text(
-            text = message,
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
-            color = MaterialTheme.colorScheme.primary,
-            fontWeight = FontWeight.SemiBold
-        )
     }
 }
 
@@ -383,24 +361,6 @@ private fun ItunesSearchResultRow(
                         style = MaterialTheme.typography.bodySmall,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
-                    )
-                }
-                if (isAdded) {
-                    AssistChip(
-                        onClick = {},
-                        enabled = false,
-                        label = { Text("Added to ladder") },
-                        leadingIcon = {
-                            Icon(Icons.Rounded.CheckCircle, contentDescription = null)
-                        },
-                        shape = RoundedCornerShape(999.dp)
-                    )
-                } else if (isDuplicate) {
-                    AssistChip(
-                        onClick = {},
-                        enabled = false,
-                        label = { Text("Already in ladder") },
-                        shape = RoundedCornerShape(999.dp)
                     )
                 }
             }
