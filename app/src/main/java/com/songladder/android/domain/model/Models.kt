@@ -108,6 +108,24 @@ data class RankingSubject(
     val tombstone: Tombstone? = null
 )
 
+data class SuggestionDismissal(
+    val subjectId: String,
+    val dismissedAtSequenceId: Long,
+    val dismissedScoreTenths: Int
+)
+
+/**
+ * A candidate score computed from a subject's recent comparison evidence.
+ * Never becomes the visible score until the user explicitly accepts it.
+ */
+data class Suggestion(
+    val subjectId: String,
+    val suggestedScoreTenths: Int,
+    val comparisonCount: Int,
+    val scoreGapTenths: Int?,
+    val lastEventSequenceId: Long
+)
+
 data class MatchupEvent(
     val sequenceId: Long,
     val occurredAt: Long,
@@ -118,6 +136,11 @@ data class MatchupEvent(
     val loserSubjectId: String? = null,
     val winnerEffectiveK: Double? = null,
     val loserEffectiveK: Double? = null
+)
+
+data class EloReplayResult(
+    val subjects: List<RankingSubject>,
+    val eloHistoryBySubject: Map<String, List<Double>>
 )
 
 data class EloMatchupResult(

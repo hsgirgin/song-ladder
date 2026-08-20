@@ -10,6 +10,7 @@ import com.songladder.android.domain.model.RankingSettings
 import com.songladder.android.domain.model.ScoreSaveResult
 import com.songladder.android.domain.model.Song
 import com.songladder.android.domain.model.SongInput
+import com.songladder.android.domain.model.Suggestion
 import com.songladder.android.domain.model.MatchupEvent
 import com.songladder.android.domain.model.MusicTrackCandidate
 import com.songladder.android.domain.model.TombstoneImportConflict
@@ -45,6 +46,18 @@ interface RankingRepository {
 
     suspend fun deleteAllRankingHistory(): Result<RankingHistoryDeletionResult> =
         Result.failure(UnsupportedOperationException("Ranking history deletion is not available yet."))
+
+    fun observeSuggestions(): Flow<List<Suggestion>> = flowOf(emptyList())
+
+    suspend fun acceptSuggestion(subjectId: String, scoreTenths: Int): Result<ScoreSaveResult> =
+        Result.failure(UnsupportedOperationException("Suggestions are not available yet."))
+
+    suspend fun dismissSuggestionLater(
+        subjectId: String,
+        suggestedScoreTenths: Int,
+        lastEventSequenceId: Long
+    ): Result<Unit> =
+        Result.failure(UnsupportedOperationException("Suggestions are not available yet."))
 }
 
 interface SettingsRepository {

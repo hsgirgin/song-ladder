@@ -6,6 +6,7 @@ import com.songladder.android.domain.model.MatchupOutcome
 import com.songladder.android.domain.model.RankingSettings
 import com.songladder.android.domain.model.ScoreSaveResult
 import com.songladder.android.domain.model.Song
+import com.songladder.android.domain.model.Suggestion
 import com.songladder.android.domain.repository.RankingRepository
 import com.songladder.android.domain.repository.SettingsRepository
 import com.songladder.android.domain.repository.SongPreviewPlayer
@@ -18,6 +19,7 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -46,6 +48,59 @@ class RankViewModelTest {
     @After
     fun tearDown() {
         Dispatchers.resetMain()
+    }
+
+    @Test
+    fun `pending suggestion reflects the repository's suggestion list`() = runTest {
+        val songs = listOf(fakeSong("1", "Dreams"), fakeSong("2", "Go Your Own Way"))
+        val rankingRepository = FakeRankingRepository(
+            initialSuggestions = listOf(
+                Suggestion("1", suggestedScoreTenths = 70, comparisonCount = 5, scoreGapTenths = null, lastEventSequenceId = 5L)
+            )
+        )
+        val viewModel = RankViewModel(FakeRankSongRepository(songs), rankingRepository)
+        backgroundScope.launch(dispatcher) { viewModel.uiState.collect {} }
+        advanceUntilIdle()
+
+        assertEquals("1", viewModel.uiState.value.pendingSuggestion?.subjectId)
+    }
+
+    @Test
+    fun `accepting the pending suggestion forwards it to the repository`() = runTest {
+        val songs = listOf(fakeSong("1", "Dreams"), fakeSong("2", "Go Your Own Way"))
+        val rankingRepository = FakeRankingRepository(
+            initialSuggestions = listOf(
+                Suggestion("1", suggestedScoreTenths = 70, comparisonCount = 5, scoreGapTenths = null, lastEventSequenceId = 5L)
+            )
+        )
+        val viewModel = RankViewModel(FakeRankSongRepository(songs), rankingRepository)
+        backgroundScope.launch(dispatcher) { viewModel.uiState.collect {} }
+        advanceUntilIdle()
+
+        viewModel.acceptPendingSuggestion(75)
+        advanceUntilIdle()
+
+        assertEquals(listOf("1" to 75), rankingRepository.acceptedSuggestions)
+        assertEquals(null, viewModel.uiState.value.pendingSuggestion)
+    }
+
+    @Test
+    fun `dismissing the pending suggestion later forwards its current values`() = runTest {
+        val songs = listOf(fakeSong("1", "Dreams"), fakeSong("2", "Go Your Own Way"))
+        val rankingRepository = FakeRankingRepository(
+            initialSuggestions = listOf(
+                Suggestion("1", suggestedScoreTenths = 70, comparisonCount = 5, scoreGapTenths = 8, lastEventSequenceId = 9L)
+            )
+        )
+        val viewModel = RankViewModel(FakeRankSongRepository(songs), rankingRepository)
+        backgroundScope.launch(dispatcher) { viewModel.uiState.collect {} }
+        advanceUntilIdle()
+
+        viewModel.dismissPendingSuggestionLater()
+        advanceUntilIdle()
+
+        assertEquals(listOf("1"), rankingRepository.dismissedSuggestionIds)
+        assertEquals(null, viewModel.uiState.value.pendingSuggestion)
     }
 
     @Test
@@ -594,11 +649,15 @@ private class FakeRankingRepository(
     private val battleResult: Result<Unit> = Result.success(Unit),
     private val skipResult: Result<Unit> = Result.success(Unit),
     private val undoResult: Result<Boolean> = Result.success(true),
-    initialEvents: List<MatchupEvent> = emptyList()
+    initialEvents: List<MatchupEvent> = emptyList(),
+    initialSuggestions: List<Suggestion> = emptyList()
 ) : RankingRepository {
     private val stats = MutableStateFlow(AppStats())
     private val events = MutableStateFlow(initialEvents)
+    private val suggestions = MutableStateFlow(initialSuggestions)
     val skippedSongIds = mutableListOf<String>()
+    val acceptedSuggestions = mutableListOf<Pair<String, Int>>()
+    val dismissedSuggestionIds = mutableListOf<String>()
     var battleCalls = 0
     var undoCalls = 0
 
@@ -629,6 +688,24 @@ private class FakeRankingRepository(
     override suspend fun undoLastWinner(): Result<Boolean> {
         undoCalls += 1
         return undoResult
+    }
+
+    override fun observeSuggestions(): Flow<List<Suggestion>> = suggestions
+
+    override suspend fun acceptSuggestion(subjectId: String, scoreTenths: Int): Result<ScoreSaveResult> {
+        acceptedSuggestions += subjectId to scoreTenths
+        suggestions.update { list -> list.filterNot { it.subjectId == subjectId } }
+        return Result.success(ScoreSaveResult(songId = subjectId, scoreTenths = scoreTenths))
+    }
+
+    override suspend fun dismissSuggestionLater(
+        subjectId: String,
+        suggestedScoreTenths: Int,
+        lastEventSequenceId: Long
+    ): Result<Unit> {
+        dismissedSuggestionIds += subjectId
+        suggestions.update { list -> list.filterNot { it.subjectId == subjectId } }
+        return Result.success(Unit)
     }
 }
 

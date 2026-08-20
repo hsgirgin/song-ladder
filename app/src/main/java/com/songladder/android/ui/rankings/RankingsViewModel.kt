@@ -7,6 +7,7 @@ import com.songladder.android.domain.model.RankingSettings
 import com.songladder.android.domain.model.ScoreSaveResult
 import com.songladder.android.domain.model.Song
 import com.songladder.android.domain.model.SongInput
+import com.songladder.android.domain.model.Suggestion
 import com.songladder.android.domain.model.scoreFirstComparator
 import com.songladder.android.domain.repository.RankingRepository
 import com.songladder.android.domain.repository.SettingsRepository
@@ -54,10 +55,17 @@ data class RankedSong(
     val song: Song
 )
 
+data class SuggestionRow(
+    val suggestion: Suggestion,
+    val song: Song
+)
+
 data class RankingsUiState(
     val allSongs: List<Song> = emptyList(),
     val rankedSongs: List<RankedSong> = emptyList(),
     val unratedSongs: List<Song> = emptyList(),
+    val suggestionRows: List<SuggestionRow> = emptyList(),
+    val selectedSuggestionIds: Set<String> = emptySet(),
     val selectedTab: RankingsTab = RankingsTab.SONGS,
     val searchActive: Boolean = false,
     val searchQuery: String = "",
@@ -81,6 +89,7 @@ private data class RankingsLocalState(
     val searchQuery: String = "",
     val unratedExpanded: Boolean = false,
     val expandedSongIds: Set<String> = emptySet(),
+    val selectedSuggestionIds: Set<String> = emptySet(),
     val detailSongId: String? = null,
     val isSavingScore: Boolean = false,
     val pendingDeletedSong: PendingDeletedSong? = null,
@@ -108,8 +117,9 @@ class RankingsViewModel(
     private val rankingState = combine(
         songRepository.observeSongs(),
         settingsRepository.observeSettings(),
+        rankingRepository.observeSuggestions(),
         localState
-    ) { songs, settings, local ->
+    ) { songs, settings, suggestions, local ->
         val filtered = songs.filterByQuery(local.searchQuery)
         val ranked = filtered
             .filter { it.scoreTenths != null }
@@ -118,10 +128,18 @@ class RankingsViewModel(
         val unrated = filtered
             .filter { it.scoreTenths == null }
             .sortedByDescending { it.createdAt }
+        val songsBySubjectId = songs.associateBy { it.rankingSubjectId }
+        val suggestionRows = suggestions.mapNotNull { suggestion ->
+            songsBySubjectId[suggestion.subjectId]?.let { song -> SuggestionRow(suggestion, song) }
+        }
         RankingsUiState(
             allSongs = songs,
             rankedSongs = ranked,
             unratedSongs = unrated,
+            suggestionRows = suggestionRows,
+            selectedSuggestionIds = local.selectedSuggestionIds.intersect(
+                suggestionRows.mapTo(mutableSetOf()) { it.suggestion.subjectId }
+            ),
             selectedTab = local.selectedTab,
             searchActive = local.searchActive,
             searchQuery = local.searchQuery,
@@ -236,6 +254,74 @@ class RankingsViewModel(
                         state.copy(isSavingScore = false, status = RankingsStatus.SaveFailed)
                     }
                 }
+        }
+    }
+
+    fun acceptSuggestion(subjectId: String, scoreTenths: Int) {
+        if (uiState.value.isSavingScore) return
+        localState.update { it.copy(isSavingScore = true, status = RankingsStatus.None) }
+        viewModelScope.launch {
+            rankingRepository.acceptSuggestion(subjectId, scoreTenths)
+                .onSuccess { result ->
+                    localState.update { state ->
+                        state.copy(
+                            isSavingScore = false,
+                            selectedSuggestionIds = state.selectedSuggestionIds - subjectId,
+                            status = RankingsStatus.ScoreSaved(result)
+                        )
+                    }
+                }
+                .onFailure {
+                    localState.update { state -> state.copy(isSavingScore = false, status = RankingsStatus.SaveFailed) }
+                }
+        }
+    }
+
+    fun dismissSuggestionLater(subjectId: String) {
+        val row = uiState.value.suggestionRows.firstOrNull { it.suggestion.subjectId == subjectId } ?: return
+        localState.update { it.copy(selectedSuggestionIds = it.selectedSuggestionIds - subjectId) }
+        viewModelScope.launch {
+            rankingRepository.dismissSuggestionLater(
+                subjectId = subjectId,
+                suggestedScoreTenths = row.suggestion.suggestedScoreTenths,
+                lastEventSequenceId = row.suggestion.lastEventSequenceId
+            )
+        }
+    }
+
+    fun toggleSuggestionSelection(subjectId: String) {
+        localState.update { state ->
+            state.copy(
+                selectedSuggestionIds = if (subjectId in state.selectedSuggestionIds) {
+                    state.selectedSuggestionIds - subjectId
+                } else {
+                    state.selectedSuggestionIds + subjectId
+                }
+            )
+        }
+    }
+
+    fun clearSuggestionSelection() {
+        localState.update { it.copy(selectedSuggestionIds = emptySet()) }
+    }
+
+    fun acceptSelectedSuggestions() {
+        val selected = uiState.value.suggestionRows.filter { it.suggestion.subjectId in uiState.value.selectedSuggestionIds }
+        if (selected.isEmpty() || uiState.value.isSavingScore) return
+        localState.update { it.copy(isSavingScore = true, status = RankingsStatus.None) }
+        viewModelScope.launch {
+            var failed = false
+            selected.forEach { row ->
+                rankingRepository.acceptSuggestion(row.suggestion.subjectId, row.suggestion.suggestedScoreTenths)
+                    .onFailure { failed = true }
+            }
+            localState.update { state ->
+                state.copy(
+                    isSavingScore = false,
+                    selectedSuggestionIds = emptySet(),
+                    status = if (failed) RankingsStatus.SaveFailed else RankingsStatus.None
+                )
+            }
         }
     }
 

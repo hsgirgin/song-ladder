@@ -52,6 +52,11 @@
     <string name="rankings_unrated_state">Unrated song</string>
     <string name="rankings_rate_song_short">Rate</string>
     <string name="rankings_edit_score">Edit score</string>
+    <string name="rankings_suggestions_title">Suggested scores</string>
+    <string name="rankings_suggestion_accept">Accept</string>
+    <string name="rankings_suggestion_edit">Edit</string>
+    <string name="rankings_confirm_accept_suggestions_title">Accept suggested scores?</string>
+    <string name="rankings_confirm_accept_suggestions_action">Accept</string>
     <string name="rankings_stats_summary">%1$dW %2$dL · %3$d skips</string>
     <string name="rankings_delete_song">Delete song</string>
     <string name="rankings_save_failed">Could not save score. Try again.</string>
@@ -109,6 +114,18 @@
     <plurals name="rankings_unrated_count">
         <item quantity="one">%1$d unrated song</item>
         <item quantity="other">%1$d unrated songs</item>
+    </plurals>
+    <plurals name="rankings_accept_selected_suggestions_action">
+        <item quantity="one">Accept %1$d suggestion</item>
+        <item quantity="other">Accept %1$d suggestions</item>
+    </plurals>
+    <plurals name="rankings_confirm_accept_suggestions_message">
+        <item quantity="one">This applies %1$d suggested score as the visible score.</item>
+        <item quantity="other">This applies %1$d suggested scores as the visible scores.</item>
+    </plurals>
+    <plurals name="rankings_suggestion_comparison_count">
+        <item quantity="one">Based on %1$d comparison</item>
+        <item quantity="other">Based on %1$d comparisons</item>
     </plurals>
     <plurals name="settings_delete_history_action">
         <item quantity="one">Delete %1$d history</item>

@@ -6,6 +6,34 @@ in [phase-1-score-first-rankings-spec.md](phase-1-score-first-rankings-spec.md);
 this document also preserves decisions deferred to later phases so they are
 not rediscovered or contradicted.
 
+## Revision: 2026-08-20 — post-match rating popup removed, Phase 2 suggestions ship early
+
+The mandatory post-match rating popup (originally spec section 6.4: after a
+duel, prompt the unrated winner then the unrated loser for a manual score)
+is **removed permanently**, not deferred. It was solving "the manual slider
+after every duel is annoying" by forcing exactly that slider on every first
+duel of an unrated song — the friction was the point of complaint, not an
+accident. Unrated songs now simply stay unrated after a duel; no prompt.
+
+In its place, a first version of **Phase 2: score suggestions** ships now
+rather than after Phase 1 completes (see that section below, largely
+unchanged as written). Scope shipped in this pass: the stability engine
+(last five comparisons against rated opponents, movement ≤0.5 to count as
+stable), a review section in Rankings above the Unrated list with per-row
+Accept/Edit/Later and bulk "Accept selected," and a compact Accept/Edit/Later
+card between matchups. Not yet built: the suggestions tab badge/inline
+pending marker, the explicit anchor-song picker flow, and matchup-selector
+prioritization of score-vs-evidence disagreements (matchups are still
+selected by the existing score/Elo rules, unaware of pending suggestions).
+Recency weighting uses the existing per-song K-factor decay rather than a
+separate 30-day reweighting scheme — newer comparisons already move a
+song's implied score more than older ones through that mechanism, so a
+second scheme was judged redundant.
+
+The absolute invariant is unchanged and fully holds: **a suggestion never
+becomes the visible score without an explicit Accept.** Nothing added by
+this revision writes `scoreTenths` silently.
+
 ## Product direction
 
 - The primary user-facing concept is an absolute personal score from `1.0` to
@@ -74,17 +102,18 @@ not rediscovered or contradicted.
 - On wide screens, cards are side by side; left/right swipes choose the
   opposite card. In compact-height or large-font layouts, use buttons instead
   of global swipes.
-- Highlight the selected song briefly, then show the rating prompt when needed.
+- Highlight the selected song briefly, then load the next matchup or, if one
+  is due, show the compact suggestion card (see the 2026-08-20 revision
+  above) — there is no mandatory post-match rating prompt.
 - Auto-preview is on by default. The first Play tap arms autoplay for the
   foreground session; backgrounding requires a fresh tap. Play both previews
   sequentially, alternate which song starts, stop immediately on choice/Skip,
   and preserve pair and playback position through rotation.
 - Skip has a floating action near the bottom edge; Undo is shown above it.
-- If an eligible result includes unrated songs, prompt for winner first and
-  loser second. Save or Skip for now is independent for each song.
-- The post-match rating steps use the same confirmation behavior as every other
-  rating editor: Save commits the shown value immediately and Skip for now
-  advances without rating that song.
+- Unrated songs simply stay unrated after a duel. There is no forced
+  winner-then-loser rating prompt (superseded by the 2026-08-20 revision
+  above); a song's score is set only via an explicit Rankings edit or by
+  accepting a suggestion.
 
 ### Rankings and rating UI
 

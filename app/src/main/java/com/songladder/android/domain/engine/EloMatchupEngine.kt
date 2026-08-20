@@ -146,7 +146,18 @@ class EloMatchupEngine(
     fun replay(
         subjects: List<RankingSubject>,
         events: List<MatchupEvent>
-    ): List<RankingSubject> {
+    ): List<RankingSubject> = replayWithHistory(subjects, events).subjects
+
+    /**
+     * Same replay as [replay], but also returns each subject's elo value
+     * immediately after each of its own WIN events, in chronological order.
+     * Used by [com.songladder.android.domain.engine.SuggestionEngine] to check
+     * whether a subject's implied score has stabilized over its recent matchups.
+     */
+    fun replayWithHistory(
+        subjects: List<RankingSubject>,
+        events: List<MatchupEvent>
+    ): EloReplayResult {
         val replayed = subjects.associate { subject ->
             subject.id to subject.copy(
                 elo = seedEloForScore(subject.scoreTenths),
@@ -156,6 +167,7 @@ class EloMatchupEngine(
                 completedMatchupsInEpoch = 0
             )
         }.toMutableMap()
+        val history = mutableMapOf<String, MutableList<Double>>()
 
         events.sortedBy { it.sequenceId }.forEach { event ->
             when (event.outcome) {
@@ -171,33 +183,16 @@ class EloMatchupEngine(
                     val loserId = requireNotNull(event.loserSubjectId) {
                         "Winner events must include a loser subject."
                     }
-                    val winner = requireNotNull(replayed[winnerId]) {
-                        "Winner subject $winnerId was not found."
-                    }
-                    val loser = requireNotNull(replayed[loserId]) {
-                        "Loser subject $loserId was not found."
-                    }
-                    val winnerK = event.winnerEffectiveK ?: effectiveK(winner)
-                    val loserK = event.loserEffectiveK ?: effectiveK(loser)
-                    val winnerExpected = expectedScore(winner.elo, loser.elo)
-                    val loserExpected = expectedScore(loser.elo, winner.elo)
-                    replayed[winnerId] = winner.copy(
-                        elo = winner.elo + winnerK * (1 - winnerExpected),
-                        wins = winner.wins + 1,
-                        completedMatchupsInEpoch = winner.completedMatchupsInEpoch + 1
-                    )
-                    replayed[loserId] = loser.copy(
-                        elo = loser.elo + loserK * (0 - loserExpected),
-                        losses = loser.losses + 1,
-                        completedMatchupsInEpoch = loser.completedMatchupsInEpoch + 1
-                    )
+                    applyWinEvent(replayed, event, winnerId, loserId)
+                    history.getOrPut(winnerId) { mutableListOf() }.add(requireNotNull(replayed[winnerId]).elo)
+                    history.getOrPut(loserId) { mutableListOf() }.add(requireNotNull(replayed[loserId]).elo)
                 }
 
                 MatchupOutcome.UNKNOWN -> Unit
             }
         }
 
-        return subjects.map { original ->
+        val finalSubjects = subjects.map { original ->
             val current = requireNotNull(replayed[original.id])
                 current.copy(
                     responsivenessEpoch = original.responsivenessEpoch,
@@ -210,6 +205,35 @@ class EloMatchupEngine(
                     .count { event -> event.sequenceId > original.responsivenessEpochSequence }
             )
         }
+        return EloReplayResult(subjects = finalSubjects, eloHistoryBySubject = history)
+    }
+
+    private fun applyWinEvent(
+        replayed: MutableMap<String, RankingSubject>,
+        event: MatchupEvent,
+        winnerId: String,
+        loserId: String
+    ) {
+        val winner = requireNotNull(replayed[winnerId]) {
+            "Winner subject $winnerId was not found."
+        }
+        val loser = requireNotNull(replayed[loserId]) {
+            "Loser subject $loserId was not found."
+        }
+        val winnerK = event.winnerEffectiveK ?: effectiveK(winner)
+        val loserK = event.loserEffectiveK ?: effectiveK(loser)
+        val winnerExpected = expectedScore(winner.elo, loser.elo)
+        val loserExpected = expectedScore(loser.elo, winner.elo)
+        replayed[winnerId] = winner.copy(
+            elo = winner.elo + winnerK * (1 - winnerExpected),
+            wins = winner.wins + 1,
+            completedMatchupsInEpoch = winner.completedMatchupsInEpoch + 1
+        )
+        replayed[loserId] = loser.copy(
+            elo = loser.elo + loserK * (0 - loserExpected),
+            losses = loser.losses + 1,
+            completedMatchupsInEpoch = loser.completedMatchupsInEpoch + 1
+        )
     }
 
     fun effectiveK(subject: RankingSubject): Double = when (subject.responsivenessEpoch) {

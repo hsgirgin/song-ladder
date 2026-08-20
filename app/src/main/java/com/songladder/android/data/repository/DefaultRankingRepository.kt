@@ -8,9 +8,12 @@ import com.songladder.android.data.local.MatchupEventEntity
 import com.songladder.android.data.local.RankingSubjectDao
 import com.songladder.android.data.local.SongDao
 import com.songladder.android.data.local.SongLadderDatabase
+import com.songladder.android.data.local.SuggestionDismissalDao
+import com.songladder.android.data.local.SuggestionDismissalEntity
 import com.songladder.android.data.local.toDomain
 import com.songladder.android.data.local.toEntity
 import com.songladder.android.domain.engine.EloMatchupEngine
+import com.songladder.android.domain.engine.SuggestionEngine
 import com.songladder.android.domain.model.AppStats
 import com.songladder.android.domain.model.DeletedRankingHistory
 import com.songladder.android.domain.model.MatchupOutcome
@@ -19,9 +22,9 @@ import com.songladder.android.domain.model.RankingHistoryDeletionResult
 import com.songladder.android.domain.model.RankingSubject
 import com.songladder.android.domain.model.ResponsivenessEpoch
 import com.songladder.android.domain.model.ScoreSaveResult
+import com.songladder.android.domain.model.Suggestion
 import com.songladder.android.domain.model.TimeSource
 import com.songladder.android.domain.model.scoreFirstComparator
-import com.songladder.android.domain.model.scoreTenthsForElo
 import com.songladder.android.domain.model.seedEloForScore
 import com.songladder.android.domain.model.validateScoreTenths
 import com.songladder.android.domain.repository.RankingRepository
@@ -35,8 +38,10 @@ class DefaultRankingRepository(
     private val matchupEngine: EloMatchupEngine,
     private val rankingSubjectDao: RankingSubjectDao,
     private val matchupEventDao: MatchupEventDao,
+    private val suggestionDismissalDao: SuggestionDismissalDao,
     private val appStatsDao: AppStatsDao? = null,
-    private val timeSource: TimeSource = TimeSource { System.currentTimeMillis() }
+    private val timeSource: TimeSource = TimeSource { System.currentTimeMillis() },
+    private val suggestionEngine: SuggestionEngine = SuggestionEngine(matchupEngine)
 ) : RankingRepository {
     override fun observeStats(): Flow<AppStats> {
         val dao = requireNotNull(appStatsDao) { "AppStatsDao is required for observeStats." }
@@ -89,31 +94,7 @@ class DefaultRankingRepository(
                 )
             )
             rebuildCaches()
-            deriveScoreIfUnrated(winnerSubject.id)
-            deriveScoreIfUnrated(loserSubject.id)
         }
-    }
-
-    /**
-     * Seeds scoreTenths from the subject's just-rebuilt elo, for songs that have
-     * never been explicitly rated. Must run after rebuildCaches() and must not
-     * trigger another rebuild, or the new seed would double-apply this event's
-     * elo delta on replay.
-     */
-    private suspend fun deriveScoreIfUnrated(subjectId: String) {
-        val entity = rankingSubjectDao.get(subjectId) ?: return
-        val subject = entity.toDomain()
-        if (subject.scoreTenths != null) return
-        val epochSequence = matchupEventDao.getAll().maxOfOrNull { it.sequenceId } ?: 0L
-        rankingSubjectDao.update(
-            subject.copy(
-                scoreTenths = scoreTenthsForElo(subject.elo),
-                responsivenessEpoch = ResponsivenessEpoch.NEW,
-                completedMatchupsInEpoch = 0,
-                responsivenessEpochSequence = epochSequence,
-                lastRatedAt = nextEventTimestamp()
-            ).toEntity()
-        )
     }
 
     override suspend fun recordSkip(songIds: List<String>): Result<Unit> = runCatching {
@@ -139,40 +120,45 @@ class DefaultRankingRepository(
     override suspend fun saveScore(songId: String, scoreTenths: Int): Result<ScoreSaveResult> = runCatching {
         validateScoreTenths(scoreTenths)
         database.withTransaction {
-            val beforeOrder = currentSongOrder()
             val row = songDao.getSongWithStats(songId) ?: error("Song not found.")
             require(row.stats.tombstoneDeletedAt == null) { "Cannot score a deleted song." }
-            val current = row.stats.toDomain()
-            if (current.scoreTenths == scoreTenths) {
-                return@withTransaction ScoreSaveResult(
-                    songId = songId,
-                    scoreTenths = scoreTenths,
-                    visibleOrderChanged = false
-                )
-            }
-            val epochSequence = matchupEventDao.getAll().maxOfOrNull { it.sequenceId } ?: 0L
-            rankingSubjectDao.update(
-                current.copy(
-                    scoreTenths = scoreTenths,
-                    elo = seedEloForScore(scoreTenths),
-                    responsivenessEpoch = if (current.scoreTenths == null) {
-                        ResponsivenessEpoch.NEW
-                    } else {
-                        ResponsivenessEpoch.EDITED
-                    },
-                    completedMatchupsInEpoch = 0,
-                    responsivenessEpochSequence = epochSequence,
-                    lastRatedAt = nextEventTimestamp()
-                ).toEntity()
-            )
-            rebuildCaches()
-            val afterOrder = currentSongOrder()
-            ScoreSaveResult(
-                songId = songId,
-                scoreTenths = scoreTenths,
-                visibleOrderChanged = beforeOrder != afterOrder
-            )
+            applyScore(resultId = songId, current = row.stats.toDomain(), scoreTenths = scoreTenths)
         }
+    }
+
+    /**
+     * Shared by [saveScore] (looked up by song id) and [acceptSuggestion]
+     * (looked up by ranking subject id, which is not always the same id -
+     * see the tombstone-restore matching flow). [resultId] echoes back
+     * whichever id the caller used, matching [saveScore]'s existing contract.
+     */
+    private suspend fun applyScore(resultId: String, current: RankingSubject, scoreTenths: Int): ScoreSaveResult {
+        val beforeOrder = currentSongOrder()
+        if (current.scoreTenths == scoreTenths) {
+            return ScoreSaveResult(songId = resultId, scoreTenths = scoreTenths, visibleOrderChanged = false)
+        }
+        val epochSequence = matchupEventDao.getAll().maxOfOrNull { it.sequenceId } ?: 0L
+        rankingSubjectDao.update(
+            current.copy(
+                scoreTenths = scoreTenths,
+                elo = seedEloForScore(scoreTenths),
+                responsivenessEpoch = if (current.scoreTenths == null) {
+                    ResponsivenessEpoch.NEW
+                } else {
+                    ResponsivenessEpoch.EDITED
+                },
+                completedMatchupsInEpoch = 0,
+                responsivenessEpochSequence = epochSequence,
+                lastRatedAt = nextEventTimestamp()
+            ).toEntity()
+        )
+        rebuildCaches()
+        val afterOrder = currentSongOrder()
+        return ScoreSaveResult(
+            songId = resultId,
+            scoreTenths = scoreTenths,
+            visibleOrderChanged = beforeOrder != afterOrder
+        )
     }
 
     override suspend fun undoLastWinner(): Result<Boolean> = runCatching {
@@ -211,6 +197,44 @@ class DefaultRankingRepository(
                 deletedEventCount = deletedEventCount
             )
         }
+    }
+
+    override fun observeSuggestions(): Flow<List<Suggestion>> =
+        combine(
+            rankingSubjectDao.observeAll(),
+            matchupEventDao.observeAll(),
+            suggestionDismissalDao.observeAll()
+        ) { subjectEntities, eventEntities, dismissalEntities ->
+            suggestionEngine.computeSuggestions(
+                subjects = subjectEntities.map { it.toDomain() },
+                events = eventEntities.map { it.toDomain() },
+                dismissals = dismissalEntities.map { it.toDomain() }
+            )
+        }
+
+    override suspend fun acceptSuggestion(subjectId: String, scoreTenths: Int): Result<ScoreSaveResult> = runCatching {
+        validateScoreTenths(scoreTenths)
+        database.withTransaction {
+            val subject = rankingSubjectDao.get(subjectId) ?: error("Ranking subject not found.")
+            require(subject.tombstoneDeletedAt == null) { "Cannot score a deleted song." }
+            val result = applyScore(resultId = subjectId, current = subject.toDomain(), scoreTenths = scoreTenths)
+            suggestionDismissalDao.delete(subjectId)
+            result
+        }
+    }
+
+    override suspend fun dismissSuggestionLater(
+        subjectId: String,
+        suggestedScoreTenths: Int,
+        lastEventSequenceId: Long
+    ): Result<Unit> = runCatching {
+        suggestionDismissalDao.upsert(
+            SuggestionDismissalEntity(
+                subjectId = subjectId,
+                dismissedAtSequenceId = lastEventSequenceId,
+                dismissedScoreTenths = suggestedScoreTenths
+            )
+        )
     }
 
     private suspend fun rebuildCaches(): List<RankingSubject> {

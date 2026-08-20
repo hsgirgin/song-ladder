@@ -49,6 +49,9 @@ interface RankingSubjectDao {
     @Query("SELECT * FROM ranking_subjects ORDER BY id")
     suspend fun getAll(): List<RankingSubjectEntity>
 
+    @Query("SELECT * FROM ranking_subjects WHERE tombstoneDeletedAt IS NULL ORDER BY id")
+    fun observeAll(): Flow<List<RankingSubjectEntity>>
+
     @Query("SELECT * FROM ranking_subjects WHERE tombstoneDeletedAt IS NOT NULL ORDER BY tombstoneDeletedAt DESC")
     fun observeDeleted(): Flow<List<RankingSubjectEntity>>
 
@@ -123,4 +126,19 @@ interface AppStatsDao {
 interface ImportBatchDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(batch: ImportBatchEntity)
+}
+
+@Dao
+interface SuggestionDismissalDao {
+    @Query("SELECT * FROM suggestion_dismissals")
+    fun observeAll(): Flow<List<SuggestionDismissalEntity>>
+
+    @Query("SELECT * FROM suggestion_dismissals WHERE subjectId = :subjectId")
+    suspend fun get(subjectId: String): SuggestionDismissalEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(dismissal: SuggestionDismissalEntity)
+
+    @Query("DELETE FROM suggestion_dismissals WHERE subjectId = :subjectId")
+    suspend fun delete(subjectId: String)
 }

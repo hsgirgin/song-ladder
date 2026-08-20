@@ -56,6 +56,7 @@ class AppContainer(context: Context) {
         matchupEngine = matchupEngine,
         rankingSubjectDao = database.rankingSubjectDao(),
         matchupEventDao = database.matchupEventDao(),
+        suggestionDismissalDao = database.suggestionDismissalDao(),
         appStatsDao = database.appStatsDao()
     )
     val importRepository: ImportRepository = DefaultImportRepository(

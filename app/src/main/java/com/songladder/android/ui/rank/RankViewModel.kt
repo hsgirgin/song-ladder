@@ -7,6 +7,7 @@ import com.songladder.android.domain.model.AppStats
 import com.songladder.android.domain.model.Matchup
 import com.songladder.android.domain.model.RankingSettings
 import com.songladder.android.domain.model.Song
+import com.songladder.android.domain.model.Suggestion
 import com.songladder.android.domain.repository.SettingsRepository
 import com.songladder.android.domain.repository.RankingRepository
 import com.songladder.android.domain.repository.SongPreviewPlayer
@@ -48,6 +49,7 @@ data class RankUiState(
     val stats: AppStats = AppStats(),
     val settings: RankingSettings = RankingSettings(),
     val matchup: Matchup? = null,
+    val pendingSuggestion: Suggestion? = null,
     val message: String = "",
     val isReady: Boolean = false,
     val caughtUp: Boolean = false,
@@ -141,8 +143,12 @@ class RankViewModel(
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), RankUiState())
 
-    val uiState: StateFlow<RankUiState> = combine(rankingUiState, previewStates) { state, previews ->
-        state.copy(previews = previews)
+    val uiState: StateFlow<RankUiState> = combine(
+        rankingUiState,
+        previewStates,
+        rankingRepository.observeSuggestions()
+    ) { state, previews, suggestions ->
+        state.copy(previews = previews, pendingSuggestion = suggestions.firstOrNull())
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), RankUiState())
 
     init {
@@ -292,6 +298,24 @@ class RankViewModel(
 
     fun continueAnyway() {
         sessionState.update { it.copy(continueAnyway = true, transientMessage = "") }
+    }
+
+    fun acceptPendingSuggestion(scoreTenths: Int) {
+        val suggestion = uiState.value.pendingSuggestion ?: return
+        viewModelScope.launch {
+            rankingRepository.acceptSuggestion(suggestion.subjectId, scoreTenths)
+        }
+    }
+
+    fun dismissPendingSuggestionLater() {
+        val suggestion = uiState.value.pendingSuggestion ?: return
+        viewModelScope.launch {
+            rankingRepository.dismissSuggestionLater(
+                subjectId = suggestion.subjectId,
+                suggestedScoreTenths = suggestion.suggestedScoreTenths,
+                lastEventSequenceId = suggestion.lastEventSequenceId
+            )
+        }
     }
 
     fun undo() {

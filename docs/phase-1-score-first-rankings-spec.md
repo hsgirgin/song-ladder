@@ -2,6 +2,10 @@
 
 **Status:** Approved product and implementation specification
 **Scope:** Phase 1 only. This is a pre-production, clean-slate redesign; it does not require legacy database migrations or compatibility with older JSON exports.
+**2026-08-20 revision:** Section 6.4's mandatory post-match rating prompt is
+removed permanently, and a first version of Phase 2 (score suggestions)
+ships alongside this spec rather than after it. See the dated revision note
+at the top of `product-decisions.md` for the full rationale.
 
 ## 1. Outcome
 
@@ -21,14 +25,19 @@ Phase 1 ships songs only. Albums and Artists are visible as unavailable future v
 - Manual 1.0–10.0 song scores with one-decimal precision.
 - A score-first Rankings experience with adaptive grid and list presentations.
 - Event-backed global Elo tie-breaking, matchup undo, cooldowns, and deterministic replay.
-- Matchups with preview playback, swipe gestures, button fallbacks, and optional post-match rating.
+- Matchups with preview playback, swipe gestures, and button fallbacks. (No post-match rating prompt — see the 2026-08-20 revision note above.)
 - Playlist-import rating queue.
 - Song detail, settings, deletion, tombstones, and ranking-history cleanup.
 - A new clean-slate Room schema and JSON export/import format.
 
 ### Explicitly out of scope
 
-- Score suggestions or automatic score changes. These are Phase 2.
+- The full Phase 2 score-suggestions design (tab badge/pending marker,
+  anchor-song picker, matchup-selector disagreement prioritization) remains
+  out of scope for Phase 1. A first version of the core suggestion engine
+  and review surfaces ships early — see the 2026-08-20 revision note above.
+  Scores are still never automatically applied; every suggestion requires
+  explicit Accept.
 - Album matching, album scores, missing-track imports, and release metadata. These are Phase 3.
 - Artist-credit parsing, artist scores, aliases, and artist ranking. These are Phase 4.
 - Compatibility with the current version-1 database or current JSON backups. The app is not in production.
@@ -239,9 +248,18 @@ Rated matchup cards display a compact `#rank · score` artwork badge. Unrated so
 - After a swipe/button choice, briefly highlight the winner and then either present rating work or load the next matchup.
 - The first-run empty state explains that two songs are required, offers **Import playlist** as primary action, and **Load sample pack** as secondary action.
 
-### 6.4 Post-match rating
+### 6.4 Post-match rating (superseded 2026-08-20)
 
-Every eligible matchup that includes an unrated song offers lightweight rating work after the result:
+**Removed permanently — this section no longer describes shipped behavior.**
+The mandatory winner-then-loser rating prompt described below was the
+mechanism the 2026-08-20 revision removed; it is kept here, struck from
+effect, only so the original design isn't lost. Unrated songs now stay
+unrated after a duel with no prompt. In its place, a compact suggestion card
+(Accept/Edit/Later) may appear between matchups once a song's score has
+enough stable comparison evidence — see the Phase 2 section in
+`product-decisions.md`.
+
+Original text: every eligible matchup that includes an unrated song offers lightweight rating work after the result:
 
 1. Replace matchup cards with a rating step for the unrated winner, if any.
 2. Then show the unrated loser, if any.

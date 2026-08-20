@@ -17,6 +17,7 @@ import com.songladder.android.domain.model.ResponsivenessEpoch
 import com.songladder.android.domain.model.Song
 import com.songladder.android.domain.model.SongExport
 import com.songladder.android.domain.model.SongInput
+import com.songladder.android.domain.model.SuggestionDismissal
 import com.songladder.android.domain.model.Tombstone
 import com.songladder.android.domain.model.TombstoneExport
 import java.util.UUID
@@ -280,6 +281,18 @@ fun MatchupEventEntity.toDomain(): MatchupEvent = MatchupEvent(
     loserSubjectId = loserSubjectId,
     winnerEffectiveK = winnerEffectiveK,
     loserEffectiveK = loserEffectiveK
+)
+
+fun SuggestionDismissalEntity.toDomain(): SuggestionDismissal = SuggestionDismissal(
+    subjectId = subjectId,
+    dismissedAtSequenceId = dismissedAtSequenceId,
+    dismissedScoreTenths = dismissedScoreTenths
+)
+
+fun SuggestionDismissal.toEntity(): SuggestionDismissalEntity = SuggestionDismissalEntity(
+    subjectId = subjectId,
+    dismissedAtSequenceId = dismissedAtSequenceId,
+    dismissedScoreTenths = dismissedScoreTenths
 )
 
 fun RankingSettingsEntity.toDomain(): RankingSettings = RankingSettings(
