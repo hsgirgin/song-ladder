@@ -18,8 +18,8 @@
     <string name="rank_pause_preview">Pause preview</string>
     <string name="rank_swipe_selecting">Choosing</string>
     <string name="destination_matchups">Matchups</string>
-    <string name="destination_library">Library</string>
     <string name="destination_rankings">Rankings</string>
+    <string name="rankings_open_library">Add songs</string>
     <string name="score_value">Score %1$s</string>
     <string name="score_unrated">Unrated</string>
     <string name="rating_editor_value">%1$s</string>
@@ -84,9 +84,9 @@
     <string name="library_restore_history_action">Restore %1$s by %2$s</string>
     <string name="library_start_fresh_action">Start fresh</string>
     <string name="library_cancel_import_action">Cancel import</string>
-    <string name="library_tip_search">Imported songs can open a rating step right away, so you can score them before leaving Library.</string>
-    <string name="library_tip_add">Manual additions can be rated immediately after they are saved.</string>
-    <string name="library_tip_manage">Playlist imports open a one-song-at-a-time rating queue with progress and skip controls.</string>
+    <string name="add_song_sheet_close">Close add songs</string>
+    <string name="add_song_search_clear">Clear search</string>
+    <string name="add_song_search_icon">Search</string>
     <string name="library_queue_playlist_title">Rate imported songs</string>
     <string name="library_queue_single_title">Rate this song</string>
     <string name="library_queue_progress_label">Song %1$d of %2$d</string>

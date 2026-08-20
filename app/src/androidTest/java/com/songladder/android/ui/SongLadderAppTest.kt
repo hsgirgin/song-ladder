@@ -23,18 +23,17 @@ class SongLadderAppTest {
         composeRule.setContent {
             SongLadderTheme {
                 SongLadderScaffold(
-                    currentRoute = SongLadderDestination.Library.route,
+                    currentRoute = SongLadderDestination.Matchups.route,
                     isImeVisible = true,
                     onDestinationSelected = {}
                 ) {
-                    Text("Library content")
+                    Text("Matchups content")
                 }
             }
         }
 
-        composeRule.onNodeWithText("Library content").assertIsDisplayed()
+        composeRule.onNodeWithText("Matchups content").assertIsDisplayed()
         composeRule.onNodeWithText("Matchups").assertDoesNotExist()
-        composeRule.onNodeWithText("Library").assertDoesNotExist()
         composeRule.onNodeWithText("Rankings").assertDoesNotExist()
     }
 
@@ -43,53 +42,53 @@ class SongLadderAppTest {
         composeRule.setContent {
             SongLadderTheme {
                 SongLadderScaffold(
-                    currentRoute = SongLadderDestination.Library.route,
+                    currentRoute = SongLadderDestination.Matchups.route,
                     isImeVisible = false,
                     onDestinationSelected = {}
                 ) {
-                    Text("Library content")
+                    Text("Matchups content")
                 }
             }
         }
 
         composeRule.onNodeWithText("Matchups").assertIsDisplayed()
-        composeRule.onNodeWithText("Library").assertIsDisplayed()
         composeRule.onNodeWithText("Rankings").assertIsDisplayed()
     }
 
     @Test
-    fun openLibraryFromMatchupsDoesNotMakeLibrarySticky() {
+    fun addSongsSheetOpensFromMatchupsAndDismisses() {
         composeRule.setContent {
             SongLadderTheme {
                 SongLadderAppContent(
-                    matchupsContent = { _, onOpenLibrary ->
+                    matchupsContent = { _, onAddSongs ->
                         TestScreen("Matchups destination") {
-                            Button(onClick = onOpenLibrary) {
-                                Text("Open Library")
+                            Button(onClick = onAddSongs) {
+                                Text("Add songs")
                             }
                         }
                     },
-                    libraryContent = { _, _ ->
-                        TestScreen("Library destination")
-                    },
-                    rankingsContent = {
+                    rankingsContent = { _, _ ->
                         TestScreen("Rankings destination")
                     },
-                    settingsContent = {}
+                    settingsContent = {},
+                    addSongsContent = { onDismiss ->
+                        TestScreen("Add songs destination") {
+                            Button(onClick = onDismiss) {
+                                Text("Dismiss")
+                            }
+                        }
+                    }
                 )
             }
         }
 
         composeRule.onNodeWithText("Matchups destination").assertIsDisplayed()
-        composeRule.onNodeWithText("Open Library").performClick()
-        composeRule.onNodeWithText("Library destination").assertIsDisplayed()
+        composeRule.onNodeWithText("Add songs").performClick()
+        composeRule.onNodeWithText("Add songs destination").assertIsDisplayed()
 
-        composeRule.onNodeWithText("Matchups").performClick()
+        composeRule.onNodeWithText("Dismiss").performClick()
+        composeRule.onNodeWithText("Add songs destination").assertDoesNotExist()
         composeRule.onNodeWithText("Matchups destination").assertIsDisplayed()
-        composeRule.onNodeWithText("Library destination").assertDoesNotExist()
-
-        composeRule.onNodeWithText("Library").performClick()
-        composeRule.onNodeWithText("Library destination").assertIsDisplayed()
     }
 }
 

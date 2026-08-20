@@ -123,6 +123,122 @@ class YoutubeMusicPlaylistClientTest {
         assertEquals("Midnight City", preview.importableTracks.single().title)
         assertEquals("M83", preview.importableTracks.single().artist)
         assertEquals("Hurry Up, We're Dreaming", preview.importableTracks.single().album)
+        assertEquals("abc123", preview.importableTracks.single().externalId)
+    }
+
+    @Test
+    fun `resolves the real video id nested under playlistItemData, not a synthetic hash`() {
+        val preview = client.parseBrowseResponse(
+            playlistId = "PL123",
+            playlistTitle = "Night Drive",
+            body = """
+                {
+                  "contents": [
+                    {
+                      "musicResponsiveListItemRenderer": {
+                        "playlistItemData": { "videoId": "abc123" },
+                        "flexColumns": [
+                          {
+                            "musicResponsiveListItemFlexColumnRenderer": {
+                              "text": { "runs": [{ "text": "Midnight City" }] }
+                            }
+                          },
+                          {
+                            "musicResponsiveListItemFlexColumnRenderer": {
+                              "text": { "runs": [{ "text": "M83" }] }
+                            }
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "musicResponsiveListItemRenderer": {
+                        "playlistItemData": { "videoId": "def456" },
+                        "flexColumns": [
+                          {
+                            "musicResponsiveListItemFlexColumnRenderer": {
+                              "text": { "runs": [{ "text": "Genesis" }] }
+                            }
+                          },
+                          {
+                            "musicResponsiveListItemFlexColumnRenderer": {
+                              "text": { "runs": [{ "text": "Justice" }] }
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                }
+            """.trimIndent()
+        )
+
+        assertEquals(2, preview.importableTracks.size)
+        val externalIds = preview.importableTracks.map { it.externalId }.toSet()
+        assertTrue("abc123" in externalIds)
+        assertTrue("def456" in externalIds)
+    }
+
+    @Test
+    fun `ignores menu action text and overlay navigation fragments when parsing a row`() {
+        val preview = client.parseBrowseResponse(
+            playlistId = "PL123",
+            playlistTitle = "Night Drive",
+            body = """
+                {
+                  "contents": [{
+                    "musicResponsiveListItemRenderer": {
+                      "playlistItemData": { "videoId": "abc123" },
+                      "flexColumns": [
+                        {
+                          "musicResponsiveListItemFlexColumnRenderer": {
+                            "text": { "runs": [{ "text": "Midnight City" }] }
+                          }
+                        },
+                        {
+                          "musicResponsiveListItemFlexColumnRenderer": {
+                            "text": {
+                              "runs": [
+                                { "text": "M83" },
+                                { "text": " • " },
+                                { "text": "Hurry Up, We're Dreaming" }
+                              ]
+                            }
+                          }
+                        }
+                      ],
+                      "overlay": {
+                        "musicItemThumbnailOverlayRenderer": {
+                          "content": {
+                            "musicPlayButtonRenderer": {
+                              "playNavigationEndpoint": {
+                                "watchEndpoint": { "videoId": "abc123" }
+                              }
+                            }
+                          }
+                        }
+                      },
+                      "menu": {
+                        "menuRenderer": {
+                          "items": [
+                            { "menuNavigationItemRenderer": { "text": { "runs": [{ "text": "Add to queue" }] } } },
+                            { "menuNavigationItemRenderer": { "text": { "runs": [{ "text": "Start radio" }] } } },
+                            { "menuNavigationItemRenderer": { "text": { "runs": [{ "text": "Save to playlist" }] } } }
+                          ]
+                        }
+                      }
+                    }
+                  }]
+                }
+            """.trimIndent()
+        )
+
+        assertEquals(1, preview.importableTracks.size)
+        val track = preview.importableTracks.single()
+        assertEquals("abc123", track.externalId)
+        assertEquals("Midnight City", track.title)
+        assertEquals("M83", track.artist)
+        assertEquals("Hurry Up, We're Dreaming", track.album)
     }
 
     @Test

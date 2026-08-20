@@ -95,15 +95,7 @@ data class LibraryUiState(
     val tombstoneResolutions: Map<String, TombstoneImportResolution> = emptyMap(),
     val jsonImportRepairedCount: Int? = null,
     val ratingQueue: ImportRatingQueueState? = null
-) {
-    fun isSearchMessage(): Boolean =
-        isSearching ||
-            statusMessage == "Searching iTunes..." ||
-            statusMessage == "Keep typing to search iTunes." ||
-            statusMessage.startsWith("Found ") ||
-            statusMessage.startsWith("No songs found for ") ||
-            statusMessage == "iTunes search failed."
-}
+)
 
 private data class SongLookupKey(
     val title: String,

@@ -1,9 +1,12 @@
 package com.songladder.android.ui.settings
 
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.hasScrollAction
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollToNode
 import com.songladder.android.domain.model.DeletedRankingHistory
 import com.songladder.android.ui.theme.SongLadderTheme
 import org.junit.Assert.assertEquals
@@ -45,6 +48,7 @@ class SettingsDialogTest {
             }
         }
 
+        composeRule.onNode(hasScrollAction()).performScrollToNode(hasText("Delete 1 history"))
         composeRule.onNodeWithText("Delete 1 history").performClick()
         composeRule.runOnIdle {
             assertEquals(0, deleteCount)

@@ -28,6 +28,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.ExpandLess
 import androidx.compose.material.icons.rounded.ExpandMore
@@ -84,7 +85,8 @@ import com.songladder.android.ui.components.SongRatingControl
 @Composable
 fun RankingsScreen(
     viewModel: RankingsViewModel,
-    onOpenSettings: () -> Unit = {}
+    onOpenSettings: () -> Unit = {},
+    onAddSongs: () -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
@@ -110,7 +112,8 @@ fun RankingsScreen(
         onDismissTip = viewModel::dismissRankingsTip,
         onDeleteSong = viewModel::deleteSong,
         onUndoDelete = viewModel::undoDelete,
-        onOpenSettings = onOpenSettings
+        onOpenSettings = onOpenSettings,
+        onAddSongs = onAddSongs
     )
 }
 
@@ -132,6 +135,7 @@ internal fun RankingsScreenContent(
     onDeleteSong: (Song) -> Unit,
     onUndoDelete: () -> Unit,
     onOpenSettings: () -> Unit,
+    onAddSongs: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -189,6 +193,12 @@ internal fun RankingsScreenContent(
                             )
                         )
                     }
+                }
+                IconButton(onClick = onAddSongs) {
+                    Icon(
+                        imageVector = Icons.Rounded.Add,
+                        contentDescription = stringResource(R.string.rankings_open_library)
+                    )
                 }
                 IconButton(onClick = onOpenSettings) {
                     Icon(

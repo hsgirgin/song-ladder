@@ -409,8 +409,8 @@ class YoutubeMusicPlaylistClient(
     }
 
     private fun parsePlaylistRow(element: JsonObject, playlistId: String): ParsedPlaylistRow? {
-        val videoId = element.stringValue("videoId") ?: element.stringValue("playlistSetVideoId")
-        val texts = extractTextValues(element)
+        val videoId = extractRowVideoId(element)
+        val texts = extractRowTexts(element)
             .map { it.cleanTextToken() }
             .filter { it.isNotBlank() && !it.isNoiseToken() }
             .distinct()
@@ -431,6 +431,55 @@ class YoutubeMusicPlaylistClient(
             album = album,
             artworkUrl = artworkUrl
         )
+    }
+
+    private fun extractRowVideoId(element: JsonObject): String? {
+        element.stringValue("videoId")?.let { return it }
+        element.stringValue("playlistSetVideoId")?.let { return it }
+
+        val renderer = element["musicResponsiveListItemRenderer"]?.jsonObject
+            ?: element["playlistPanelVideoRenderer"]?.jsonObject
+        if (renderer != null) {
+            renderer["playlistItemData"]?.jsonObject?.stringValue("videoId")?.let { return it }
+            renderer.stringValue("videoId")?.let { return it }
+            renderer.stringValue("playlistSetVideoId")?.let { return it }
+        }
+
+        return findFirstVideoId(element)
+    }
+
+    private fun findFirstVideoId(element: JsonElement): String? {
+        return when (element) {
+            is JsonObject -> {
+                element.stringValue("videoId")?.let { return it }
+                element.values.firstNotNullOfOrNull { child -> findFirstVideoId(child) }
+            }
+
+            is JsonArray -> element.firstNotNullOfOrNull { child -> findFirstVideoId(child) }
+            else -> null
+        }
+    }
+
+    private fun extractRowTexts(element: JsonObject): List<String> {
+        val listItemRenderer = element["musicResponsiveListItemRenderer"]?.jsonObject
+        if (listItemRenderer != null) {
+            val flexColumns = listItemRenderer["flexColumns"]?.jsonArray
+            if (flexColumns != null) {
+                val texts = mutableListOf<String>()
+                flexColumns.forEach { column -> collectTextValues(column, texts) }
+                if (texts.isNotEmpty()) return texts
+            }
+        }
+
+        val panelRenderer = element["playlistPanelVideoRenderer"]?.jsonObject
+        if (panelRenderer != null) {
+            val texts = mutableListOf<String>()
+            panelRenderer["title"]?.let { collectTextValues(it, texts) }
+            panelRenderer["shortBylineText"]?.let { collectTextValues(it, texts) }
+            if (texts.isNotEmpty()) return texts
+        }
+
+        return extractTextValues(element)
     }
 
     private fun extractTextValues(element: JsonElement): List<String> {
