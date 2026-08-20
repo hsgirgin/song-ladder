@@ -17,7 +17,6 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -37,26 +36,16 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.songladder.android.R
 import com.songladder.android.domain.model.DeletedRankingHistory
-import com.songladder.android.domain.model.PlaylistImportPreview
 import com.songladder.android.domain.model.Song
 import com.songladder.android.domain.model.formatScoreTenths
 import com.songladder.android.ui.components.SongArtwork
 import com.songladder.android.ui.library.LibraryViewModel
 
 data class LibrarySettingsState(
-    val songs: List<Song> = emptyList(),
-    val youtubeMusicPlaylistUrl: String = "",
-    val isPreviewLoading: Boolean = false,
-    val youtubeMusicPreview: PlaylistImportPreview? = null,
-    val previewError: String? = null,
-    val isImportingPreview: Boolean = false
+    val songs: List<Song> = emptyList()
 )
 
 data class LibrarySettingsActions(
-    val onYoutubeMusicPlaylistUrlChange: (String) -> Unit = {},
-    val onPreviewYoutubeMusicPlaylist: () -> Unit = {},
-    val onConfirmYoutubeMusicPreview: () -> Unit = {},
-    val onClearYoutubeMusicPreview: () -> Unit = {},
     val onImportJson: () -> Unit = {},
     val onExportJson: () -> Unit = {},
     val onResetLibrary: () -> Unit = {},
@@ -92,18 +81,9 @@ fun SettingsDialog(
         onClearSelection = viewModel::clearSelection,
         onDeleteSelected = viewModel::deleteSelectedRankingHistory,
         libraryState = LibrarySettingsState(
-            songs = libraryUiState.songs,
-            youtubeMusicPlaylistUrl = libraryUiState.youtubeMusicPlaylistUrl,
-            isPreviewLoading = libraryUiState.isPreviewLoading,
-            youtubeMusicPreview = libraryUiState.youtubeMusicPreview,
-            previewError = libraryUiState.previewError,
-            isImportingPreview = libraryUiState.isImportingPreview
+            songs = libraryUiState.songs
         ),
         libraryActions = LibrarySettingsActions(
-            onYoutubeMusicPlaylistUrlChange = libraryViewModel::updateYoutubeMusicPlaylistUrl,
-            onPreviewYoutubeMusicPlaylist = libraryViewModel::previewYoutubeMusicPlaylist,
-            onConfirmYoutubeMusicPreview = libraryViewModel::confirmYoutubeMusicPreviewImport,
-            onClearYoutubeMusicPreview = libraryViewModel::clearYoutubeMusicPreview,
             onImportJson = { showImportConfirm = true },
             onExportJson = { exportLauncher.launch("song-ladder-export.json") },
             onResetLibrary = { showResetConfirm = true },
@@ -225,19 +205,6 @@ internal fun SettingsDialogContent(
                         text = "Your library",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold
-                    )
-                }
-                item {
-                    YoutubeMusicImportCard(
-                        youtubeMusicPlaylistUrl = libraryState.youtubeMusicPlaylistUrl,
-                        isPreviewLoading = libraryState.isPreviewLoading,
-                        youtubeMusicPreview = libraryState.youtubeMusicPreview,
-                        previewError = libraryState.previewError,
-                        isImportingPreview = libraryState.isImportingPreview,
-                        onYoutubeMusicPlaylistUrlChange = libraryActions.onYoutubeMusicPlaylistUrlChange,
-                        onPreviewYoutubeMusicPlaylist = libraryActions.onPreviewYoutubeMusicPlaylist,
-                        onConfirmYoutubeMusicPreview = libraryActions.onConfirmYoutubeMusicPreview,
-                        onClearYoutubeMusicPreview = libraryActions.onClearYoutubeMusicPreview
                     )
                 }
                 if (libraryState.songs.isNotEmpty()) {
@@ -444,103 +411,6 @@ private fun SettingsStatusText(status: SettingsStatus) {
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         style = MaterialTheme.typography.labelMedium
     )
-}
-
-@Composable
-private fun YoutubeMusicImportCard(
-    youtubeMusicPlaylistUrl: String,
-    isPreviewLoading: Boolean,
-    youtubeMusicPreview: PlaylistImportPreview?,
-    previewError: String?,
-    isImportingPreview: Boolean,
-    onYoutubeMusicPlaylistUrlChange: (String) -> Unit,
-    onPreviewYoutubeMusicPlaylist: () -> Unit,
-    onConfirmYoutubeMusicPreview: () -> Unit,
-    onClearYoutubeMusicPreview: () -> Unit
-) {
-    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("Experimental playlist import", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            Text(
-                "Paste a public YouTube Music playlist link to preview tracks before import.",
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            OutlinedTextField(
-                value = youtubeMusicPlaylistUrl,
-                onValueChange = onYoutubeMusicPlaylistUrlChange,
-                label = { Text("YouTube Music playlist URL") },
-                modifier = Modifier.fillMaxWidth()
-            )
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Button(
-                    onClick = onPreviewYoutubeMusicPlaylist,
-                    enabled = !isPreviewLoading && !isImportingPreview,
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Text(if (isPreviewLoading) "Previewing..." else "Preview playlist")
-                }
-                if (youtubeMusicPreview != null || previewError != null) {
-                    TextButton(onClick = onClearYoutubeMusicPreview) {
-                        Text("Clear")
-                    }
-                }
-            }
-            if (!previewError.isNullOrBlank()) {
-                Text(previewError, color = MaterialTheme.colorScheme.error)
-            }
-            youtubeMusicPreview?.let { preview ->
-                YoutubeMusicPreviewCard(
-                    preview = preview,
-                    isImporting = isImportingPreview,
-                    onConfirmImport = onConfirmYoutubeMusicPreview
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun YoutubeMusicPreviewCard(
-    preview: PlaylistImportPreview,
-    isImporting: Boolean,
-    onConfirmImport: () -> Unit
-) {
-    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
-        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text(preview.playlistTitle, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            Text(
-                "${preview.importableTracks.size} ready to import",
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            if (preview.ambiguousTracks.isNotEmpty()) {
-                Text(
-                    "${preview.ambiguousTracks.size} need review and will be skipped",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                preview.ambiguousTracks.take(3).forEach { track ->
-                    Text(
-                        "• ${track.rawTitle.ifBlank { "Unknown title" }} — ${track.rawArtist.ifBlank { track.reason }}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-            if (preview.unsupportedCount > 0) {
-                Text(
-                    "${preview.unsupportedCount} unsupported items were ignored",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-            Button(
-                onClick = onConfirmImport,
-                enabled = preview.importableTracks.isNotEmpty() && !isImporting,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text(if (isImporting) "Importing..." else "Import ready tracks")
-            }
-        }
-    }
 }
 
 @Composable

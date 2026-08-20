@@ -84,8 +84,6 @@
     <string name="library_restore_history_action">Restore %1$s by %2$s</string>
     <string name="library_start_fresh_action">Start fresh</string>
     <string name="library_cancel_import_action">Cancel import</string>
-    <string name="library_tip_search">Imported songs can open a rating step right away, so you can score them before leaving Library.</string>
-    <string name="library_tip_add">Manual additions can be rated immediately after they are saved.</string>
     <string name="add_song_sheet_close">Close add songs</string>
     <string name="add_song_search_clear">Clear search</string>
     <string name="add_song_search_icon">Search</string>
