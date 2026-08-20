@@ -1,5 +1,7 @@
 package com.songladder.android.ui.settings
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -9,6 +11,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -22,6 +26,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -31,13 +36,31 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.songladder.android.R
 import com.songladder.android.domain.model.DeletedRankingHistory
 import com.songladder.android.domain.model.formatScoreTenths
+import com.songladder.android.ui.library.LibraryViewModel
+
+data class LibrarySettingsActions(
+    val onImportJson: () -> Unit = {},
+    val onExportJson: () -> Unit = {},
+    val onResetLibrary: () -> Unit = {}
+)
 
 @Composable
 fun SettingsDialog(
     viewModel: SettingsViewModel,
+    libraryViewModel: LibraryViewModel,
     onDismiss: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+    var showImportConfirm by rememberSaveable { mutableStateOf(false) }
+    var showResetConfirm by rememberSaveable { mutableStateOf(false) }
+
+    val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri?.let { libraryViewModel.importJson(contentResolver = context.contentResolver, uri = it) }
+    }
+    val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+        uri?.let { libraryViewModel.exportJson(contentResolver = context.contentResolver, uri = it) }
+    }
 
     SettingsDialogContent(
         uiState = uiState,
@@ -46,8 +69,59 @@ fun SettingsDialog(
         onShowTipsAgain = viewModel::showTipsAgain,
         onHistorySelectionChanged = viewModel::toggleDeletedHistorySelection,
         onClearSelection = viewModel::clearSelection,
-        onDeleteSelected = viewModel::deleteSelectedRankingHistory
+        onDeleteSelected = viewModel::deleteSelectedRankingHistory,
+        libraryActions = LibrarySettingsActions(
+            onImportJson = { showImportConfirm = true },
+            onExportJson = { exportLauncher.launch("song-ladder-export.json") },
+            onResetLibrary = { showResetConfirm = true }
+        )
     )
+
+    if (showImportConfirm) {
+        AlertDialog(
+            onDismissRequest = { showImportConfirm = false },
+            title = { Text("Replace library?") },
+            text = { Text("Importing JSON replaces the current library and ranking history with the selected file.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showImportConfirm = false
+                        importLauncher.launch(arrayOf("application/json"))
+                    }
+                ) {
+                    Text("Import")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showImportConfirm = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    if (showResetConfirm) {
+        AlertDialog(
+            onDismissRequest = { showResetConfirm = false },
+            title = { Text("Reset library?") },
+            text = { Text("This removes every song and clears ranking progress.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showResetConfirm = false
+                        libraryViewModel.resetLibrary()
+                    }
+                ) {
+                    Text("Reset")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showResetConfirm = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
 }
 
 @Composable
@@ -59,6 +133,7 @@ internal fun SettingsDialogContent(
     onHistorySelectionChanged: (String) -> Unit,
     onClearSelection: () -> Unit,
     onDeleteSelected: () -> Unit,
+    libraryActions: LibrarySettingsActions = LibrarySettingsActions(),
     modifier: Modifier = Modifier
 ) {
     var showDeleteConfirm by rememberSaveable { mutableStateOf(false) }
@@ -84,6 +159,24 @@ internal fun SettingsDialogContent(
                 item {
                     OutlinedButton(onClick = onShowTipsAgain, modifier = Modifier.fillMaxWidth()) {
                         Text(stringResource(R.string.settings_show_tips_again))
+                    }
+                }
+                item {
+                    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Text("Backup and reset", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                OutlinedButton(onClick = libraryActions.onImportJson, modifier = Modifier.weight(1f)) {
+                                    Text("Import JSON")
+                                }
+                                OutlinedButton(onClick = libraryActions.onExportJson, modifier = Modifier.weight(1f)) {
+                                    Text("Export JSON")
+                                }
+                            }
+                            OutlinedButton(onClick = libraryActions.onResetLibrary, modifier = Modifier.fillMaxWidth()) {
+                                Text("Reset library")
+                            }
+                        }
                     }
                 }
                 item {
@@ -268,3 +361,4 @@ private fun SettingsStatusText(status: SettingsStatus) {
         style = MaterialTheme.typography.labelMedium
     )
 }
+
