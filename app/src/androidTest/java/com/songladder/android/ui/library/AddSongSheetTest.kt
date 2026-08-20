@@ -2,6 +2,8 @@ package com.songladder.android.ui.library
 
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -18,21 +20,25 @@ class AddSongSheetTest {
     val composeRule = createComposeRule()
 
     @Test
-    fun addTab_keepsActionsReachableAtCompactHeight() {
+    fun addSection_keepsActionsReachableAtCompactHeight() {
         composeRule.setContent {
             SongLadderTheme {
-                AddTabContent(
-                    title = "",
-                    artist = "",
-                    album = "",
-                    onTitleChange = {},
-                    onArtistChange = {},
-                    onAlbumChange = {},
-                    onAddSong = {},
-                    modifier = Modifier
-                        .width(320.dp)
-                        .height(280.dp)
-                )
+                LazyColumn(modifier = Modifier.width(320.dp).height(280.dp)) {
+                    items(3) {
+                        androidx.compose.material3.Text("Spacer item $it")
+                    }
+                    item {
+                        AddSongSectionContent(
+                            title = "",
+                            artist = "",
+                            album = "",
+                            onTitleChange = {},
+                            onArtistChange = {},
+                            onAlbumChange = {},
+                            onAddSong = {}
+                        )
+                    }
+                }
             }
         }
 
