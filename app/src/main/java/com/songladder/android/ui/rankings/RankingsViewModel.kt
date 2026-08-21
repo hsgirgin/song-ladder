@@ -279,13 +279,18 @@ class RankingsViewModel(
 
     fun dismissSuggestionLater(subjectId: String) {
         val row = uiState.value.suggestionRows.firstOrNull { it.suggestion.subjectId == subjectId } ?: return
+        val previousSelection = localState.value.selectedSuggestionIds
         localState.update { it.copy(selectedSuggestionIds = it.selectedSuggestionIds - subjectId) }
         viewModelScope.launch {
             rankingRepository.dismissSuggestionLater(
                 subjectId = subjectId,
                 suggestedScoreTenths = row.suggestion.suggestedScoreTenths,
                 lastEventSequenceId = row.suggestion.lastEventSequenceId
-            )
+            ).onFailure {
+                localState.update { state ->
+                    state.copy(selectedSuggestionIds = previousSelection, status = RankingsStatus.SaveFailed)
+                }
+            }
         }
     }
 

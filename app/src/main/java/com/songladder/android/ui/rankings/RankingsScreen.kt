@@ -1141,11 +1141,12 @@ private fun LazyListState.firstVisibleSongKey(): String? =
     }
 
 private fun RankingsUiState.gridIndexForSong(songId: String): Int? {
+    val hintOffset = if (settings.showTips) 1 else 0
     val suggestionOffset = if (suggestionRows.isNotEmpty()) 1 else 0
     val rankedIndex = rankedSongs.indexOfFirst { it.song.id == songId }
-    if (rankedIndex >= 0) return rankedIndex + 1 + suggestionOffset
+    if (rankedIndex >= 0) return rankedIndex + hintOffset + suggestionOffset
     val unratedIndex = unratedSongs.indexOfFirst { it.id == songId }
-    if (unratedIndex >= 0 && unratedExpanded) return rankedSongs.size + 2 + suggestionOffset + unratedIndex
+    if (unratedIndex >= 0 && unratedExpanded) return rankedSongs.size + hintOffset + 1 + suggestionOffset + unratedIndex
     return null
 }
 

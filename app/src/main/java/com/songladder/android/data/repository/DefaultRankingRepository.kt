@@ -144,25 +144,27 @@ class DefaultRankingRepository(
      */
     private suspend fun applyScore(resultId: String, current: RankingSubject, scoreTenths: Int): ScoreSaveResult {
         val beforeOrder = currentSongOrder()
-        if (current.scoreTenths == scoreTenths) {
-            return ScoreSaveResult(songId = resultId, scoreTenths = scoreTenths, visibleOrderChanged = false)
-        }
         val epochSequence = matchupEventDao.getAll().maxOfOrNull { it.sequenceId } ?: 0L
-        rankingSubjectDao.update(
-            current.copy(
-                scoreTenths = scoreTenths,
-                elo = seedEloForScore(scoreTenths),
-                responsivenessEpoch = if (current.scoreTenths == null) {
-                    ResponsivenessEpoch.NEW
-                } else {
-                    ResponsivenessEpoch.EDITED
-                },
-                completedMatchupsInEpoch = 0,
-                responsivenessEpochSequence = epochSequence,
-                lastRatedAt = nextEventTimestamp()
-            ).toEntity()
-        )
-        rebuildCaches()
+        if (current.scoreTenths != scoreTenths) {
+            rankingSubjectDao.update(
+                current.copy(
+                    scoreTenths = scoreTenths,
+                    elo = seedEloForScore(scoreTenths),
+                    responsivenessEpoch = if (current.scoreTenths == null) {
+                        ResponsivenessEpoch.NEW
+                    } else {
+                        ResponsivenessEpoch.EDITED
+                    },
+                    completedMatchupsInEpoch = 0,
+                    responsivenessEpochSequence = epochSequence,
+                    lastRatedAt = nextEventTimestamp()
+                ).toEntity()
+            )
+            rebuildCaches()
+        }
+        // Always checkpoint, even when the score didn't change: accepting a suggestion at
+        // the subject's current score must still dismiss it, or the identical suggestion
+        // reappears on the next recomputation.
         suggestionDismissalDao.upsert(
             SuggestionDismissalEntity(
                 subjectId = current.id,
