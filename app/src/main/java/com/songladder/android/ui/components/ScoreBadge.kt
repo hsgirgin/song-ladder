@@ -1,5 +1,6 @@
 package com.songladder.android.ui.components
 
+import android.graphics.Color as AndroidColor
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -13,26 +14,60 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.songladder.android.R
 import com.songladder.android.domain.model.formatScoreTenths
+import kotlin.math.roundToInt
 
 private val ScoreGradientRed = Color(0xFFE53935)
 private val ScoreGradientYellow = Color(0xFFFDD835)
 private val ScoreGradientGreen = Color(0xFF43A047)
 
-/** Continuous red -> yellow -> green interpolation across the 0.0-10.0 score range. */
+private val ScoreGradientRedHsv = ScoreGradientRed.toHsv()
+private val ScoreGradientYellowHsv = ScoreGradientYellow.toHsv()
+private val ScoreGradientGreenHsv = ScoreGradientGreen.toHsv()
+
+/**
+ * Continuous red -> yellow -> green interpolation across the 0.0-10.0 score range.
+ * Interpolates through HSV (sweeping hue) rather than straight RGB, which avoids the
+ * dull, muddy oranges a direct RGB lerp between red and yellow produces partway through.
+ * The three anchor scores (0, 5.0, 10.0) return their exact literal colors.
+ */
 fun scoreGradientColor(scoreTenths: Int): Color {
     val fraction = (scoreTenths / 100f).coerceIn(0f, 1f)
-    return if (fraction <= 0.5f) {
-        lerp(ScoreGradientRed, ScoreGradientYellow, fraction / 0.5f)
-    } else {
-        lerp(ScoreGradientYellow, ScoreGradientGreen, (fraction - 0.5f) / 0.5f)
+    return when (fraction) {
+        0f -> ScoreGradientRed
+        0.5f -> ScoreGradientYellow
+        1f -> ScoreGradientGreen
+        else -> if (fraction < 0.5f) {
+            lerpHsv(ScoreGradientRedHsv, ScoreGradientYellowHsv, fraction / 0.5f)
+        } else {
+            lerpHsv(ScoreGradientYellowHsv, ScoreGradientGreenHsv, (fraction - 0.5f) / 0.5f)
+        }
     }
+}
+
+private data class Hsv(val hue: Float, val saturation: Float, val value: Float)
+
+private fun Color.toHsv(): Hsv {
+    val hsv = FloatArray(3)
+    AndroidColor.RGBToHSV(
+        (red * 255f).roundToInt(),
+        (green * 255f).roundToInt(),
+        (blue * 255f).roundToInt(),
+        hsv
+    )
+    return Hsv(hsv[0], hsv[1], hsv[2])
+}
+
+private fun lerpHsv(start: Hsv, end: Hsv, t: Float): Color {
+    val hue = start.hue + (end.hue - start.hue) * t
+    val saturation = start.saturation + (end.saturation - start.saturation) * t
+    val value = start.value + (end.value - start.value) * t
+    return Color(AndroidColor.HSVToColor(floatArrayOf(hue, saturation, value)))
 }
 
 /**
