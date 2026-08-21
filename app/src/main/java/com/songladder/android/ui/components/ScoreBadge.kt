@@ -1,6 +1,5 @@
 package com.songladder.android.ui.components
 
-import android.graphics.Color as AndroidColor
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -20,7 +19,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.songladder.android.R
 import com.songladder.android.domain.model.formatScoreTenths
-import kotlin.math.roundToInt
+import kotlin.math.abs
 
 private val ScoreGradientRed = Color(0xFFE53935)
 private val ScoreGradientYellow = Color(0xFFFDD835)
@@ -50,24 +49,46 @@ fun scoreGradientColor(scoreTenths: Int): Color {
     }
 }
 
+/**
+ * Plain-Kotlin HSV conversion, deliberately not android.graphics.Color:
+ * that class's methods are unmocked stubs under local JVM unit tests (only
+ * instrumented tests get a real Android runtime), so calling them here would
+ * crash ScoreBadgeTest with an ExceptionInInitializerError.
+ */
 private data class Hsv(val hue: Float, val saturation: Float, val value: Float)
 
 private fun Color.toHsv(): Hsv {
-    val hsv = FloatArray(3)
-    AndroidColor.RGBToHSV(
-        (red * 255f).roundToInt(),
-        (green * 255f).roundToInt(),
-        (blue * 255f).roundToInt(),
-        hsv
-    )
-    return Hsv(hsv[0], hsv[1], hsv[2])
+    val max = maxOf(red, green, blue)
+    val min = minOf(red, green, blue)
+    val delta = max - min
+    val value = max
+    val saturation = if (max == 0f) 0f else delta / max
+    val hue = when {
+        delta == 0f -> 0f
+        max == red -> 60f * (((green - blue) / delta).mod(6f))
+        max == green -> 60f * (((blue - red) / delta) + 2f)
+        else -> 60f * (((red - green) / delta) + 4f)
+    }
+    return Hsv(hue, saturation, value)
 }
 
 private fun lerpHsv(start: Hsv, end: Hsv, t: Float): Color {
     val hue = start.hue + (end.hue - start.hue) * t
     val saturation = start.saturation + (end.saturation - start.saturation) * t
     val value = start.value + (end.value - start.value) * t
-    return Color(AndroidColor.HSVToColor(floatArrayOf(hue, saturation, value)))
+    val c = value * saturation
+    val hPrime = hue / 60f
+    val x = c * (1f - abs(hPrime.mod(2f) - 1f))
+    val (r1, g1, b1) = when {
+        hPrime < 1f -> Triple(c, x, 0f)
+        hPrime < 2f -> Triple(x, c, 0f)
+        hPrime < 3f -> Triple(0f, c, x)
+        hPrime < 4f -> Triple(0f, x, c)
+        hPrime < 5f -> Triple(x, 0f, c)
+        else -> Triple(c, 0f, x)
+    }
+    val m = value - c
+    return Color(red = r1 + m, green = g1 + m, blue = b1 + m)
 }
 
 /**
