@@ -207,6 +207,60 @@ class RankingsScreenTest {
     }
 
     @Test
+    fun gridMode_suggestionRowShowsTheOldScoreAlongsideTheNewOneWhenRated() {
+        val song = rankingsSong(id = "song-1", scoreTenths = 60)
+        val otherSong = rankingsSong(id = "song-2", scoreTenths = null)
+
+        composeRule.setContent {
+            SongLadderTheme {
+                RankingsScreenContent(
+                    uiState = RankingsUiState(
+                        allSongs = listOf(song, otherSong),
+                        unratedSongs = listOf(otherSong),
+                        suggestionRows = listOf(
+                            SuggestionRow(
+                                suggestion = Suggestion(
+                                    subjectId = "song-1",
+                                    suggestedScoreTenths = 85,
+                                    comparisonCount = 5,
+                                    scoreGapTenths = 25,
+                                    lastEventSequenceId = 5L
+                                ),
+                                song = song
+                            )
+                        ),
+                        selectedTab = RankingsTab.SONGS,
+                        presentation = RankingPresentation.GRID
+                    ),
+                    onTabSelected = {},
+                    onSearchActiveChanged = {},
+                    onSearchQueryChanged = {},
+                    onPresentationChanged = {},
+                    onToggleUnrated = {},
+                    onToggleStats = {},
+                    onTogglePreview = {},
+                    onShowDetails = {},
+                    onHideDetails = {},
+                    onSaveScore = { _, _ -> },
+                    onDismissTip = {},
+                    onDeleteSong = {},
+                    onUndoDelete = {},
+                    onAcceptSuggestion = { _, _ -> },
+                    onDismissSuggestion = {},
+                    onToggleSuggestionSelection = {},
+                    onClearSuggestionSelection = {},
+                    onAcceptSelectedSuggestions = {},
+                    onOpenSettings = {},
+                    onAddSongs = {}
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("6.0").assertIsDisplayed()
+        composeRule.onNodeWithText("8.5").assertIsDisplayed()
+    }
+
+    @Test
     fun screenContent_exposesTabsSearchGridModeAndSettingsAction() {
         var openedSettings = false
         var dismissedTip = false

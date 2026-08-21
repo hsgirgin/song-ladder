@@ -178,7 +178,7 @@ fun RankScreen(
 }
 
 @Composable
-private fun CompactSuggestionCard(
+internal fun CompactSuggestionCard(
     suggestion: Suggestion,
     song: Song,
     onAccept: (Int) -> Unit,
@@ -201,11 +201,16 @@ private fun CompactSuggestionCard(
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                ScoreBadge(scoreTenths = suggestion.suggestedScoreTenths)
-                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                SongArtwork(artworkUrl = song.artworkUrl, modifier = Modifier.size(56.dp))
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text(song.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text(song.artist, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
+                song.scoreTenths?.let { oldScoreTenths ->
+                    ScoreBadge(scoreTenths = oldScoreTenths, size = 28.dp)
+                    Text("→", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                ScoreBadge(scoreTenths = suggestion.suggestedScoreTenths)
             }
             if (editing) {
                 SongRatingControl(

@@ -982,39 +982,51 @@ private fun SuggestionRowCard(
     onDismissLater: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Row(
-        modifier = modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Checkbox(checked = selected, onCheckedChange = { onSelectedChange() }, enabled = enabled)
-        ScoreBadge(scoreTenths = row.suggestion.suggestedScoreTenths, size = 36.dp)
-        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(
-                text = row.song.title,
-                style = MaterialTheme.typography.bodyLarge,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Text(
-                text = pluralStringResource(
-                    R.plurals.rankings_suggestion_comparison_count,
-                    row.suggestion.comparisonCount,
-                    row.suggestion.comparisonCount
-                ),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Checkbox(checked = selected, onCheckedChange = { onSelectedChange() }, enabled = enabled)
+            SongArtwork(artworkUrl = row.song.artworkUrl, modifier = Modifier.size(40.dp))
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    text = row.song.title,
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = pluralStringResource(
+                        R.plurals.rankings_suggestion_comparison_count,
+                        row.suggestion.comparisonCount,
+                        row.suggestion.comparisonCount
+                    ),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            row.song.scoreTenths?.let { oldScoreTenths ->
+                ScoreBadge(scoreTenths = oldScoreTenths, size = 28.dp)
+                Text("→", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            ScoreBadge(scoreTenths = row.suggestion.suggestedScoreTenths, size = 36.dp)
         }
-        TextButton(onClick = onEdit, enabled = enabled) {
-            Text(stringResource(R.string.rankings_suggestion_edit))
-        }
-        TextButton(onClick = onDismissLater, enabled = enabled) {
-            Text(stringResource(R.string.rank_skip_for_now))
-        }
-        Button(onClick = onAccept, enabled = enabled) {
-            Text(stringResource(R.string.rankings_suggestion_accept))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.End)
+        ) {
+            TextButton(onClick = onEdit, enabled = enabled) {
+                Text(stringResource(R.string.rankings_suggestion_edit))
+            }
+            TextButton(onClick = onDismissLater, enabled = enabled) {
+                Text(stringResource(R.string.rank_skip_for_now))
+            }
+            Button(onClick = onAccept, enabled = enabled) {
+                Text(stringResource(R.string.rankings_suggestion_accept))
+            }
         }
     }
 }
