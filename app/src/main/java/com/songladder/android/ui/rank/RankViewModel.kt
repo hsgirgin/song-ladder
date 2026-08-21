@@ -301,20 +301,43 @@ class RankViewModel(
     }
 
     fun acceptPendingSuggestion(scoreTenths: Int) {
+        if (mutationInFlight) return
         val suggestion = uiState.value.pendingSuggestion ?: return
+        mutationInFlight = true
         viewModelScope.launch {
-            rankingRepository.acceptSuggestion(suggestion.subjectId, scoreTenths)
+            try {
+                rankingRepository.acceptSuggestion(suggestion.subjectId, scoreTenths)
+                    .onFailure {
+                        sessionState.update { state ->
+                            state.copy(transientMessage = "Could not save score. Try again.")
+                        }
+                        scheduleFeedbackClear(delayMillis = 2_500)
+                    }
+            } finally {
+                mutationInFlight = false
+            }
         }
     }
 
     fun dismissPendingSuggestionLater() {
+        if (mutationInFlight) return
         val suggestion = uiState.value.pendingSuggestion ?: return
+        mutationInFlight = true
         viewModelScope.launch {
-            rankingRepository.dismissSuggestionLater(
-                subjectId = suggestion.subjectId,
-                suggestedScoreTenths = suggestion.suggestedScoreTenths,
-                lastEventSequenceId = suggestion.lastEventSequenceId
-            )
+            try {
+                rankingRepository.dismissSuggestionLater(
+                    subjectId = suggestion.subjectId,
+                    suggestedScoreTenths = suggestion.suggestedScoreTenths,
+                    lastEventSequenceId = suggestion.lastEventSequenceId
+                ).onFailure {
+                    sessionState.update { state ->
+                        state.copy(transientMessage = "Could not dismiss suggestion. Try again.")
+                    }
+                    scheduleFeedbackClear(delayMillis = 2_500)
+                }
+            } finally {
+                mutationInFlight = false
+            }
         }
     }
 
@@ -383,6 +406,7 @@ class RankViewModel(
 
     private fun maybeStartArmedAutoplay() {
         if (!sessionState.value.autoplayArmed || !uiState.value.settings.autoPlayMatchupPreviews) return
+        if (uiState.value.pendingSuggestion != null) return
         val matchup = uiState.value.matchup ?: return
         val states = previewStates.value
         val matchupSongIds = setOf(matchup.left.id, matchup.right.id)

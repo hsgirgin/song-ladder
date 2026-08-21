@@ -222,9 +222,14 @@ class DefaultRankingRepository(
             matchupEventDao.observeAll(),
             suggestionDismissalDao.observeAll()
         ) { subjectEntities, eventEntities, dismissalEntities ->
+            val subjects = subjectEntities.map { it.toDomain() }
+            val knownSubjectIds = subjects.mapTo(mutableSetOf()) { it.id }
+            val events = eventEntities
+                .map { it.toDomain() }
+                .filter { it.firstSubjectId in knownSubjectIds && it.secondSubjectId in knownSubjectIds }
             suggestionEngine.computeSuggestions(
-                subjects = subjectEntities.map { it.toDomain() },
-                events = eventEntities.map { it.toDomain() },
+                subjects = subjects,
+                events = events,
                 dismissals = dismissalEntities.map { it.toDomain() }
             )
         }

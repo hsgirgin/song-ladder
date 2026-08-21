@@ -7,6 +7,7 @@ import com.songladder.android.data.local.MatchupEventDao
 import com.songladder.android.data.local.RankingSubjectDao
 import com.songladder.android.data.local.SongDao
 import com.songladder.android.data.local.SongLadderDatabase
+import com.songladder.android.data.local.SuggestionDismissalDao
 import com.songladder.android.data.local.toDomain
 import com.songladder.android.data.local.toSongAndRankingSubjectEntities
 import com.songladder.android.domain.model.Song
@@ -24,6 +25,7 @@ class DefaultSongRepository(
     private val rankingSubjectDao: RankingSubjectDao,
     private val matchupEventDao: MatchupEventDao? = null,
     private val appStatsDao: AppStatsDao? = null,
+    private val suggestionDismissalDao: SuggestionDismissalDao? = null,
     private val timeSource: TimeSource = TimeSource { System.currentTimeMillis() }
 ) : SongRepository {
     override fun observeSongs(): Flow<List<Song>> {
@@ -113,6 +115,7 @@ class DefaultSongRepository(
             songDao.clearSongs()
             rankingSubjectDao.clearAll()
             matchupEventDao?.clearAll()
+            suggestionDismissalDao?.clearAll()
             appStatsDao?.upsert(AppStatsEntity())
         }
     }

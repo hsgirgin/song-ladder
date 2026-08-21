@@ -141,4 +141,7 @@ interface SuggestionDismissalDao {
 
     @Query("DELETE FROM suggestion_dismissals WHERE subjectId = :subjectId")
     suspend fun delete(subjectId: String)
+
+    @Query("DELETE FROM suggestion_dismissals")
+    suspend fun clearAll()
 }

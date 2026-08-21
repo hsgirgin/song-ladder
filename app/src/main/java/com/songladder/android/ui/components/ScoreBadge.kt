@@ -18,6 +18,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.songladder.android.R
+import com.songladder.android.domain.model.MAX_SCORE_TENTHS
+import com.songladder.android.domain.model.MIN_SCORE_TENTHS
 import com.songladder.android.domain.model.formatScoreTenths
 import kotlin.math.abs
 
@@ -30,13 +32,15 @@ private val ScoreGradientYellowHsv = ScoreGradientYellow.toHsv()
 private val ScoreGradientGreenHsv = ScoreGradientGreen.toHsv()
 
 /**
- * Continuous red -> yellow -> green interpolation across the 0.0-10.0 score range.
+ * Continuous red -> yellow -> green interpolation across the valid 1.0-10.0 score range.
  * Interpolates through HSV (sweeping hue) rather than straight RGB, which avoids the
  * dull, muddy oranges a direct RGB lerp between red and yellow produces partway through.
- * The three anchor scores (0, 5.0, 10.0) return their exact literal colors.
+ * The three anchor scores (MIN_SCORE_TENTHS, midpoint, MAX_SCORE_TENTHS) return their
+ * exact literal colors.
  */
 fun scoreGradientColor(scoreTenths: Int): Color {
-    val fraction = (scoreTenths / 100f).coerceIn(0f, 1f)
+    val fraction = ((scoreTenths - MIN_SCORE_TENTHS).toFloat() / (MAX_SCORE_TENTHS - MIN_SCORE_TENTHS))
+        .coerceIn(0f, 1f)
     return when (fraction) {
         0f -> ScoreGradientRed
         0.5f -> ScoreGradientYellow
