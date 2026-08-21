@@ -131,6 +131,16 @@ class DefaultRankingRepository(
      * (looked up by ranking subject id, which is not always the same id -
      * see the tombstone-restore matching flow). [resultId] echoes back
      * whichever id the caller used, matching [saveScore]'s existing contract.
+     *
+     * Reseeding elo from the new score and replaying the full event history
+     * (below) generally does NOT reproduce the exact value just set - Elo
+     * replay is path-dependent, so a different seed produces a different
+     * trajectory. Without the checkpoint write, that reseed artifact alone
+     * could make [SuggestionEngine] immediately re-flag this subject as
+     * "disagreeing" with the score the user just confirmed, with zero new
+     * comparisons. The checkpoint records this confirmation so the engine's
+     * existing dismissal gate (new evidence + material movement) applies
+     * here too - the artifact from this replay isn't new evidence.
      */
     private suspend fun applyScore(resultId: String, current: RankingSubject, scoreTenths: Int): ScoreSaveResult {
         val beforeOrder = currentSongOrder()
@@ -153,6 +163,13 @@ class DefaultRankingRepository(
             ).toEntity()
         )
         rebuildCaches()
+        suggestionDismissalDao.upsert(
+            SuggestionDismissalEntity(
+                subjectId = current.id,
+                dismissedAtSequenceId = epochSequence,
+                dismissedScoreTenths = scoreTenths
+            )
+        )
         val afterOrder = currentSongOrder()
         return ScoreSaveResult(
             songId = resultId,
@@ -217,9 +234,7 @@ class DefaultRankingRepository(
         database.withTransaction {
             val subject = rankingSubjectDao.get(subjectId) ?: error("Ranking subject not found.")
             require(subject.tombstoneDeletedAt == null) { "Cannot score a deleted song." }
-            val result = applyScore(resultId = subjectId, current = subject.toDomain(), scoreTenths = scoreTenths)
-            suggestionDismissalDao.delete(subjectId)
-            result
+            applyScore(resultId = subjectId, current = subject.toDomain(), scoreTenths = scoreTenths)
         }
     }
 

@@ -13,7 +13,6 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -270,7 +269,12 @@ class DefaultRankingRepositoryTest {
     }
 
     @Test
-    fun acceptSuggestionSavesTheScoreAndClearsAnyExistingDismissal() = runBlocking {
+    fun acceptSuggestionRefreshesTheCheckpointInsteadOfClearingIt() = runBlocking {
+        // Reseeding elo from the accepted score and replaying the event log can
+        // land on a different implied score than the one just accepted (Elo
+        // replay is path-dependent on the seed) - without a fresh checkpoint,
+        // that reseed artifact alone could immediately re-flag this subject as
+        // "disagreeing" with the score it was just given, with no new evidence.
         insertSong(songId = "song-a", subjectId = "subject-a")
         val repository = repository()
         database.suggestionDismissalDao().upsert(
@@ -282,7 +286,20 @@ class DefaultRankingRepositoryTest {
         assertEquals(70, result.scoreTenths)
         assertEquals("subject-a", result.songId)
         assertEquals(70, database.rankingSubjectDao().get("subject-a")?.scoreTenths)
-        assertNull(database.suggestionDismissalDao().get("subject-a"))
+        val checkpoint = database.suggestionDismissalDao().get("subject-a")
+        assertEquals(70, checkpoint?.dismissedScoreTenths)
+        assertEquals(0L, checkpoint?.dismissedAtSequenceId)
+    }
+
+    @Test
+    fun savingAScoreDirectlyAlsoWritesASuggestionCheckpoint() = runBlocking {
+        insertSong(songId = "song-a", subjectId = "subject-a")
+        val repository = repository()
+
+        repository.saveScore("song-a", 80).getOrThrow()
+
+        val checkpoint = database.suggestionDismissalDao().get("subject-a")
+        assertEquals(80, checkpoint?.dismissedScoreTenths)
     }
 
     private fun repository(): DefaultRankingRepository = DefaultRankingRepository(
