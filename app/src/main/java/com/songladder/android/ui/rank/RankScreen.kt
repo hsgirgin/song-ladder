@@ -209,7 +209,7 @@ internal fun CompactSuggestionCard(
                 }
                 ScoreTransitionBadges(
                     oldScoreTenths = song.scoreTenths,
-                    newScoreTenths = suggestion.suggestedScoreTenths
+                    newScoreTenths = if (editing) draftScore else suggestion.suggestedScoreTenths
                 )
             }
             if (editing) {
@@ -217,7 +217,10 @@ internal fun CompactSuggestionCard(
                     scoreTenths = draftScore,
                     onScoreChange = { draftScore = it },
                     onSave = { onAccept(draftScore) },
-                    onCancel = { editing = false }
+                    onCancel = {
+                        draftScore = suggestion.suggestedScoreTenths
+                        editing = false
+                    }
                 )
             } else {
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.End), modifier = Modifier.fillMaxWidth()) {

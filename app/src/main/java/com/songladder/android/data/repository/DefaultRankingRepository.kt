@@ -16,7 +16,6 @@ import com.songladder.android.domain.engine.EloMatchupEngine
 import com.songladder.android.domain.engine.SuggestionEngine
 import com.songladder.android.domain.model.AppStats
 import com.songladder.android.domain.model.DeletedRankingHistory
-import com.songladder.android.domain.model.EloReplayResult
 import com.songladder.android.domain.model.MatchupOutcome
 import com.songladder.android.domain.model.MatchupEvent
 import com.songladder.android.domain.model.RankingHistoryDeletionResult
@@ -44,17 +43,6 @@ class DefaultRankingRepository(
     private val timeSource: TimeSource = TimeSource { System.currentTimeMillis() },
     private val suggestionEngine: SuggestionEngine = SuggestionEngine(matchupEngine)
 ) : RankingRepository {
-    // Populated by rebuildCaches() so observeSuggestions() can skip a second full replay when
-    // the DAO flows it reacts to still reflect the same subjects/events rebuildCaches just saw.
-    private data class ReplayCache(
-        val subjects: List<RankingSubject>,
-        val events: List<MatchupEvent>,
-        val result: EloReplayResult
-    )
-
-    @Volatile
-    private var replayCache: ReplayCache? = null
-
     override fun observeStats(): Flow<AppStats> {
         val dao = requireNotNull(appStatsDao) { "AppStatsDao is required for observeStats." }
         return dao.observeAppStats().map { it.toDomain() }
@@ -243,17 +231,10 @@ class DefaultRankingRepository(
             val events = eventEntities
                 .map { it.toDomain() }
                 .filter { it.firstSubjectId in knownSubjectIds && it.secondSubjectId in knownSubjectIds }
-            val cache = replayCache
-            val precomputedHistory = if (cache != null && cache.subjects == subjects && cache.events == events) {
-                cache.result.eloHistoryBySubject
-            } else {
-                null
-            }
             suggestionEngine.computeSuggestions(
                 subjects = subjects,
                 events = events,
-                dismissals = dismissalEntities.map { it.toDomain() },
-                precomputedHistory = precomputedHistory
+                dismissals = dismissalEntities.map { it.toDomain() }
             )
         }
 
@@ -283,24 +264,15 @@ class DefaultRankingRepository(
     private suspend fun rebuildCaches(): List<RankingSubject> {
         val subjects = rankingSubjectDao.getAll().map { it.toDomain() }
         val events = matchupEventDao.getAll().map { it.toDomain() }
-        val result = matchupEngine.replayWithHistory(subjects, events)
-        // observeSuggestions() only ever sees non-tombstoned subjects (via
-        // RankingSubjectDao.observeAll()'s WHERE clause), so key the cache on that same
-        // subset or it will never hit for libraries with any deleted ranking history.
-        val activeSubjects = result.subjects.filter { it.tombstone == null }
-        val activeSubjectIds = activeSubjects.mapTo(mutableSetOf()) { it.id }
-        val activeEvents = events.filter {
-            it.firstSubjectId in activeSubjectIds && it.secondSubjectId in activeSubjectIds
-        }
-        replayCache = ReplayCache(subjects = activeSubjects, events = activeEvents, result = result)
-        result.subjects.forEach { rankingSubjectDao.update(it.toEntity()) }
+        val replayed = matchupEngine.replay(subjects, events)
+        replayed.forEach { rankingSubjectDao.update(it.toEntity()) }
         appStatsDao?.upsert(
             AppStatsEntity(
                 matchCount = events.count { it.outcome == MatchupOutcome.WIN },
                 skipCount = events.count { it.outcome == MatchupOutcome.SKIP }
             )
         )
-        return result.subjects
+        return replayed
     }
 
     private suspend fun currentSongOrder(): List<String> = songDao.getSongsWithStats()

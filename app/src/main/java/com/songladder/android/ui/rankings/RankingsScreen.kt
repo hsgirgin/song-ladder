@@ -623,6 +623,7 @@ private fun GridScoreButton(
         enabled = enabled,
         contentPadding = PaddingValues(4.dp),
         modifier = modifier
+            .heightIn(min = 48.dp)
             .semantics {
                 stateDescription = scoreStateDescription
             }
@@ -747,7 +748,8 @@ internal fun RankingsListRow(
                 }
                 FilledTonalButton(
                     onClick = onToggleStats,
-                    contentPadding = PaddingValues(4.dp)
+                    contentPadding = PaddingValues(4.dp),
+                    modifier = Modifier.heightIn(min = 48.dp)
                 ) {
                     ScoreBadge(scoreTenths = rankedSong.song.scoreTenths, size = 40.dp)
                 }

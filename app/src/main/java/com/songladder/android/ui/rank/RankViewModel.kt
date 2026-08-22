@@ -228,6 +228,7 @@ class RankViewModel(
     fun rankWinner(winnerId: String, loserId: String) {
         if (mutationInFlight) return
         if (uiState.value.visualFeedback != RankVisualFeedback.None) return
+        if (uiState.value.pendingSuggestion != null) return
         mutationInFlight = true
         stopPreview()
         viewModelScope.launch {
@@ -264,6 +265,7 @@ class RankViewModel(
     fun skip() {
         if (mutationInFlight) return
         if (uiState.value.visualFeedback != RankVisualFeedback.None) return
+        if (uiState.value.pendingSuggestion != null) return
         mutationInFlight = true
         stopPreview()
         viewModelScope.launch {

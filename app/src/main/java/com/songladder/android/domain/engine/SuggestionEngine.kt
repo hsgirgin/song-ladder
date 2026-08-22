@@ -22,20 +22,14 @@ private const val DISAGREEMENT_THRESHOLD_TENTHS = 5
 class SuggestionEngine(
     private val matchupEngine: EloMatchupEngine = EloMatchupEngine()
 ) {
-    /**
-     * [precomputedHistory] lets callers that already ran [EloMatchupEngine.replayWithHistory]
-     * for the same subjects/events (e.g. right after a cache rebuild) pass the result through
-     * instead of paying for a second full replay here.
-     */
     fun computeSuggestions(
         subjects: List<RankingSubject>,
         events: List<MatchupEvent>,
-        dismissals: List<SuggestionDismissal>,
-        precomputedHistory: Map<String, List<Double>>? = null
+        dismissals: List<SuggestionDismissal>
     ): List<Suggestion> {
         val subjectsById = subjects.associateBy { it.id }
         val dismissalsById = dismissals.associateBy { it.subjectId }
-        val history = precomputedHistory ?: matchupEngine.replayWithHistory(subjects, events).eloHistoryBySubject
+        val history = matchupEngine.replayWithHistory(subjects, events).eloHistoryBySubject
 
         val suggestions = subjects.mapNotNull { subject ->
             val ownWinEvents = events
