@@ -3,7 +3,9 @@ package com.songladder.android.ui.components
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.MaterialTheme
@@ -122,5 +124,30 @@ fun ScoreBadge(
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
+    }
+}
+
+/**
+ * Old score -> arrow -> new score, as shown on a suggestion row/card. Renders only the
+ * new badge when there is no prior score to transition from.
+ */
+@Composable
+fun ScoreTransitionBadges(
+    oldScoreTenths: Int?,
+    newScoreTenths: Int,
+    modifier: Modifier = Modifier,
+    oldScoreSize: Dp = 28.dp,
+    newScoreSize: Dp = 48.dp
+) {
+    Row(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        if (oldScoreTenths != null) {
+            ScoreBadge(scoreTenths = oldScoreTenths, size = oldScoreSize)
+            Text("→", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        ScoreBadge(scoreTenths = newScoreTenths, size = newScoreSize)
     }
 }

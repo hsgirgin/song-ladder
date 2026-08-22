@@ -82,6 +82,7 @@ import com.songladder.android.domain.model.RankingPresentation
 import com.songladder.android.domain.model.Song
 import com.songladder.android.domain.model.formatScoreTenths
 import com.songladder.android.ui.components.ScoreBadge
+import com.songladder.android.ui.components.ScoreTransitionBadges
 import com.songladder.android.ui.components.SongArtwork
 import com.songladder.android.ui.components.SongRatingControl
 
@@ -1008,11 +1009,12 @@ private fun SuggestionRowCard(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-            row.song.scoreTenths?.let { oldScoreTenths ->
-                ScoreBadge(scoreTenths = oldScoreTenths, size = 28.dp)
-                Text("→", color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            ScoreBadge(scoreTenths = row.suggestion.suggestedScoreTenths, size = 36.dp)
+            ScoreTransitionBadges(
+                oldScoreTenths = row.song.scoreTenths,
+                newScoreTenths = row.suggestion.suggestedScoreTenths,
+                oldScoreSize = 28.dp,
+                newScoreSize = 36.dp
+            )
         }
         Row(
             modifier = Modifier.fillMaxWidth(),

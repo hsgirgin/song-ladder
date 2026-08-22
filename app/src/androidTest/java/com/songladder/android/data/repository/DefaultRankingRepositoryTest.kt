@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -241,6 +242,37 @@ class DefaultRankingRepositoryTest {
         assertEquals(0, database.rankingSubjectDao().get("subject-b")?.skips)
         assertEquals(0, database.appStatsDao().getAppStats()?.matchCount)
         assertEquals(0, database.appStatsDao().getAppStats()?.skipCount)
+    }
+
+    @Test
+    fun deletingOneSubjectHistoryAlsoClearsItsSuggestionDismissalCheckpoint() = runBlocking {
+        insertSong(songId = "song-a", subjectId = "subject-a")
+        insertSong(songId = "song-b", subjectId = "subject-b")
+        val repository = repository()
+        database.suggestionDismissalDao().upsert(
+            SuggestionDismissalEntity(subjectId = "subject-a", dismissedAtSequenceId = 5L, dismissedScoreTenths = 60)
+        )
+
+        repository.deleteRankingHistory("subject-a").getOrThrow()
+
+        assertNull(database.suggestionDismissalDao().get("subject-a"))
+    }
+
+    @Test
+    fun deletingAllRankingHistoryAlsoClearsEverySuggestionDismissalCheckpoint() = runBlocking {
+        insertSong(songId = "song-a", subjectId = "subject-a")
+        insertSong(songId = "song-b", subjectId = "subject-b")
+        val repository = repository()
+        database.suggestionDismissalDao().upsert(
+            SuggestionDismissalEntity(subjectId = "subject-a", dismissedAtSequenceId = 5L, dismissedScoreTenths = 60)
+        )
+        database.suggestionDismissalDao().upsert(
+            SuggestionDismissalEntity(subjectId = "subject-b", dismissedAtSequenceId = 5L, dismissedScoreTenths = 60)
+        )
+
+        repository.deleteAllRankingHistory().getOrThrow()
+
+        assertTrue(database.suggestionDismissalDao().observeAll().first().isEmpty())
     }
 
     @Test

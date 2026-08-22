@@ -68,7 +68,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.songladder.android.domain.model.Matchup
 import com.songladder.android.domain.model.Song
 import com.songladder.android.domain.model.Suggestion
-import com.songladder.android.ui.components.ScoreBadge
+import com.songladder.android.ui.components.ScoreTransitionBadges
 import com.songladder.android.ui.components.SongArtwork
 import com.songladder.android.ui.components.SongRatingControl
 
@@ -207,11 +207,10 @@ internal fun CompactSuggestionCard(
                     Text(song.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text(song.artist, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
-                song.scoreTenths?.let { oldScoreTenths ->
-                    ScoreBadge(scoreTenths = oldScoreTenths, size = 28.dp)
-                    Text("→", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-                ScoreBadge(scoreTenths = suggestion.suggestedScoreTenths)
+                ScoreTransitionBadges(
+                    oldScoreTenths = song.scoreTenths,
+                    newScoreTenths = suggestion.suggestedScoreTenths
+                )
             }
             if (editing) {
                 SongRatingControl(

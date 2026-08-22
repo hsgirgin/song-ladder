@@ -4,6 +4,7 @@ import com.songladder.android.domain.model.MatchupEvent
 import com.songladder.android.domain.model.MatchupOutcome
 import com.songladder.android.domain.model.RankingSubject
 import com.songladder.android.domain.model.SuggestionDismissal
+import com.songladder.android.domain.model.seedEloForScore
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -107,6 +108,22 @@ class SuggestionEngineTest {
         val suggestion = engine.computeSuggestions(subjects, events, dismissals).single { it.subjectId == "hero" }
 
         assertEquals(23, suggestion.suggestedScoreTenths)
+    }
+
+    @Test
+    fun `precomputed history is used in place of replaying the events`() {
+        val (subjects, events) = disagreementScenario(heroId = "hero", sequenceOffset = 0)
+        // A real replay of these events puts hero's trailing elo window at [940,940,940,940,940],
+        // which disagrees with hero's current score of 10 by 13 tenths and produces a suggestion.
+        // Substituting a history pinned at hero's own seed elo should suppress that suggestion,
+        // proving computeSuggestions actually consumes precomputedHistory instead of ignoring it.
+        val stubbedHistory = mapOf(
+            "hero" to List(5) { seedEloForScore(10) }
+        )
+
+        val suggestions = engine.computeSuggestions(subjects, events, emptyList(), precomputedHistory = stubbedHistory)
+
+        assertTrue(suggestions.none { it.subjectId == "hero" })
     }
 
     @Test
