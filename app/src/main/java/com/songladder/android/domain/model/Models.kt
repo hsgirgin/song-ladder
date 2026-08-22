@@ -1,6 +1,7 @@
 package com.songladder.android.domain.model
 
 import kotlinx.serialization.Serializable
+import kotlin.math.roundToInt
 
 const val BASE_RATING = 1200
 const val K_FACTOR = 32
@@ -10,6 +11,11 @@ const val MAX_SCORE_TENTHS = 100
 
 fun seedEloForScore(scoreTenths: Int?): Double =
     BASE_ELO + 80.0 * ((scoreTenths ?: 55) / 10.0 - 5.5)
+
+fun scoreTenthsForElo(elo: Double): Int =
+    (((elo - BASE_ELO) / 80.0 + 5.5) * 10.0)
+        .roundToInt()
+        .coerceIn(MIN_SCORE_TENTHS, MAX_SCORE_TENTHS)
 
 fun validateScoreTenths(scoreTenths: Int) {
     require(scoreTenths in MIN_SCORE_TENTHS..MAX_SCORE_TENTHS) {
@@ -102,6 +108,24 @@ data class RankingSubject(
     val tombstone: Tombstone? = null
 )
 
+data class SuggestionDismissal(
+    val subjectId: String,
+    val dismissedAtSequenceId: Long,
+    val dismissedScoreTenths: Int
+)
+
+/**
+ * A candidate score computed from a subject's recent comparison evidence.
+ * Never becomes the visible score until the user explicitly accepts it.
+ */
+data class Suggestion(
+    val subjectId: String,
+    val suggestedScoreTenths: Int,
+    val comparisonCount: Int,
+    val scoreGapTenths: Int?,
+    val lastEventSequenceId: Long
+)
+
 data class MatchupEvent(
     val sequenceId: Long,
     val occurredAt: Long,
@@ -112,6 +136,11 @@ data class MatchupEvent(
     val loserSubjectId: String? = null,
     val winnerEffectiveK: Double? = null,
     val loserEffectiveK: Double? = null
+)
+
+data class EloReplayResult(
+    val subjects: List<RankingSubject>,
+    val eloHistoryBySubject: Map<String, List<Double>>
 )
 
 data class EloMatchupResult(

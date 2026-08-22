@@ -18,6 +18,12 @@ interface SongDao {
     @Query("SELECT * FROM songs WHERE id = :songId")
     suspend fun getSongWithStats(songId: String): SongWithStatsEntity?
 
+    @Query("SELECT id FROM songs WHERE rankingSubjectId = :rankingSubjectId")
+    suspend fun getSongIdForRankingSubject(rankingSubjectId: String): String?
+
+    @Query("SELECT rankingSubjectId FROM songs")
+    fun observeRankingSubjectIdsWithSong(): Flow<List<String>>
+
     @Transaction
     @Query("SELECT * FROM songs ORDER BY createdAt DESC")
     suspend fun getSongsWithStats(): List<SongWithStatsEntity>
@@ -49,6 +55,9 @@ interface RankingSubjectDao {
     @Query("SELECT * FROM ranking_subjects ORDER BY id")
     suspend fun getAll(): List<RankingSubjectEntity>
 
+    @Query("SELECT * FROM ranking_subjects ORDER BY id")
+    fun observeAllIncludingDeleted(): Flow<List<RankingSubjectEntity>>
+
     @Query("SELECT * FROM ranking_subjects WHERE tombstoneDeletedAt IS NOT NULL ORDER BY tombstoneDeletedAt DESC")
     fun observeDeleted(): Flow<List<RankingSubjectEntity>>
 
@@ -72,6 +81,9 @@ interface RankingSubjectDao {
 interface MatchupEventDao {
     @Query("SELECT COALESCE(MAX(sequenceId), 0) + 1 FROM matchup_events")
     suspend fun nextSequenceId(): Long
+
+    @Query("SELECT COALESCE(MAX(sequenceId), 0) FROM matchup_events")
+    suspend fun maxSequenceId(): Long
 
     @Query("SELECT * FROM matchup_events ORDER BY sequenceId")
     suspend fun getAll(): List<MatchupEventEntity>
@@ -123,4 +135,22 @@ interface AppStatsDao {
 interface ImportBatchDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(batch: ImportBatchEntity)
+}
+
+@Dao
+interface SuggestionDismissalDao {
+    @Query("SELECT * FROM suggestion_dismissals")
+    fun observeAll(): Flow<List<SuggestionDismissalEntity>>
+
+    @Query("SELECT * FROM suggestion_dismissals WHERE subjectId = :subjectId")
+    suspend fun get(subjectId: String): SuggestionDismissalEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(dismissal: SuggestionDismissalEntity)
+
+    @Query("DELETE FROM suggestion_dismissals WHERE subjectId = :subjectId")
+    suspend fun delete(subjectId: String)
+
+    @Query("DELETE FROM suggestion_dismissals")
+    suspend fun clearAll()
 }

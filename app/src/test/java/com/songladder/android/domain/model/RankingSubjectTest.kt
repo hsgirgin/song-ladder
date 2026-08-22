@@ -12,6 +12,19 @@ class RankingSubjectTest {
     }
 
     @Test
+    fun `score for elo is the inverse of seed elo for score, clamped to the valid range`() {
+        assertEquals(MIN_SCORE_TENTHS, scoreTenthsForElo(840.0))
+        assertEquals(55, scoreTenthsForElo(BASE_ELO))
+        assertEquals(MAX_SCORE_TENTHS, scoreTenthsForElo(1560.0))
+    }
+
+    @Test
+    fun `score for elo clamps extreme elo values to the valid score range`() {
+        assertEquals(MIN_SCORE_TENTHS, scoreTenthsForElo(BASE_ELO - 1000.0))
+        assertEquals(MAX_SCORE_TENTHS, scoreTenthsForElo(BASE_ELO + 1000.0))
+    }
+
+    @Test
     fun `score first ordering uses score then Elo then recent rating and stable identity`() {
         val songs = listOf(
             song(id = "tie-low", scoreTenths = 80, elo = 1200.0, lastRatedAt = 2L),

@@ -7,6 +7,7 @@ import com.songladder.android.domain.model.AppStats
 import com.songladder.android.domain.model.Matchup
 import com.songladder.android.domain.model.RankingSettings
 import com.songladder.android.domain.model.Song
+import com.songladder.android.domain.model.Suggestion
 import com.songladder.android.domain.repository.SettingsRepository
 import com.songladder.android.domain.repository.RankingRepository
 import com.songladder.android.domain.repository.SongPreviewPlayer
@@ -16,10 +17,12 @@ import com.songladder.android.ui.NoOpPreviewPlayer
 import com.songladder.android.ui.UnavailablePreviewResolver
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -29,6 +32,9 @@ sealed interface RankVisualFeedback {
     data class Choice(val winnerId: String, val loserId: String) : RankVisualFeedback
     data object Skip : RankVisualFeedback
 }
+
+private val RankVisualFeedback.isSettled: Boolean
+    get() = this == RankVisualFeedback.None
 
 enum class SongPreviewState {
     Loading,
@@ -43,25 +49,12 @@ enum class UndoStatus {
     Failed
 }
 
-enum class PostMatchRatingRole {
-    Winner,
-    Loser
-}
-
-data class PostMatchRatingStep(
-    val song: Song,
-    val role: PostMatchRatingRole,
-    val index: Int,
-    val total: Int,
-    val draftScoreTenths: Int
-)
-
 data class RankUiState(
     val songs: List<Song> = emptyList(),
     val stats: AppStats = AppStats(),
     val settings: RankingSettings = RankingSettings(),
     val matchup: Matchup? = null,
-    val ratingStep: PostMatchRatingStep? = null,
+    val pendingSuggestion: Suggestion? = null,
     val message: String = "",
     val isReady: Boolean = false,
     val caughtUp: Boolean = false,
@@ -70,13 +63,8 @@ data class RankUiState(
     val visualFeedback: RankVisualFeedback = RankVisualFeedback.None,
     val streakCount: Int = 0,
     val autoplayArmed: Boolean = false,
-    val isSavingRating: Boolean = false,
-    val previews: Map<String, SongPreviewState> = emptyMap()
-)
-
-private data class PendingPostMatchRating(
-    val song: Song,
-    val role: PostMatchRatingRole
+    val previews: Map<String, SongPreviewState> = emptyMap(),
+    val isSavingSuggestion: Boolean = false
 )
 
 private data class RankSessionState(
@@ -85,17 +73,14 @@ private data class RankSessionState(
     val recentDisplayedMatchups: List<Matchup> = emptyList(),
     val displayedMatchupCount: Int = 0,
     val continueAnyway: Boolean = false,
-    val pendingRatingSteps: List<PendingPostMatchRating> = emptyList(),
-    val ratingDraftScoreTenths: Int = 55,
-    val ratingTotalSteps: Int = 0,
-    val isSavingRating: Boolean = false,
     val undoAvailable: Boolean = false,
     val undoStatus: UndoStatus = UndoStatus.None,
     val visualFeedback: RankVisualFeedback = RankVisualFeedback.None,
     val streakCount: Int = 0,
     val autoplayArmed: Boolean = false,
     val firstPreviewStartsLeft: Boolean = true,
-    val transientMessage: String = ""
+    val transientMessage: String = "",
+    val isSavingSuggestion: Boolean = false
 )
 
 private data class PreviewPlaybackSession(
@@ -130,9 +115,7 @@ class RankViewModel(
         val activeSongIds = songs.mapTo(mutableSetOf()) { it.id }
         val currentMatchup = session.currentMatchup
             ?.takeIf { it.left.id in activeSongIds && it.right.id in activeSongIds }
-        val selection = if (session.pendingRatingSteps.isNotEmpty()) {
-            com.songladder.android.domain.model.MatchupSelection(null)
-        } else if (session.visualFeedback == RankVisualFeedback.None) {
+        val selection = if (session.visualFeedback.isSettled) {
             currentMatchup?.let { com.songladder.android.domain.model.MatchupSelection(it) }
                 ?: matchupEngine.selectMatchup(
                     songs = songs,
@@ -146,21 +129,11 @@ class RankViewModel(
             com.songladder.android.domain.model.MatchupSelection(session.previousMatchup)
         }
         val matchup = selection.matchup
-        val ratingStep = session.pendingRatingSteps.firstOrNull()?.let { pending ->
-            PostMatchRatingStep(
-                song = pending.song,
-                role = pending.role,
-                index = session.ratingTotalSteps - session.pendingRatingSteps.size + 1,
-                total = session.ratingTotalSteps,
-                draftScoreTenths = session.ratingDraftScoreTenths
-            )
-        }
         RankUiState(
             songs = songs,
             stats = stats,
             settings = settings,
             matchup = matchup,
-            ratingStep = ratingStep,
             message = when {
                 session.transientMessage.isNotBlank() -> session.transientMessage
                 songs.size < 2 -> "Add at least two songs to start ranking."
@@ -174,12 +147,31 @@ class RankViewModel(
             visualFeedback = session.visualFeedback,
             streakCount = session.streakCount,
             autoplayArmed = session.autoplayArmed,
-            isSavingRating = session.isSavingRating
+            isSavingSuggestion = session.isSavingSuggestion
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), RankUiState())
 
-    val uiState: StateFlow<RankUiState> = combine(rankingUiState, previewStates) { state, previews ->
-        state.copy(previews = previews)
+    val uiState: StateFlow<RankUiState> = combine(
+        rankingUiState,
+        previewStates,
+        rankingRepository.observeSuggestions()
+    ) { state, previews, suggestions ->
+        // Suppress the suggestion during the win/loss flash (matches state.visualFeedback)
+        // so a suggestion becoming ready mid-animation can't preempt it, and null out
+        // matchup while a suggestion is pending so prefetch doesn't run for a hidden matchup -
+        // mirrors the old pendingRatingSteps gating this replaced.
+        val resolvedSuggestion = if (state.visualFeedback.isSettled) {
+            suggestions.firstOrNull { suggestion ->
+                state.songs.any { it.rankingSubjectId == suggestion.subjectId }
+            }
+        } else {
+            null
+        }
+        state.copy(
+            previews = previews,
+            pendingSuggestion = resolvedSuggestion,
+            matchup = if (resolvedSuggestion != null) null else state.matchup
+        )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), RankUiState())
 
     init {
@@ -258,7 +250,8 @@ class RankViewModel(
 
     fun rankWinner(winnerId: String, loserId: String) {
         if (mutationInFlight) return
-        if (uiState.value.visualFeedback != RankVisualFeedback.None || uiState.value.ratingStep != null) return
+        if (uiState.value.visualFeedback != RankVisualFeedback.None) return
+        if (uiState.value.pendingSuggestion != null) return
         mutationInFlight = true
         stopPreview()
         viewModelScope.launch {
@@ -266,15 +259,11 @@ class RankViewModel(
                 val currentMatchup = uiState.value.matchup ?: return@launch
                 rankingRepository.recordBattle(winnerId, loserId)
                     .onSuccess {
-                        val ratingSteps = currentMatchup.postMatchRatingSteps(winnerId, loserId)
                         sessionState.update {
                             it.copy(
                                 currentMatchup = null,
                                 previousMatchup = currentMatchup,
                                 continueAnyway = false,
-                                pendingRatingSteps = ratingSteps,
-                                ratingDraftScoreTenths = ratingSteps.firstOrNull()?.song?.scoreTenths ?: 55,
-                                ratingTotalSteps = ratingSteps.size,
                                 undoAvailable = true,
                                 undoStatus = UndoStatus.None,
                                 visualFeedback = RankVisualFeedback.Choice(winnerId, loserId),
@@ -298,7 +287,8 @@ class RankViewModel(
 
     fun skip() {
         if (mutationInFlight) return
-        if (uiState.value.visualFeedback != RankVisualFeedback.None || uiState.value.ratingStep != null) return
+        if (uiState.value.visualFeedback != RankVisualFeedback.None) return
+        if (uiState.value.pendingSuggestion != null) return
         mutationInFlight = true
         stopPreview()
         viewModelScope.launch {
@@ -331,61 +321,63 @@ class RankViewModel(
         }
     }
 
-    fun updateRatingDraft(scoreTenths: Int) {
-        sessionState.update { it.copy(ratingDraftScoreTenths = scoreTenths) }
+    fun continueAnyway() {
+        sessionState.update { it.copy(continueAnyway = true, transientMessage = "") }
     }
 
-    fun saveRatingStep() {
+    fun acceptPendingSuggestion(scoreTenths: Int) {
+        runSuggestionMutation(failureMessage = "Could not save score. Try again.") { suggestion ->
+            rankingRepository.acceptSuggestion(suggestion.subjectId, scoreTenths)
+        }
+    }
+
+    fun dismissPendingSuggestionLater() {
+        runSuggestionMutation(failureMessage = "Could not dismiss suggestion. Try again.") { suggestion ->
+            rankingRepository.dismissSuggestionLater(
+                subjectId = suggestion.subjectId,
+                suggestedScoreTenths = suggestion.suggestedScoreTenths,
+                lastEventSequenceId = suggestion.lastEventSequenceId
+            )
+        }
+    }
+
+    /**
+     * Shared by [acceptPendingSuggestion] and [dismissPendingSuggestionLater]. On success,
+     * waits (scoped to this one mutation, not a permanent subscription) for [uiState] to
+     * reflect the suggestion clearing before attempting autoplay - this avoids reacting to
+     * a suggestion being resolved from elsewhere (e.g. the Rankings screen), which would
+     * start audio playback while the Rank screen isn't visible.
+     */
+    private fun runSuggestionMutation(failureMessage: String, action: suspend (Suggestion) -> Result<*>) {
         if (mutationInFlight) return
-        val session = sessionState.value
-        val step = session.pendingRatingSteps.firstOrNull() ?: return
-        val scoreTenths = session.ratingDraftScoreTenths
+        val suggestion = uiState.value.pendingSuggestion ?: return
         mutationInFlight = true
-        sessionState.update { it.copy(isSavingRating = true, transientMessage = "") }
+        sessionState.update { it.copy(isSavingSuggestion = true) }
         viewModelScope.launch {
             try {
-                rankingRepository.saveScore(step.song.id, scoreTenths)
+                action(suggestion)
                     .onSuccess {
-                        advanceRatingStep()
+                        // Bounded: the repository always dismisses the just-resolved
+                        // suggestion, so this should clear almost immediately. The
+                        // timeout is only a safety net against a future regression of
+                        // that invariant re-flagging the same subject and hanging this
+                        // wait forever - see the "re-flagging" fix in this file's history.
+                        withTimeoutOrNull(2_000) {
+                            uiState.first { it.pendingSuggestion?.subjectId != suggestion.subjectId }
+                        }
+                        maybeStartArmedAutoplay()
                     }
                     .onFailure {
                         sessionState.update { state ->
-                            state.copy(
-                                isSavingRating = false,
-                                transientMessage = "Could not save score. Try again."
-                            )
+                            state.copy(transientMessage = failureMessage)
                         }
+                        scheduleFeedbackClear(delayMillis = 2_500)
                     }
             } finally {
                 mutationInFlight = false
+                sessionState.update { it.copy(isSavingSuggestion = false) }
             }
         }
-    }
-
-    fun skipRatingStep() {
-        if (mutationInFlight) return
-        advanceRatingStep()
-    }
-
-    private fun advanceRatingStep() {
-        sessionState.update { state ->
-            val remaining = state.pendingRatingSteps.drop(1)
-            state.copy(
-                pendingRatingSteps = remaining,
-                ratingDraftScoreTenths = remaining.firstOrNull()?.song?.scoreTenths ?: 55,
-                ratingTotalSteps = if (remaining.isEmpty()) 0 else state.ratingTotalSteps,
-                isSavingRating = false,
-                visualFeedback = if (remaining.isEmpty()) RankVisualFeedback.None else state.visualFeedback,
-                transientMessage = ""
-            )
-        }
-        if (sessionState.value.pendingRatingSteps.isEmpty()) {
-            maybeStartArmedAutoplay()
-        }
-    }
-
-    fun continueAnyway() {
-        sessionState.update { it.copy(continueAnyway = true, transientMessage = "") }
     }
 
     fun undo() {
@@ -400,10 +392,6 @@ class RankViewModel(
                             it.copy(
                                 previousMatchup = null,
                                 continueAnyway = false,
-                                pendingRatingSteps = emptyList(),
-                                ratingDraftScoreTenths = 55,
-                                ratingTotalSteps = 0,
-                                isSavingRating = false,
                                 undoAvailable = false,
                                 undoStatus = if (undone) UndoStatus.None else UndoStatus.Unavailable,
                                 visualFeedback = RankVisualFeedback.None,
@@ -457,7 +445,7 @@ class RankViewModel(
 
     private fun maybeStartArmedAutoplay() {
         if (!sessionState.value.autoplayArmed || !uiState.value.settings.autoPlayMatchupPreviews) return
-        if (uiState.value.ratingStep != null) return
+        if (uiState.value.pendingSuggestion != null) return
         val matchup = uiState.value.matchup ?: return
         val states = previewStates.value
         val matchupSongIds = setOf(matchup.left.id, matchup.right.id)
@@ -519,18 +507,6 @@ class RankViewModel(
             delay(delayMillis)
             sessionState.update { it.copy(visualFeedback = RankVisualFeedback.None, transientMessage = "") }
         }
-    }
-}
-
-private fun Matchup.postMatchRatingSteps(
-    winnerId: String,
-    loserId: String
-): List<PendingPostMatchRating> = buildList {
-    listOf(left, right).firstOrNull { it.id == winnerId && it.scoreTenths == null }?.let {
-        add(PendingPostMatchRating(it, PostMatchRatingRole.Winner))
-    }
-    listOf(left, right).firstOrNull { it.id == loserId && it.scoreTenths == null }?.let {
-        add(PendingPostMatchRating(it, PostMatchRatingRole.Loser))
     }
 }
 

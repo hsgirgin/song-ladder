@@ -9,6 +9,7 @@ import com.songladder.android.domain.model.RankingSettings
 import com.songladder.android.domain.model.ScoreSaveResult
 import com.songladder.android.domain.model.Song
 import com.songladder.android.domain.model.SongInput
+import com.songladder.android.domain.model.Suggestion
 import com.songladder.android.domain.repository.RankingRepository
 import com.songladder.android.domain.repository.SettingsRepository
 import com.songladder.android.domain.repository.SongPreviewPlaybackEvent
@@ -21,6 +22,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -81,6 +83,108 @@ class RankingsViewModelTest {
 
         assertEquals(true, viewModel.uiState.value.unratedExpanded)
         assertEquals(listOf("unrated-new", "unrated-old"), viewModel.uiState.value.unratedSongs.map { it.id })
+    }
+
+    @Test
+    fun `suggestion rows pair each suggestion with its matching song`() = runTest {
+        val rankingRepository = FakeRankingRepository(
+            suggestions = listOf(
+                Suggestion(
+                    subjectId = "song-1",
+                    suggestedScoreTenths = 70,
+                    comparisonCount = 5,
+                    scoreGapTenths = null,
+                    lastEventSequenceId = 5L
+                )
+            )
+        )
+        val viewModel = viewModel(
+            songs = listOf(rankingsSong(id = "song-1", scoreTenths = null)),
+            rankingRepository = rankingRepository
+        )
+        backgroundScope.launch(dispatcher) { viewModel.uiState.collect {} }
+
+        advanceUntilIdle()
+
+        val row = viewModel.uiState.value.suggestionRows.single()
+        assertEquals("song-1", row.suggestion.subjectId)
+        assertEquals("song-1", row.song.id)
+        assertEquals(70, row.suggestion.suggestedScoreTenths)
+    }
+
+    @Test
+    fun `accepting a suggestion clears its selection`() = runTest {
+        val rankingRepository = FakeRankingRepository(
+            suggestions = listOf(
+                Suggestion("song-1", suggestedScoreTenths = 70, comparisonCount = 5, scoreGapTenths = null, lastEventSequenceId = 5L)
+            )
+        )
+        val viewModel = viewModel(
+            songs = listOf(rankingsSong(id = "song-1", scoreTenths = null)),
+            rankingRepository = rankingRepository
+        )
+        backgroundScope.launch(dispatcher) { viewModel.uiState.collect {} }
+        advanceUntilIdle()
+        viewModel.toggleSuggestionSelection("song-1")
+        advanceUntilIdle()
+        assertEquals(setOf("song-1"), viewModel.uiState.value.selectedSuggestionIds)
+
+        viewModel.acceptSuggestion("song-1", 70)
+        advanceUntilIdle()
+
+        assertEquals(listOf("song-1" to 70), rankingRepository.acceptedSuggestions)
+        assertEquals(emptySet<String>(), viewModel.uiState.value.selectedSuggestionIds)
+    }
+
+    @Test
+    fun `dismissing a suggestion later forwards its current suggested value`() = runTest {
+        val rankingRepository = FakeRankingRepository(
+            suggestions = listOf(
+                Suggestion("song-1", suggestedScoreTenths = 65, comparisonCount = 6, scoreGapTenths = 8, lastEventSequenceId = 9L)
+            )
+        )
+        val viewModel = viewModel(
+            songs = listOf(rankingsSong(id = "song-1", scoreTenths = 55)),
+            rankingRepository = rankingRepository
+        )
+        backgroundScope.launch(dispatcher) { viewModel.uiState.collect {} }
+        advanceUntilIdle()
+
+        viewModel.dismissSuggestionLater("song-1")
+        advanceUntilIdle()
+
+        assertEquals(listOf("song-1"), rankingRepository.dismissedSuggestionIds)
+    }
+
+    @Test
+    fun `accepting selected suggestions applies each one and clears the selection`() = runTest {
+        val rankingRepository = FakeRankingRepository(
+            suggestions = listOf(
+                Suggestion("song-1", suggestedScoreTenths = 70, comparisonCount = 5, scoreGapTenths = null, lastEventSequenceId = 5L),
+                Suggestion("song-2", suggestedScoreTenths = 40, comparisonCount = 5, scoreGapTenths = null, lastEventSequenceId = 6L)
+            )
+        )
+        val viewModel = viewModel(
+            songs = listOf(
+                rankingsSong(id = "song-1", scoreTenths = null),
+                rankingsSong(id = "song-2", scoreTenths = null)
+            ),
+            rankingRepository = rankingRepository
+        )
+        backgroundScope.launch(dispatcher) { viewModel.uiState.collect {} }
+        advanceUntilIdle()
+        viewModel.toggleSuggestionSelection("song-1")
+        viewModel.toggleSuggestionSelection("song-2")
+        advanceUntilIdle()
+
+        viewModel.acceptSelectedSuggestions()
+        advanceUntilIdle()
+
+        assertEquals(
+            setOf("song-1" to 70, "song-2" to 40),
+            rankingRepository.acceptedSuggestions.toSet()
+        )
+        assertEquals(emptySet<String>(), viewModel.uiState.value.selectedSuggestionIds)
     }
 
     @Test
@@ -287,8 +391,13 @@ private class FakeRankingsSongRepository(
     }
 }
 
-private class FakeRankingRepository : RankingRepository {
+private class FakeRankingRepository(
+    suggestions: List<Suggestion> = emptyList()
+) : RankingRepository {
     val savedScores = mutableListOf<Pair<String, Int>>()
+    val acceptedSuggestions = mutableListOf<Pair<String, Int>>()
+    val dismissedSuggestionIds = mutableListOf<String>()
+    private val suggestionsFlow = MutableStateFlow(suggestions)
 
     override fun observeStats(): Flow<AppStats> = flowOf(AppStats())
 
@@ -307,6 +416,24 @@ private class FakeRankingRepository : RankingRepository {
 
     override suspend fun deleteRankingHistory(rankingSubjectId: String): Result<RankingHistoryDeletionResult> =
         Result.success(RankingHistoryDeletionResult(rankingSubjectId, deletedEventCount = 0))
+
+    override fun observeSuggestions(): Flow<List<Suggestion>> = suggestionsFlow
+
+    override suspend fun acceptSuggestion(subjectId: String, scoreTenths: Int): Result<ScoreSaveResult> {
+        acceptedSuggestions += subjectId to scoreTenths
+        suggestionsFlow.update { list -> list.filterNot { it.subjectId == subjectId } }
+        return Result.success(ScoreSaveResult(songId = subjectId, scoreTenths = scoreTenths))
+    }
+
+    override suspend fun dismissSuggestionLater(
+        subjectId: String,
+        suggestedScoreTenths: Int,
+        lastEventSequenceId: Long
+    ): Result<Unit> {
+        dismissedSuggestionIds += subjectId
+        suggestionsFlow.update { list -> list.filterNot { it.subjectId == subjectId } }
+        return Result.success(Unit)
+    }
 }
 
 private class FakeSettingsRepository(

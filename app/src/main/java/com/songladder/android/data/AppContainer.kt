@@ -48,7 +48,8 @@ class AppContainer(context: Context) {
         songDao = database.songDao(),
         rankingSubjectDao = database.rankingSubjectDao(),
         matchupEventDao = database.matchupEventDao(),
-        appStatsDao = database.appStatsDao()
+        appStatsDao = database.appStatsDao(),
+        suggestionDismissalDao = database.suggestionDismissalDao()
     )
     val rankingRepository: RankingRepository = DefaultRankingRepository(
         database = database,
@@ -56,6 +57,7 @@ class AppContainer(context: Context) {
         matchupEngine = matchupEngine,
         rankingSubjectDao = database.rankingSubjectDao(),
         matchupEventDao = database.matchupEventDao(),
+        suggestionDismissalDao = database.suggestionDismissalDao(),
         appStatsDao = database.appStatsDao()
     )
     val importRepository: ImportRepository = DefaultImportRepository(

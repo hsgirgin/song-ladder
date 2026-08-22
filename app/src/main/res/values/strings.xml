@@ -10,9 +10,6 @@
     <string name="rank_undo_action">Undo last choice</string>
     <string name="rank_undo_unavailable">Undo is no longer available.</string>
     <string name="rank_undo_failed">Could not undo ranking. Try again.</string>
-    <string name="rank_rate_winner">Rate winner: %1$s</string>
-    <string name="rank_rate_loser">Rate other song: %1$s</string>
-    <string name="rank_rating_step_progress">Step %1$d of %2$d</string>
     <string name="rank_skip_for_now">Skip for now</string>
     <string name="rank_preview_action">Play preview</string>
     <string name="rank_pause_preview">Pause preview</string>
@@ -20,7 +17,6 @@
     <string name="destination_matchups">Matchups</string>
     <string name="destination_rankings">Rankings</string>
     <string name="rankings_open_library">Add songs</string>
-    <string name="score_value">Score %1$s</string>
     <string name="score_unrated">Unrated</string>
     <string name="rating_editor_value">%1$s</string>
     <string name="rating_editor_min_label">1</string>
@@ -52,13 +48,16 @@
     <string name="rankings_show_stats">Show stats</string>
     <string name="rankings_ranked_title">#%1$d %2$s</string>
     <string name="rankings_rank_badge">#%1$d</string>
-    <string name="rankings_score_label">Score</string>
     <string name="rankings_score_state">%1$s score for %2$s</string>
     <string name="rankings_unrated_state">Unrated song</string>
-    <string name="rankings_rate_song">Rate song</string>
+    <string name="rankings_rate_song_short">Rate</string>
     <string name="rankings_edit_score">Edit score</string>
+    <string name="rankings_suggestions_title">Suggested scores</string>
+    <string name="rankings_suggestion_accept">Accept</string>
+    <string name="rankings_suggestion_edit">Edit</string>
+    <string name="rankings_confirm_accept_suggestions_title">Accept suggested scores?</string>
+    <string name="rankings_confirm_accept_suggestions_action">Accept</string>
     <string name="rankings_stats_summary">%1$dW %2$dL · %3$d skips</string>
-    <string name="rankings_detail_rank_score">#%1$d · %2$s</string>
     <string name="rankings_delete_song">Delete song</string>
     <string name="rankings_save_failed">Could not save score. Try again.</string>
     <string name="rankings_score_saved">Score saved.</string>
@@ -115,6 +114,18 @@
     <plurals name="rankings_unrated_count">
         <item quantity="one">%1$d unrated song</item>
         <item quantity="other">%1$d unrated songs</item>
+    </plurals>
+    <plurals name="rankings_accept_selected_suggestions_action">
+        <item quantity="one">Accept %1$d suggestion</item>
+        <item quantity="other">Accept %1$d suggestions</item>
+    </plurals>
+    <plurals name="rankings_confirm_accept_suggestions_message">
+        <item quantity="one">This applies %1$d suggested score as the visible score.</item>
+        <item quantity="other">This applies %1$d suggested scores as the visible scores.</item>
+    </plurals>
+    <plurals name="rankings_suggestion_comparison_count">
+        <item quantity="one">Based on %1$d comparison</item>
+        <item quantity="other">Based on %1$d comparisons</item>
     </plurals>
     <plurals name="settings_delete_history_action">
         <item quantity="one">Delete %1$d history</item>

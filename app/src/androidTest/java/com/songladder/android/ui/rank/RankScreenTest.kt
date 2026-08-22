@@ -22,6 +22,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.songladder.android.domain.model.AppStats
 import com.songladder.android.domain.model.Matchup
 import com.songladder.android.domain.model.Song
+import com.songladder.android.domain.model.Suggestion
 import com.songladder.android.ui.theme.SongLadderTheme
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -78,6 +79,48 @@ class RankScreenTest {
         composeRule.onNodeWithText("Fleetwood Mac").assertIsDisplayed()
         composeRule.onAllNodesWithText("Choose").assertCountEquals(0)
         composeRule.onAllNodesWithText("Preview unavailable").assertCountEquals(0)
+    }
+
+    @Test
+    fun compactSuggestionCard_showsOldScoreAlongsideTheNewOneWhenRated() {
+        val song = Song(id = "song-1", title = "Dreams", artist = "Fleetwood Mac", createdAt = 1L, scoreTenths = 60)
+        val suggestion = Suggestion(
+            subjectId = "song-1",
+            suggestedScoreTenths = 85,
+            comparisonCount = 5,
+            scoreGapTenths = 25,
+            lastEventSequenceId = 5L
+        )
+
+        composeRule.setContent {
+            SongLadderTheme {
+                CompactSuggestionCard(suggestion = suggestion, song = song, onAccept = {}, onLater = {})
+            }
+        }
+
+        composeRule.onNodeWithText("6.0").assertIsDisplayed()
+        composeRule.onNodeWithText("8.5").assertIsDisplayed()
+    }
+
+    @Test
+    fun compactSuggestionCard_omitsOldScoreWhenTheSongWasNeverRated() {
+        val song = Song(id = "song-1", title = "Dreams", artist = "Fleetwood Mac", createdAt = 1L, scoreTenths = null)
+        val suggestion = Suggestion(
+            subjectId = "song-1",
+            suggestedScoreTenths = 85,
+            comparisonCount = 5,
+            scoreGapTenths = null,
+            lastEventSequenceId = 5L
+        )
+
+        composeRule.setContent {
+            SongLadderTheme {
+                CompactSuggestionCard(suggestion = suggestion, song = song, onAccept = {}, onLater = {})
+            }
+        }
+
+        composeRule.onNodeWithText("8.5").assertIsDisplayed()
+        composeRule.onAllNodesWithText("→").assertCountEquals(0)
     }
 
     @Test

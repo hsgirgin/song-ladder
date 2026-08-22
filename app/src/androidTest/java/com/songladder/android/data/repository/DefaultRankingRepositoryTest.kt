@@ -6,11 +6,14 @@ import com.songladder.android.data.local.RankingSubjectEntity
 import com.songladder.android.data.local.AppStatsEntity
 import com.songladder.android.data.local.SongEntity
 import com.songladder.android.data.local.SongLadderDatabase
+import com.songladder.android.data.local.SuggestionDismissalEntity
 import com.songladder.android.domain.engine.EloMatchupEngine
 import com.songladder.android.domain.model.TimeSource
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -41,6 +44,7 @@ class DefaultRankingRepositoryTest {
             matchupEngine = EloMatchupEngine(),
             rankingSubjectDao = database.rankingSubjectDao(),
             matchupEventDao = database.matchupEventDao(),
+            suggestionDismissalDao = database.suggestionDismissalDao(),
             appStatsDao = database.appStatsDao()
         )
 
@@ -240,12 +244,103 @@ class DefaultRankingRepositoryTest {
         assertEquals(0, database.appStatsDao().getAppStats()?.skipCount)
     }
 
+    @Test
+    fun deletingOneSubjectHistoryAlsoClearsItsSuggestionDismissalCheckpoint() = runBlocking {
+        insertSong(songId = "song-a", subjectId = "subject-a")
+        insertSong(songId = "song-b", subjectId = "subject-b")
+        val repository = repository()
+        database.suggestionDismissalDao().upsert(
+            SuggestionDismissalEntity(subjectId = "subject-a", dismissedAtSequenceId = 5L, dismissedScoreTenths = 60)
+        )
+
+        repository.deleteRankingHistory("subject-a").getOrThrow()
+
+        assertNull(database.suggestionDismissalDao().get("subject-a"))
+    }
+
+    @Test
+    fun deletingAllRankingHistoryAlsoClearsEverySuggestionDismissalCheckpoint() = runBlocking {
+        insertSong(songId = "song-a", subjectId = "subject-a")
+        insertSong(songId = "song-b", subjectId = "subject-b")
+        val repository = repository()
+        database.suggestionDismissalDao().upsert(
+            SuggestionDismissalEntity(subjectId = "subject-a", dismissedAtSequenceId = 5L, dismissedScoreTenths = 60)
+        )
+        database.suggestionDismissalDao().upsert(
+            SuggestionDismissalEntity(subjectId = "subject-b", dismissedAtSequenceId = 5L, dismissedScoreTenths = 60)
+        )
+
+        repository.deleteAllRankingHistory().getOrThrow()
+
+        assertTrue(database.suggestionDismissalDao().observeAll().first().isEmpty())
+    }
+
+    @Test
+    fun observeSuggestionsEmitsEmptyListWithNoEvidence() = runBlocking {
+        insertSong(songId = "song-a", subjectId = "subject-a")
+        insertSong(songId = "song-b", subjectId = "subject-b")
+        val repository = repository()
+
+        assertTrue(repository.observeSuggestions().first().isEmpty())
+    }
+
+    @Test
+    fun dismissSuggestionLaterPersistsTheDismissal() = runBlocking {
+        insertSong(songId = "song-a", subjectId = "subject-a")
+        val repository = repository()
+
+        repository.dismissSuggestionLater(
+            subjectId = "subject-a",
+            suggestedScoreTenths = 70,
+            lastEventSequenceId = 3L
+        ).getOrThrow()
+
+        val dismissal = database.suggestionDismissalDao().get("subject-a")
+        assertEquals(70, dismissal?.dismissedScoreTenths)
+        assertEquals(3L, dismissal?.dismissedAtSequenceId)
+    }
+
+    @Test
+    fun acceptSuggestionRefreshesTheCheckpointInsteadOfClearingIt() = runBlocking {
+        // Reseeding elo from the accepted score and replaying the event log can
+        // land on a different implied score than the one just accepted (Elo
+        // replay is path-dependent on the seed) - without a fresh checkpoint,
+        // that reseed artifact alone could immediately re-flag this subject as
+        // "disagreeing" with the score it was just given, with no new evidence.
+        insertSong(songId = "song-a", subjectId = "subject-a")
+        val repository = repository()
+        database.suggestionDismissalDao().upsert(
+            SuggestionDismissalEntity(subjectId = "subject-a", dismissedAtSequenceId = 1L, dismissedScoreTenths = 60)
+        )
+
+        val result = repository.acceptSuggestion("subject-a", 70).getOrThrow()
+
+        assertEquals(70, result.scoreTenths)
+        assertEquals("song-a", result.songId)
+        assertEquals(70, database.rankingSubjectDao().get("subject-a")?.scoreTenths)
+        val checkpoint = database.suggestionDismissalDao().get("subject-a")
+        assertEquals(70, checkpoint?.dismissedScoreTenths)
+        assertEquals(0L, checkpoint?.dismissedAtSequenceId)
+    }
+
+    @Test
+    fun savingAScoreDirectlyAlsoWritesASuggestionCheckpoint() = runBlocking {
+        insertSong(songId = "song-a", subjectId = "subject-a")
+        val repository = repository()
+
+        repository.saveScore("song-a", 80).getOrThrow()
+
+        val checkpoint = database.suggestionDismissalDao().get("subject-a")
+        assertEquals(80, checkpoint?.dismissedScoreTenths)
+    }
+
     private fun repository(): DefaultRankingRepository = DefaultRankingRepository(
         database = database,
         songDao = database.songDao(),
         matchupEngine = EloMatchupEngine(),
         rankingSubjectDao = database.rankingSubjectDao(),
         matchupEventDao = database.matchupEventDao(),
+        suggestionDismissalDao = database.suggestionDismissalDao(),
         appStatsDao = database.appStatsDao(),
         timeSource = TimeSource { 100L }
     )

@@ -40,8 +40,10 @@ import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
@@ -79,6 +81,8 @@ import com.songladder.android.R
 import com.songladder.android.domain.model.RankingPresentation
 import com.songladder.android.domain.model.Song
 import com.songladder.android.domain.model.formatScoreTenths
+import com.songladder.android.ui.components.ScoreBadge
+import com.songladder.android.ui.components.ScoreTransitionBadges
 import com.songladder.android.ui.components.SongArtwork
 import com.songladder.android.ui.components.SongRatingControl
 
@@ -112,6 +116,11 @@ fun RankingsScreen(
         onDismissTip = viewModel::dismissRankingsTip,
         onDeleteSong = viewModel::deleteSong,
         onUndoDelete = viewModel::undoDelete,
+        onAcceptSuggestion = viewModel::acceptSuggestion,
+        onDismissSuggestion = viewModel::dismissSuggestionLater,
+        onToggleSuggestionSelection = viewModel::toggleSuggestionSelection,
+        onClearSuggestionSelection = viewModel::clearSuggestionSelection,
+        onAcceptSelectedSuggestions = viewModel::acceptSelectedSuggestions,
         onOpenSettings = onOpenSettings,
         onAddSongs = onAddSongs
     )
@@ -134,6 +143,11 @@ internal fun RankingsScreenContent(
     onDismissTip: () -> Unit,
     onDeleteSong: (Song) -> Unit,
     onUndoDelete: () -> Unit,
+    onAcceptSuggestion: (String, Int) -> Unit,
+    onDismissSuggestion: (String) -> Unit,
+    onToggleSuggestionSelection: (String) -> Unit,
+    onClearSuggestionSelection: () -> Unit,
+    onAcceptSelectedSuggestions: () -> Unit,
     onOpenSettings: () -> Unit,
     onAddSongs: () -> Unit,
     modifier: Modifier = Modifier
@@ -237,6 +251,11 @@ internal fun RankingsScreenContent(
                 onShowDetails = onShowDetails,
                 onSaveScore = onSaveScore,
                 onDismissTip = onDismissTip,
+                onAcceptSuggestion = onAcceptSuggestion,
+                onDismissSuggestion = onDismissSuggestion,
+                onToggleSuggestionSelection = onToggleSuggestionSelection,
+                onClearSuggestionSelection = onClearSuggestionSelection,
+                onAcceptSelectedSuggestions = onAcceptSelectedSuggestions,
                 modifier = Modifier.weight(1f)
             )
             RankingsTab.ALBUMS,
@@ -266,12 +285,18 @@ private fun RankingsSongsContent(
     onShowDetails: (String) -> Unit,
     onSaveScore: (String, Int) -> Unit,
     onDismissTip: () -> Unit,
+    onAcceptSuggestion: (String, Int) -> Unit,
+    onDismissSuggestion: (String) -> Unit,
+    onToggleSuggestionSelection: (String) -> Unit,
+    onClearSuggestionSelection: () -> Unit,
+    onAcceptSelectedSuggestions: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val gridState = rememberLazyGridState()
     val listState = rememberLazyListState()
     var previousPresentation by remember { mutableStateOf(uiState.presentation) }
     var gridRatingSongId by rememberSaveable { mutableStateOf<String?>(null) }
+    var editingSuggestionSubjectId by rememberSaveable { mutableStateOf<String?>(null) }
 
     LaunchedEffect(uiState.presentation) {
         if (previousPresentation != uiState.presentation) {
@@ -303,14 +328,32 @@ private fun RankingsSongsContent(
         }
     }
 
+    val suggestionCallbacks = SuggestionCallbacks(
+        selectedIds = uiState.selectedSuggestionIds,
+        isSaving = uiState.isSavingScore,
+        onToggleSelection = onToggleSuggestionSelection,
+        onAcceptSelected = onAcceptSelectedSuggestions,
+        onClearSelection = onClearSuggestionSelection,
+        onAccept = onAcceptSuggestion,
+        onEdit = { row ->
+            gridRatingSongId = null
+            editingSuggestionSubjectId = row.suggestion.subjectId
+        },
+        onDismissLater = onDismissSuggestion
+    )
+
     when (uiState.presentation) {
         RankingPresentation.GRID -> RankingsGrid(
             uiState = uiState,
             onToggleUnrated = onToggleUnrated,
             onTogglePreview = onTogglePreview,
             onShowDetails = onShowDetails,
-            onEditScore = { songId -> gridRatingSongId = songId },
+            onEditScore = { songId ->
+                editingSuggestionSubjectId = null
+                gridRatingSongId = songId
+            },
             onDismissTip = onDismissTip,
+            suggestionCallbacks = suggestionCallbacks,
             gridState = gridState,
             modifier = modifier
         )
@@ -321,8 +364,27 @@ private fun RankingsSongsContent(
             onTogglePreview = onTogglePreview,
             onShowDetails = onShowDetails,
             onSaveScore = onSaveScore,
+            suggestionCallbacks = suggestionCallbacks,
             listState = listState,
             modifier = modifier
+        )
+    }
+
+    val editingSuggestion = uiState.suggestionRows.firstOrNull { it.suggestion.subjectId == editingSuggestionSubjectId }
+    LaunchedEffect(editingSuggestionSubjectId, editingSuggestion) {
+        if (editingSuggestionSubjectId != null && editingSuggestion == null) {
+            editingSuggestionSubjectId = null
+        }
+    }
+    editingSuggestion?.let { row ->
+        GridScoreEditorSheet(
+            song = row.song.copy(scoreTenths = row.suggestion.suggestedScoreTenths),
+            isSaving = uiState.isSavingScore,
+            onDismiss = { editingSuggestionSubjectId = null },
+            onSaveScore = { scoreTenths ->
+                onAcceptSuggestion(row.suggestion.subjectId, scoreTenths)
+                editingSuggestionSubjectId = null
+            }
         )
     }
 
@@ -339,6 +401,17 @@ private fun RankingsSongsContent(
     }
 }
 
+data class SuggestionCallbacks(
+    val selectedIds: Set<String>,
+    val isSaving: Boolean,
+    val onToggleSelection: (String) -> Unit,
+    val onAcceptSelected: () -> Unit,
+    val onClearSelection: () -> Unit,
+    val onAccept: (String, Int) -> Unit,
+    val onEdit: (SuggestionRow) -> Unit,
+    val onDismissLater: (String) -> Unit
+)
+
 @Composable
 private fun RankingsGrid(
     uiState: RankingsUiState,
@@ -347,6 +420,7 @@ private fun RankingsGrid(
     onShowDetails: (String) -> Unit,
     onEditScore: (String) -> Unit,
     onDismissTip: () -> Unit,
+    suggestionCallbacks: SuggestionCallbacks,
     gridState: LazyGridState,
     modifier: Modifier = Modifier
 ) {
@@ -361,6 +435,11 @@ private fun RankingsGrid(
         if (uiState.settings.showTips) {
             item(key = "hint", span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
                 RankingsGridHint(onDismiss = onDismissTip)
+            }
+        }
+        if (uiState.suggestionRows.isNotEmpty()) {
+            item(key = "suggestions", span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
+                SuggestionsSection(rows = uiState.suggestionRows, callbacks = suggestionCallbacks)
             }
         }
         items(uiState.rankedSongs, key = { it.song.id }) { rankedSong ->
@@ -403,6 +482,7 @@ private fun RankingsList(
     onTogglePreview: (String) -> Unit,
     onShowDetails: (String) -> Unit,
     onSaveScore: (String, Int) -> Unit,
+    suggestionCallbacks: SuggestionCallbacks,
     listState: LazyListState,
     modifier: Modifier = Modifier
 ) {
@@ -412,6 +492,11 @@ private fun RankingsList(
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
+        if (uiState.suggestionRows.isNotEmpty()) {
+            item(key = "suggestions") {
+                SuggestionsSection(rows = uiState.suggestionRows, callbacks = suggestionCallbacks)
+            }
+        }
         items(uiState.rankedSongs, key = { it.song.id }) { rankedSong ->
             RankingsListRow(
                 rankedSong = rankedSong,
@@ -542,6 +627,7 @@ private fun GridScoreButton(
     FilledTonalButton(
         onClick = onClick,
         enabled = enabled,
+        contentPadding = PaddingValues(4.dp),
         modifier = modifier
             .fillMaxWidth()
             .heightIn(min = 48.dp)
@@ -549,20 +635,7 @@ private fun GridScoreButton(
                 stateDescription = scoreStateDescription
             }
     ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(
-                text = score ?: stringResource(R.string.rankings_rate_song),
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold,
-                maxLines = 1
-            )
-            Text(
-                text = score?.let { stringResource(R.string.rankings_score_label) }
-                    ?: stringResource(R.string.score_unrated),
-                style = MaterialTheme.typography.labelSmall,
-                maxLines = 1
-            )
-        }
+        ScoreBadge(scoreTenths = song.scoreTenths)
     }
 }
 
@@ -682,9 +755,10 @@ internal fun RankingsListRow(
                 }
                 FilledTonalButton(
                     onClick = onToggleStats,
+                    contentPadding = PaddingValues(4.dp),
                     modifier = Modifier.heightIn(min = 48.dp)
                 ) {
-                    Text(scoreText(rankedSong.song), maxLines = 1)
+                    ScoreBadge(scoreTenths = rankedSong.song.scoreTenths, size = 40.dp)
                 }
                 IconButton(onClick = onToggleStats) {
                     Icon(
@@ -765,13 +839,19 @@ private fun SongDetailDialog(
                         .aspectRatio(1f)
                 )
                 Text(song.artist, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(
-                    text = rank?.let {
-                        stringResource(R.string.rankings_detail_rank_score, it, scoreText(song))
-                    } ?: scoreText(song),
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold
-                )
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    ScoreBadge(scoreTenths = song.scoreTenths, size = 40.dp)
+                    if (rank != null && rank > 0) {
+                        Text(
+                            text = stringResource(R.string.rankings_rank_badge, rank),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
                 Text(
                     text = stringResource(R.string.rankings_stats_summary, song.wins, song.losses, song.skips),
                     style = MaterialTheme.typography.labelMedium,
@@ -810,6 +890,154 @@ private fun UnratedHeader(count: Int, expanded: Boolean, onToggle: () -> Unit) {
                 imageVector = if (expanded) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore,
                 contentDescription = null
             )
+        }
+    }
+}
+
+@Composable
+private fun SuggestionsSection(
+    rows: List<SuggestionRow>,
+    callbacks: SuggestionCallbacks,
+    modifier: Modifier = Modifier
+) {
+    var showAcceptConfirm by rememberSaveable { mutableStateOf(false) }
+
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+    ) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(
+                text = stringResource(R.string.rankings_suggestions_title),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold
+            )
+            rows.forEach { row ->
+                SuggestionRowCard(
+                    row = row,
+                    selected = row.suggestion.subjectId in callbacks.selectedIds,
+                    enabled = !callbacks.isSaving,
+                    onSelectedChange = { callbacks.onToggleSelection(row.suggestion.subjectId) },
+                    onAccept = { callbacks.onAccept(row.suggestion.subjectId, row.suggestion.suggestedScoreTenths) },
+                    onEdit = { callbacks.onEdit(row) },
+                    onDismissLater = { callbacks.onDismissLater(row.suggestion.subjectId) }
+                )
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.End)
+            ) {
+                TextButton(
+                    onClick = callbacks.onClearSelection,
+                    enabled = callbacks.selectedIds.isNotEmpty() && !callbacks.isSaving
+                ) {
+                    Text(stringResource(R.string.settings_clear_selection))
+                }
+                Button(
+                    onClick = { showAcceptConfirm = true },
+                    enabled = callbacks.selectedIds.isNotEmpty() && !callbacks.isSaving
+                ) {
+                    Text(
+                        pluralStringResource(
+                            R.plurals.rankings_accept_selected_suggestions_action,
+                            callbacks.selectedIds.size,
+                            callbacks.selectedIds.size
+                        )
+                    )
+                }
+            }
+        }
+    }
+
+    if (showAcceptConfirm) {
+        AlertDialog(
+            onDismissRequest = { showAcceptConfirm = false },
+            title = { Text(stringResource(R.string.rankings_confirm_accept_suggestions_title)) },
+            text = {
+                Text(
+                    pluralStringResource(
+                        R.plurals.rankings_confirm_accept_suggestions_message,
+                        callbacks.selectedIds.size,
+                        callbacks.selectedIds.size
+                    )
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showAcceptConfirm = false
+                        callbacks.onAcceptSelected()
+                    }
+                ) {
+                    Text(stringResource(R.string.rankings_confirm_accept_suggestions_action))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showAcceptConfirm = false }) {
+                    Text(stringResource(R.string.rating_editor_cancel))
+                }
+            }
+        )
+    }
+}
+
+@Composable
+private fun SuggestionRowCard(
+    row: SuggestionRow,
+    selected: Boolean,
+    enabled: Boolean,
+    onSelectedChange: () -> Unit,
+    onAccept: () -> Unit,
+    onEdit: () -> Unit,
+    onDismissLater: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Checkbox(checked = selected, onCheckedChange = { onSelectedChange() }, enabled = enabled)
+            SongArtwork(artworkUrl = row.song.artworkUrl, modifier = Modifier.size(40.dp))
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    text = row.song.title,
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = pluralStringResource(
+                        R.plurals.rankings_suggestion_comparison_count,
+                        row.suggestion.comparisonCount,
+                        row.suggestion.comparisonCount
+                    ),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            ScoreTransitionBadges(
+                oldScoreTenths = row.song.scoreTenths,
+                newScoreTenths = row.suggestion.suggestedScoreTenths,
+                oldScoreSize = 28.dp,
+                newScoreSize = 36.dp
+            )
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.End)
+        ) {
+            TextButton(onClick = onEdit, enabled = enabled) {
+                Text(stringResource(R.string.rankings_suggestion_edit))
+            }
+            TextButton(onClick = onDismissLater, enabled = enabled) {
+                Text(stringResource(R.string.rank_skip_for_now))
+            }
+            Button(onClick = onAccept, enabled = enabled) {
+                Text(stringResource(R.string.rankings_suggestion_accept))
+            }
         }
     }
 }
@@ -913,34 +1141,31 @@ private fun ComingSoonContent(modifier: Modifier = Modifier) {
     }
 }
 
-@Composable
-private fun scoreText(song: Song): String {
-    val score = song.scoreTenths?.let { formatScoreTenths(it) } ?: stringResource(R.string.score_unrated)
-    return stringResource(R.string.score_value, score)
-}
-
 private fun LazyGridState.firstVisibleSongKey(): String? =
     layoutInfo.visibleItemsInfo.firstNotNullOfOrNull { item ->
-        (item.key as? String)?.takeIf { it != "hint" && it != "unrated-header" }
+        (item.key as? String)?.takeIf { it != "hint" && it != "unrated-header" && it != "suggestions" }
     }
 
 private fun LazyListState.firstVisibleSongKey(): String? =
     layoutInfo.visibleItemsInfo.firstNotNullOfOrNull { item ->
-        (item.key as? String)?.takeIf { it != "unrated-header" }
+        (item.key as? String)?.takeIf { it != "unrated-header" && it != "suggestions" }
     }
 
 private fun RankingsUiState.gridIndexForSong(songId: String): Int? {
+    val hintOffset = if (settings.showTips) 1 else 0
+    val suggestionOffset = if (suggestionRows.isNotEmpty()) 1 else 0
     val rankedIndex = rankedSongs.indexOfFirst { it.song.id == songId }
-    if (rankedIndex >= 0) return rankedIndex + 1
+    if (rankedIndex >= 0) return rankedIndex + hintOffset + suggestionOffset
     val unratedIndex = unratedSongs.indexOfFirst { it.id == songId }
-    if (unratedIndex >= 0 && unratedExpanded) return rankedSongs.size + 2 + unratedIndex
+    if (unratedIndex >= 0 && unratedExpanded) return rankedSongs.size + hintOffset + 1 + suggestionOffset + unratedIndex
     return null
 }
 
 private fun RankingsUiState.listIndexForSong(songId: String): Int? {
+    val suggestionOffset = if (suggestionRows.isNotEmpty()) 1 else 0
     val rankedIndex = rankedSongs.indexOfFirst { it.song.id == songId }
-    if (rankedIndex >= 0) return rankedIndex
+    if (rankedIndex >= 0) return rankedIndex + suggestionOffset
     val unratedIndex = unratedSongs.indexOfFirst { it.id == songId }
-    if (unratedIndex >= 0 && unratedExpanded) return rankedSongs.size + 1 + unratedIndex
+    if (unratedIndex >= 0 && unratedExpanded) return rankedSongs.size + 1 + suggestionOffset + unratedIndex
     return null
 }

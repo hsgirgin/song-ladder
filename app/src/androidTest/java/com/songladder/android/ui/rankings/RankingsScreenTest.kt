@@ -13,6 +13,7 @@ import androidx.compose.ui.unit.dp
 import com.songladder.android.domain.model.RankingPresentation
 import com.songladder.android.domain.model.RankingSettings
 import com.songladder.android.domain.model.Song
+import com.songladder.android.domain.model.Suggestion
 import com.songladder.android.ui.components.SongRatingControl
 import com.songladder.android.ui.theme.SongLadderTheme
 import org.junit.Assert.assertEquals
@@ -50,7 +51,9 @@ class RankingsScreenTest {
             }
         }
 
-        composeRule.onNodeWithText("Score 8.0").assertIsDisplayed()
+        // "8.0" appears twice while expanded: once in the row's ScoreBadge and once
+        // in the inline SongRatingControl's pre-filled value readout.
+        composeRule.onAllNodesWithText("8.0").assertCountEquals(2)
         composeRule.onNodeWithText("12W 3L · 5 skips").assertIsDisplayed()
         composeRule.onNodeWithText("Preview unavailable").assertIsDisplayed()
     }
@@ -83,6 +86,11 @@ class RankingsScreenTest {
                     onDismissTip = {},
                     onDeleteSong = {},
                     onUndoDelete = {},
+                    onAcceptSuggestion = { _, _ -> },
+                    onDismissSuggestion = {},
+                    onToggleSuggestionSelection = {},
+                    onClearSuggestionSelection = {},
+                    onAcceptSelectedSuggestions = {},
                     onOpenSettings = {},
                     onAddSongs = {}
                 )
@@ -98,6 +106,158 @@ class RankingsScreenTest {
             assertEquals("song-1" to 80, savedScore)
             assertEquals(0, previewTaps)
         }
+    }
+
+    @Test
+    fun gridMode_unratedSongShowsNeutralScoreBadge() {
+        val song = rankingsSong(id = "song-1", scoreTenths = null)
+
+        composeRule.setContent {
+            SongLadderTheme {
+                RankingsScreenContent(
+                    uiState = RankingsUiState(
+                        allSongs = listOf(song),
+                        rankedSongs = listOf(RankedSong(0, song)),
+                        selectedTab = RankingsTab.SONGS,
+                        presentation = RankingPresentation.GRID
+                    ),
+                    onTabSelected = {},
+                    onSearchActiveChanged = {},
+                    onSearchQueryChanged = {},
+                    onPresentationChanged = {},
+                    onToggleUnrated = {},
+                    onToggleStats = {},
+                    onTogglePreview = {},
+                    onShowDetails = {},
+                    onHideDetails = {},
+                    onSaveScore = { _, _ -> },
+                    onDismissTip = {},
+                    onDeleteSong = {},
+                    onUndoDelete = {},
+                    onAcceptSuggestion = { _, _ -> },
+                    onDismissSuggestion = {},
+                    onToggleSuggestionSelection = {},
+                    onClearSuggestionSelection = {},
+                    onAcceptSelectedSuggestions = {},
+                    onOpenSettings = {},
+                    onAddSongs = {}
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("Rate").assertIsDisplayed()
+    }
+
+    @Test
+    fun gridMode_suggestionRowAcceptsWithItsSuggestedScore() {
+        val song = rankingsSong(id = "song-1", scoreTenths = null)
+        var accepted: Pair<String, Int>? = null
+
+        composeRule.setContent {
+            SongLadderTheme {
+                RankingsScreenContent(
+                    uiState = RankingsUiState(
+                        allSongs = listOf(song),
+                        unratedSongs = listOf(song),
+                        suggestionRows = listOf(
+                            SuggestionRow(
+                                suggestion = Suggestion(
+                                    subjectId = "song-1",
+                                    suggestedScoreTenths = 70,
+                                    comparisonCount = 5,
+                                    scoreGapTenths = null,
+                                    lastEventSequenceId = 5L
+                                ),
+                                song = song
+                            )
+                        ),
+                        selectedTab = RankingsTab.SONGS,
+                        presentation = RankingPresentation.GRID
+                    ),
+                    onTabSelected = {},
+                    onSearchActiveChanged = {},
+                    onSearchQueryChanged = {},
+                    onPresentationChanged = {},
+                    onToggleUnrated = {},
+                    onToggleStats = {},
+                    onTogglePreview = {},
+                    onShowDetails = {},
+                    onHideDetails = {},
+                    onSaveScore = { _, _ -> },
+                    onDismissTip = {},
+                    onDeleteSong = {},
+                    onUndoDelete = {},
+                    onAcceptSuggestion = { subjectId, scoreTenths -> accepted = subjectId to scoreTenths },
+                    onDismissSuggestion = {},
+                    onToggleSuggestionSelection = {},
+                    onClearSuggestionSelection = {},
+                    onAcceptSelectedSuggestions = {},
+                    onOpenSettings = {},
+                    onAddSongs = {}
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("Suggested scores").assertIsDisplayed()
+        composeRule.onNodeWithText("Accept").performClick()
+
+        composeRule.runOnIdle {
+            assertEquals("song-1" to 70, accepted)
+        }
+    }
+
+    @Test
+    fun gridMode_suggestionRowShowsTheOldScoreAlongsideTheNewOneWhenRated() {
+        val song = rankingsSong(id = "song-1", scoreTenths = 60)
+        val otherSong = rankingsSong(id = "song-2", scoreTenths = null)
+
+        composeRule.setContent {
+            SongLadderTheme {
+                RankingsScreenContent(
+                    uiState = RankingsUiState(
+                        allSongs = listOf(song, otherSong),
+                        unratedSongs = listOf(otherSong),
+                        suggestionRows = listOf(
+                            SuggestionRow(
+                                suggestion = Suggestion(
+                                    subjectId = "song-1",
+                                    suggestedScoreTenths = 85,
+                                    comparisonCount = 5,
+                                    scoreGapTenths = 25,
+                                    lastEventSequenceId = 5L
+                                ),
+                                song = song
+                            )
+                        ),
+                        selectedTab = RankingsTab.SONGS,
+                        presentation = RankingPresentation.GRID
+                    ),
+                    onTabSelected = {},
+                    onSearchActiveChanged = {},
+                    onSearchQueryChanged = {},
+                    onPresentationChanged = {},
+                    onToggleUnrated = {},
+                    onToggleStats = {},
+                    onTogglePreview = {},
+                    onShowDetails = {},
+                    onHideDetails = {},
+                    onSaveScore = { _, _ -> },
+                    onDismissTip = {},
+                    onDeleteSong = {},
+                    onUndoDelete = {},
+                    onAcceptSuggestion = { _, _ -> },
+                    onDismissSuggestion = {},
+                    onToggleSuggestionSelection = {},
+                    onClearSuggestionSelection = {},
+                    onAcceptSelectedSuggestions = {},
+                    onOpenSettings = {},
+                    onAddSongs = {}
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("6.0").assertIsDisplayed()
+        composeRule.onNodeWithText("8.5").assertIsDisplayed()
     }
 
     @Test
@@ -126,6 +286,11 @@ class RankingsScreenTest {
                     onDismissTip = { dismissedTip = true },
                     onDeleteSong = {},
                     onUndoDelete = {},
+                    onAcceptSuggestion = { _, _ -> },
+                    onDismissSuggestion = {},
+                    onToggleSuggestionSelection = {},
+                    onClearSuggestionSelection = {},
+                    onAcceptSelectedSuggestions = {},
                     onOpenSettings = { openedSettings = true },
                     onAddSongs = {}
                 )
@@ -169,6 +334,11 @@ class RankingsScreenTest {
                     onDismissTip = {},
                     onDeleteSong = {},
                     onUndoDelete = {},
+                    onAcceptSuggestion = { _, _ -> },
+                    onDismissSuggestion = {},
+                    onToggleSuggestionSelection = {},
+                    onClearSuggestionSelection = {},
+                    onAcceptSelectedSuggestions = {},
                     onOpenSettings = {},
                     onAddSongs = {}
                 )
@@ -204,6 +374,11 @@ class RankingsScreenTest {
                     onDismissTip = {},
                     onDeleteSong = {},
                     onUndoDelete = {},
+                    onAcceptSuggestion = { _, _ -> },
+                    onDismissSuggestion = {},
+                    onToggleSuggestionSelection = {},
+                    onClearSuggestionSelection = {},
+                    onAcceptSelectedSuggestions = {},
                     onOpenSettings = {},
                     onAddSongs = {}
                 )

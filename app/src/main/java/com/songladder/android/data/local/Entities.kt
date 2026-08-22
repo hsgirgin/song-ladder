@@ -95,6 +95,13 @@ data class ImportBatchEntity(
     val itemCount: Int
 )
 
+@Entity(tableName = "suggestion_dismissals")
+data class SuggestionDismissalEntity(
+    @PrimaryKey val subjectId: String,
+    val dismissedAtSequenceId: Long,
+    val dismissedScoreTenths: Int
+)
+
 data class SongWithStatsEntity(
     @Embedded val song: SongEntity,
     @Relation(parentColumn = "rankingSubjectId", entityColumn = "id")

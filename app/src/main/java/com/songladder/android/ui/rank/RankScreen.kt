@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -33,12 +34,14 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.AlertDialog
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -64,8 +67,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.songladder.android.domain.model.Matchup
 import com.songladder.android.domain.model.Song
-import com.songladder.android.ui.components.SongRatingControl
+import com.songladder.android.domain.model.Suggestion
+import com.songladder.android.ui.components.ScoreTransitionBadges
 import com.songladder.android.ui.components.SongArtwork
+import com.songladder.android.ui.components.SongRatingControl
 
 internal enum class CardReaction {
     Idle,
@@ -84,7 +89,6 @@ fun RankScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val matchup = uiState.matchup
-    val ratingStep = uiState.ratingStep
     val lifecycleOwner = LocalLifecycleOwner.current
 
     DisposableEffect(lifecycleOwner, matchup?.left?.id, matchup?.right?.id) {
@@ -113,7 +117,34 @@ fun RankScreen(
         }
     }
 
-    if (uiState.isReady && matchup != null && ratingStep == null && !uiState.caughtUp) {
+    val pendingSuggestion = uiState.pendingSuggestion
+    val suggestionSong = pendingSuggestion?.let { suggestion ->
+        uiState.songs.firstOrNull { it.rankingSubjectId == suggestion.subjectId }
+    }
+
+    if (pendingSuggestion != null && suggestionSong != null) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background)
+                .padding(horizontal = 24.dp)
+                .padding(top = 16.dp, bottom = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(18.dp)
+        ) {
+            MinimalRankHeader(
+                uiState = uiState,
+                onUndo = viewModel::undo,
+                onOpenSettings = onOpenSettings
+            )
+            CompactSuggestionCard(
+                suggestion = pendingSuggestion,
+                song = suggestionSong,
+                onAccept = { scoreTenths -> viewModel.acceptPendingSuggestion(scoreTenths) },
+                onLater = viewModel::dismissPendingSuggestionLater,
+                isSaving = uiState.isSavingSuggestion
+            )
+        }
+    } else if (uiState.isReady && matchup != null && !uiState.caughtUp) {
         RankMatchupContent(
             uiState = uiState,
             matchup = matchup,
@@ -146,16 +177,68 @@ fun RankScreen(
             }
         }
     }
+}
 
-    if (ratingStep != null) {
-        PostMatchRatingDialog(
-            ratingStep = ratingStep,
-            enabled = !uiState.isSavingRating,
-            onDismiss = viewModel::skipRatingStep,
-            onScoreChange = viewModel::updateRatingDraft,
-            onSave = viewModel::saveRatingStep,
-            onSkip = viewModel::skipRatingStep
-        )
+@Composable
+internal fun CompactSuggestionCard(
+    suggestion: Suggestion,
+    song: Song,
+    onAccept: (Int) -> Unit,
+    onLater: () -> Unit,
+    isSaving: Boolean = false
+) {
+    var editing by rememberSaveable(suggestion.subjectId) { mutableStateOf(false) }
+    var draftScore by rememberSaveable(suggestion.subjectId) { mutableIntStateOf(suggestion.suggestedScoreTenths) }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+    ) {
+        Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(
+                text = stringResource(com.songladder.android.R.string.rankings_suggestions_title),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold
+            )
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                SongArtwork(artworkUrl = song.artworkUrl, modifier = Modifier.size(56.dp))
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(song.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(song.artist, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                ScoreTransitionBadges(
+                    oldScoreTenths = song.scoreTenths,
+                    newScoreTenths = if (editing) draftScore else suggestion.suggestedScoreTenths
+                )
+            }
+            if (editing) {
+                SongRatingControl(
+                    scoreTenths = draftScore,
+                    onScoreChange = { draftScore = it },
+                    onSave = { onAccept(draftScore) },
+                    onCancel = {
+                        draftScore = suggestion.suggestedScoreTenths
+                        editing = false
+                    },
+                    enabled = !isSaving
+                )
+            } else {
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.End), modifier = Modifier.fillMaxWidth()) {
+                    TextButton(onClick = onLater, enabled = !isSaving) {
+                        Text(stringResource(com.songladder.android.R.string.rank_skip_for_now))
+                    }
+                    TextButton(onClick = { editing = true }, enabled = !isSaving) {
+                        Text(stringResource(com.songladder.android.R.string.rankings_suggestion_edit))
+                    }
+                    Button(onClick = { onAccept(suggestion.suggestedScoreTenths) }, enabled = !isSaving) {
+                        Text(stringResource(com.songladder.android.R.string.rankings_suggestion_accept))
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -283,94 +366,6 @@ internal fun RankMatchupContent(
             }
         }
     }
-}
-
-@Composable
-private fun PostMatchRatingContent(
-    ratingStep: PostMatchRatingStep,
-    enabled: Boolean,
-    modifier: Modifier = Modifier,
-    onScoreChange: (Int) -> Unit,
-    onSave: () -> Unit,
-    onSkip: () -> Unit
-) {
-    Surface(
-        modifier = modifier,
-        color = MaterialTheme.colorScheme.surface,
-        shape = RoundedCornerShape(18.dp)
-    ) {
-        Column(
-            modifier = Modifier.padding(18.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
-        ) {
-            Text(
-                text = stringResource(
-                    when (ratingStep.role) {
-                        PostMatchRatingRole.Winner -> com.songladder.android.R.string.rank_rate_winner
-                        PostMatchRatingRole.Loser -> com.songladder.android.R.string.rank_rate_loser
-                    },
-                    ratingStep.song.title
-                ),
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.SemiBold
-            )
-            Text(
-                text = stringResource(
-                    com.songladder.android.R.string.rank_rating_step_progress,
-                    ratingStep.index,
-                    ratingStep.total
-                ),
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Text(
-                text = ratingStep.song.artist,
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            SongRatingControl(
-                scoreTenths = ratingStep.draftScoreTenths,
-                onScoreChange = onScoreChange,
-                onSave = onSave,
-                onCancel = { onScoreChange(ratingStep.song.scoreTenths ?: 55) },
-                enabled = enabled
-            )
-            TextButton(
-                onClick = onSkip,
-                enabled = enabled,
-                modifier = Modifier.align(Alignment.End)
-            ) {
-                Text(stringResource(com.songladder.android.R.string.rank_skip_for_now))
-            }
-        }
-    }
-}
-
-@Composable
-private fun PostMatchRatingDialog(
-    ratingStep: PostMatchRatingStep,
-    enabled: Boolean,
-    onDismiss: () -> Unit,
-    onScoreChange: (Int) -> Unit,
-    onSave: () -> Unit,
-    onSkip: () -> Unit
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = null,
-        text = {
-            PostMatchRatingContent(
-                ratingStep = ratingStep,
-                enabled = enabled,
-                modifier = Modifier.fillMaxWidth(),
-                onScoreChange = onScoreChange,
-                onSave = onSave,
-                onSkip = onSkip
-            )
-        },
-        confirmButton = {},
-        dismissButton = {}
-    )
 }
 
 @Composable

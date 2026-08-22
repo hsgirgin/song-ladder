@@ -6,6 +6,7 @@ import com.songladder.android.domain.model.MatchupOutcome
 import com.songladder.android.domain.model.RankingSettings
 import com.songladder.android.domain.model.ScoreSaveResult
 import com.songladder.android.domain.model.Song
+import com.songladder.android.domain.model.Suggestion
 import com.songladder.android.domain.repository.RankingRepository
 import com.songladder.android.domain.repository.SettingsRepository
 import com.songladder.android.domain.repository.SongPreviewPlayer
@@ -18,6 +19,7 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -46,6 +48,104 @@ class RankViewModelTest {
     @After
     fun tearDown() {
         Dispatchers.resetMain()
+    }
+
+    @Test
+    fun `pending suggestion reflects the repository's suggestion list`() = runTest {
+        val songs = listOf(fakeSong("1", "Dreams"), fakeSong("2", "Go Your Own Way"))
+        val rankingRepository = FakeRankingRepository(
+            initialSuggestions = listOf(
+                Suggestion("1", suggestedScoreTenths = 70, comparisonCount = 5, scoreGapTenths = null, lastEventSequenceId = 5L)
+            )
+        )
+        val viewModel = RankViewModel(FakeRankSongRepository(songs), rankingRepository)
+        backgroundScope.launch(dispatcher) { viewModel.uiState.collect {} }
+        advanceUntilIdle()
+
+        assertEquals("1", viewModel.uiState.value.pendingSuggestion?.subjectId)
+    }
+
+    @Test
+    fun `accepting the pending suggestion forwards it to the repository`() = runTest {
+        val songs = listOf(fakeSong("1", "Dreams"), fakeSong("2", "Go Your Own Way"))
+        val rankingRepository = FakeRankingRepository(
+            initialSuggestions = listOf(
+                Suggestion("1", suggestedScoreTenths = 70, comparisonCount = 5, scoreGapTenths = null, lastEventSequenceId = 5L)
+            )
+        )
+        val viewModel = RankViewModel(FakeRankSongRepository(songs), rankingRepository)
+        backgroundScope.launch(dispatcher) { viewModel.uiState.collect {} }
+        advanceUntilIdle()
+
+        viewModel.acceptPendingSuggestion(75)
+        advanceUntilIdle()
+
+        assertEquals(listOf("1" to 75), rankingRepository.acceptedSuggestions)
+        assertEquals(null, viewModel.uiState.value.pendingSuggestion)
+    }
+
+    @Test
+    fun `dismissing the pending suggestion later forwards its current values`() = runTest {
+        val songs = listOf(fakeSong("1", "Dreams"), fakeSong("2", "Go Your Own Way"))
+        val rankingRepository = FakeRankingRepository(
+            initialSuggestions = listOf(
+                Suggestion("1", suggestedScoreTenths = 70, comparisonCount = 5, scoreGapTenths = 8, lastEventSequenceId = 9L)
+            )
+        )
+        val viewModel = RankViewModel(FakeRankSongRepository(songs), rankingRepository)
+        backgroundScope.launch(dispatcher) { viewModel.uiState.collect {} }
+        advanceUntilIdle()
+
+        viewModel.dismissPendingSuggestionLater()
+        advanceUntilIdle()
+
+        assertEquals(listOf("1"), rankingRepository.dismissedSuggestionIds)
+        assertEquals(null, viewModel.uiState.value.pendingSuggestion)
+    }
+
+    @Test
+    fun `isSavingSuggestion is true while accepting and clears once the save completes`() = runTest {
+        val songs = listOf(fakeSong("1", "Dreams"), fakeSong("2", "Go Your Own Way"))
+        val gate = CompletableDeferred<Unit>()
+        val rankingRepository = FakeRankingRepository(
+            initialSuggestions = listOf(
+                Suggestion("1", suggestedScoreTenths = 70, comparisonCount = 5, scoreGapTenths = null, lastEventSequenceId = 5L)
+            ),
+            acceptSuggestionGate = gate
+        )
+        val viewModel = RankViewModel(FakeRankSongRepository(songs), rankingRepository)
+        backgroundScope.launch(dispatcher) { viewModel.uiState.collect {} }
+        advanceUntilIdle()
+
+        viewModel.acceptPendingSuggestion(75)
+        runCurrent()
+
+        assertTrue(viewModel.uiState.value.isSavingSuggestion)
+
+        gate.complete(Unit)
+        advanceUntilIdle()
+
+        assertFalse(viewModel.uiState.value.isSavingSuggestion)
+    }
+
+    @Test
+    fun `a suggestion for a song outside the current list is ignored rather than blocking matchups`() = runTest {
+        val songs = listOf(fakeSong("1", "Dreams"), fakeSong("2", "Go Your Own Way"))
+        val rankingRepository = FakeRankingRepository(
+            initialSuggestions = listOf(
+                Suggestion("missing", suggestedScoreTenths = 70, comparisonCount = 5, scoreGapTenths = null, lastEventSequenceId = 5L)
+            )
+        )
+        val viewModel = RankViewModel(FakeRankSongRepository(songs), rankingRepository)
+        backgroundScope.launch(dispatcher) { viewModel.uiState.collect {} }
+        advanceUntilIdle()
+
+        assertEquals(null, viewModel.uiState.value.pendingSuggestion)
+
+        viewModel.rankWinner("1", "2")
+        advanceUntilIdle()
+
+        assertEquals(1, rankingRepository.battleCalls)
     }
 
     @Test
@@ -405,11 +505,10 @@ class RankViewModelTest {
         assertEquals(1, rankingRepository.undoCalls)
         assertFalse(viewModel.uiState.value.undoAvailable)
         assertEquals(RankVisualFeedback.None, viewModel.uiState.value.visualFeedback)
-        assertEquals(null, viewModel.uiState.value.ratingStep)
     }
 
     @Test
-    fun `winner with unrated songs opens winner then loser rating steps`() = runTest {
+    fun `winner returns straight to a normal matchup with no pending state`() = runTest {
         val rankingRepository = FakeRankingRepository()
         val viewModel = RankViewModel(
             songRepository = FakeRankSongRepository(
@@ -423,52 +522,12 @@ class RankViewModelTest {
         viewModel.rankWinner("1", "2")
         runCurrent()
 
-        var ratingStep = checkNotNull(viewModel.uiState.value.ratingStep)
-        assertEquals("1", ratingStep.song.id)
-        assertEquals(PostMatchRatingRole.Winner, ratingStep.role)
-        assertEquals(1, ratingStep.index)
-        assertEquals(2, ratingStep.total)
-
-        viewModel.updateRatingDraft(85)
-        viewModel.saveRatingStep()
-        runCurrent()
-
-        assertEquals(listOf("1" to 85), rankingRepository.savedScores)
-        ratingStep = checkNotNull(viewModel.uiState.value.ratingStep)
-        assertEquals("2", ratingStep.song.id)
-        assertEquals(PostMatchRatingRole.Loser, ratingStep.role)
-        assertEquals(2, ratingStep.index)
-        assertEquals(2, ratingStep.total)
-
-        viewModel.skipRatingStep()
-        runCurrent()
-
-        assertEquals(null, viewModel.uiState.value.ratingStep)
-        assertEquals(listOf("1" to 85), rankingRepository.savedScores)
-    }
-
-    @Test
-    fun `rating save failure keeps the current post match rating step`() = runTest {
-        val rankingRepository = FakeRankingRepository(
-            scoreResult = Result.failure(IllegalStateException("db failed"))
-        )
-        val viewModel = RankViewModel(
-            songRepository = FakeRankSongRepository(
-                listOf(fakeSong(id = "1", title = "Dreams"), fakeSong(id = "2", title = "Go Your Own Way"))
-            ),
-            rankingRepository = rankingRepository
-        )
-        backgroundScope.launch(dispatcher) { viewModel.uiState.collect {} }
+        assertEquals(1, rankingRepository.battleCalls)
+        assertEquals(RankVisualFeedback.Choice("1", "2"), viewModel.uiState.value.visualFeedback)
 
         advanceUntilIdle()
-        viewModel.rankWinner("1", "2")
-        runCurrent()
-        viewModel.updateRatingDraft(85)
-        viewModel.saveRatingStep()
-        runCurrent()
 
-        assertEquals("1", viewModel.uiState.value.ratingStep?.song?.id)
-        assertEquals("Could not save score. Try again.", viewModel.uiState.value.message)
+        assertEquals(RankVisualFeedback.None, viewModel.uiState.value.visualFeedback)
     }
 
     @Test
@@ -635,13 +694,16 @@ private class FakeRankingRepository(
     private val battleResult: Result<Unit> = Result.success(Unit),
     private val skipResult: Result<Unit> = Result.success(Unit),
     private val undoResult: Result<Boolean> = Result.success(true),
-    private val scoreResult: Result<ScoreSaveResult>? = null,
-    initialEvents: List<MatchupEvent> = emptyList()
+    initialEvents: List<MatchupEvent> = emptyList(),
+    initialSuggestions: List<Suggestion> = emptyList(),
+    private val acceptSuggestionGate: CompletableDeferred<Unit>? = null
 ) : RankingRepository {
     private val stats = MutableStateFlow(AppStats())
     private val events = MutableStateFlow(initialEvents)
+    private val suggestions = MutableStateFlow(initialSuggestions)
     val skippedSongIds = mutableListOf<String>()
-    val savedScores = mutableListOf<Pair<String, Int>>()
+    val acceptedSuggestions = mutableListOf<Pair<String, Int>>()
+    val dismissedSuggestionIds = mutableListOf<String>()
     var battleCalls = 0
     var undoCalls = 0
 
@@ -666,13 +728,31 @@ private class FakeRankingRepository(
     }
 
     override suspend fun saveScore(songId: String, scoreTenths: Int): Result<ScoreSaveResult> {
-        savedScores += songId to scoreTenths
-        return scoreResult ?: Result.success(ScoreSaveResult(songId = songId, scoreTenths = scoreTenths))
+        return Result.success(ScoreSaveResult(songId = songId, scoreTenths = scoreTenths))
     }
 
     override suspend fun undoLastWinner(): Result<Boolean> {
         undoCalls += 1
         return undoResult
+    }
+
+    override fun observeSuggestions(): Flow<List<Suggestion>> = suggestions
+
+    override suspend fun acceptSuggestion(subjectId: String, scoreTenths: Int): Result<ScoreSaveResult> {
+        acceptSuggestionGate?.await()
+        acceptedSuggestions += subjectId to scoreTenths
+        suggestions.update { list -> list.filterNot { it.subjectId == subjectId } }
+        return Result.success(ScoreSaveResult(songId = subjectId, scoreTenths = scoreTenths))
+    }
+
+    override suspend fun dismissSuggestionLater(
+        subjectId: String,
+        suggestedScoreTenths: Int,
+        lastEventSequenceId: Long
+    ): Result<Unit> {
+        dismissedSuggestionIds += subjectId
+        suggestions.update { list -> list.filterNot { it.subjectId == subjectId } }
+        return Result.success(Unit)
     }
 }
 

@@ -256,6 +256,66 @@ class EloMatchupEngineTest {
     }
 
     @Test
+    fun `replayWithHistory returns the same final subjects as replay`() {
+        val subjects = listOf(subject("one", 1200.0), subject("two", 1150.0), subject("three", 1250.0))
+        val events = listOf(
+            winEvent(1L, winnerId = "one", loserId = "two"),
+            winEvent(2L, winnerId = "one", loserId = "three"),
+            winEvent(3L, winnerId = "two", loserId = "three")
+        )
+        val engine = EloMatchupEngine()
+
+        val direct = engine.replay(subjects, events).associateBy { it.id }
+        val viaHistory = engine.replayWithHistory(subjects, events).subjects.associateBy { it.id }
+
+        subjects.forEach { original ->
+            assertEquals(direct.getValue(original.id).elo, viaHistory.getValue(original.id).elo, 0.000001)
+            assertEquals(direct.getValue(original.id).wins, viaHistory.getValue(original.id).wins)
+            assertEquals(direct.getValue(original.id).losses, viaHistory.getValue(original.id).losses)
+        }
+    }
+
+    @Test
+    fun `replayWithHistory records elo after each of a subject's own win events in order`() {
+        val result = EloMatchupEngine().replayWithHistory(
+            subjects = listOf(subject("one", 1200.0), subject("two", 1200.0), subject("three", 1200.0)),
+            events = listOf(
+                MatchupEvent(
+                    sequenceId = 1L,
+                    occurredAt = 10L,
+                    firstSubjectId = "one",
+                    secondSubjectId = "two",
+                    outcome = MatchupOutcome.WIN,
+                    winnerSubjectId = "one",
+                    loserSubjectId = "two",
+                    winnerEffectiveK = 64.0,
+                    loserEffectiveK = 64.0
+                ),
+                MatchupEvent(
+                    sequenceId = 2L,
+                    occurredAt = 20L,
+                    firstSubjectId = "one",
+                    secondSubjectId = "three",
+                    outcome = MatchupOutcome.WIN,
+                    winnerSubjectId = "one",
+                    loserSubjectId = "three",
+                    winnerEffectiveK = 64.0,
+                    loserEffectiveK = 64.0
+                )
+            )
+        )
+
+        val oneHistory = result.eloHistoryBySubject.getValue("one")
+        assertEquals(2, oneHistory.size)
+        assertEquals(1232.0, oneHistory[0], 0.000001)
+        assertTrue(oneHistory[1] > oneHistory[0])
+        assertEquals(result.subjects.first { it.id == "one" }.elo, oneHistory.last(), 0.000001)
+
+        assertEquals(1, result.eloHistoryBySubject.getValue("two").size)
+        assertTrue(!result.eloHistoryBySubject.containsKey("missing"))
+    }
+
+    @Test
     fun `displayed matchups are used for cooldown before an event is recorded`() {
         val songs = listOf(
             song(id = "one", scoreTenths = 80),
@@ -323,6 +383,19 @@ class EloMatchupEngineTest {
             firstSubjectId = firstId,
             secondSubjectId = secondId,
             outcome = MatchupOutcome.SKIP
+        )
+
+    private fun winEvent(sequenceId: Long, winnerId: String, loserId: String): MatchupEvent =
+        MatchupEvent(
+            sequenceId = sequenceId,
+            occurredAt = sequenceId,
+            firstSubjectId = winnerId,
+            secondSubjectId = loserId,
+            outcome = MatchupOutcome.WIN,
+            winnerSubjectId = winnerId,
+            loserSubjectId = loserId,
+            winnerEffectiveK = 64.0,
+            loserEffectiveK = 64.0
         )
 
     private fun subject(
