@@ -17,10 +17,12 @@ import com.songladder.android.ui.NoOpPreviewPlayer
 import com.songladder.android.ui.UnavailablePreviewResolver
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -30,6 +32,9 @@ sealed interface RankVisualFeedback {
     data class Choice(val winnerId: String, val loserId: String) : RankVisualFeedback
     data object Skip : RankVisualFeedback
 }
+
+private val RankVisualFeedback.isSettled: Boolean
+    get() = this == RankVisualFeedback.None
 
 enum class SongPreviewState {
     Loading,
@@ -110,7 +115,7 @@ class RankViewModel(
         val activeSongIds = songs.mapTo(mutableSetOf()) { it.id }
         val currentMatchup = session.currentMatchup
             ?.takeIf { it.left.id in activeSongIds && it.right.id in activeSongIds }
-        val selection = if (session.visualFeedback == RankVisualFeedback.None) {
+        val selection = if (session.visualFeedback.isSettled) {
             currentMatchup?.let { com.songladder.android.domain.model.MatchupSelection(it) }
                 ?: matchupEngine.selectMatchup(
                     songs = songs,
@@ -151,10 +156,22 @@ class RankViewModel(
         previewStates,
         rankingRepository.observeSuggestions()
     ) { state, previews, suggestions ->
-        val resolvedSuggestion = suggestions.firstOrNull { suggestion ->
-            state.songs.any { it.rankingSubjectId == suggestion.subjectId }
+        // Suppress the suggestion during the win/loss flash (matches state.visualFeedback)
+        // so a suggestion becoming ready mid-animation can't preempt it, and null out
+        // matchup while a suggestion is pending so prefetch doesn't run for a hidden matchup -
+        // mirrors the old pendingRatingSteps gating this replaced.
+        val resolvedSuggestion = if (state.visualFeedback.isSettled) {
+            suggestions.firstOrNull { suggestion ->
+                state.songs.any { it.rankingSubjectId == suggestion.subjectId }
+            }
+        } else {
+            null
         }
-        state.copy(previews = previews, pendingSuggestion = resolvedSuggestion)
+        state.copy(
+            previews = previews,
+            pendingSuggestion = resolvedSuggestion,
+            matchup = if (resolvedSuggestion != null) null else state.matchup
+        )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), RankUiState())
 
     init {
@@ -309,43 +326,53 @@ class RankViewModel(
     }
 
     fun acceptPendingSuggestion(scoreTenths: Int) {
-        if (mutationInFlight) return
-        val suggestion = uiState.value.pendingSuggestion ?: return
-        mutationInFlight = true
-        sessionState.update { it.copy(isSavingSuggestion = true) }
-        viewModelScope.launch {
-            try {
-                rankingRepository.acceptSuggestion(suggestion.subjectId, scoreTenths)
-                    .onFailure {
-                        sessionState.update { state ->
-                            state.copy(transientMessage = "Could not save score. Try again.")
-                        }
-                        scheduleFeedbackClear(delayMillis = 2_500)
-                    }
-            } finally {
-                mutationInFlight = false
-                sessionState.update { it.copy(isSavingSuggestion = false) }
-            }
+        runSuggestionMutation(failureMessage = "Could not save score. Try again.") { suggestion ->
+            rankingRepository.acceptSuggestion(suggestion.subjectId, scoreTenths)
         }
     }
 
     fun dismissPendingSuggestionLater() {
+        runSuggestionMutation(failureMessage = "Could not dismiss suggestion. Try again.") { suggestion ->
+            rankingRepository.dismissSuggestionLater(
+                subjectId = suggestion.subjectId,
+                suggestedScoreTenths = suggestion.suggestedScoreTenths,
+                lastEventSequenceId = suggestion.lastEventSequenceId
+            )
+        }
+    }
+
+    /**
+     * Shared by [acceptPendingSuggestion] and [dismissPendingSuggestionLater]. On success,
+     * waits (scoped to this one mutation, not a permanent subscription) for [uiState] to
+     * reflect the suggestion clearing before attempting autoplay - this avoids reacting to
+     * a suggestion being resolved from elsewhere (e.g. the Rankings screen), which would
+     * start audio playback while the Rank screen isn't visible.
+     */
+    private fun runSuggestionMutation(failureMessage: String, action: suspend (Suggestion) -> Result<*>) {
         if (mutationInFlight) return
         val suggestion = uiState.value.pendingSuggestion ?: return
         mutationInFlight = true
         sessionState.update { it.copy(isSavingSuggestion = true) }
         viewModelScope.launch {
             try {
-                rankingRepository.dismissSuggestionLater(
-                    subjectId = suggestion.subjectId,
-                    suggestedScoreTenths = suggestion.suggestedScoreTenths,
-                    lastEventSequenceId = suggestion.lastEventSequenceId
-                ).onFailure {
-                    sessionState.update { state ->
-                        state.copy(transientMessage = "Could not dismiss suggestion. Try again.")
+                action(suggestion)
+                    .onSuccess {
+                        // Bounded: the repository always dismisses the just-resolved
+                        // suggestion, so this should clear almost immediately. The
+                        // timeout is only a safety net against a future regression of
+                        // that invariant re-flagging the same subject and hanging this
+                        // wait forever - see the "re-flagging" fix in this file's history.
+                        withTimeoutOrNull(2_000) {
+                            uiState.first { it.pendingSuggestion?.subjectId != suggestion.subjectId }
+                        }
+                        maybeStartArmedAutoplay()
                     }
-                    scheduleFeedbackClear(delayMillis = 2_500)
-                }
+                    .onFailure {
+                        sessionState.update { state ->
+                            state.copy(transientMessage = failureMessage)
+                        }
+                        scheduleFeedbackClear(delayMillis = 2_500)
+                    }
             } finally {
                 mutationInFlight = false
                 sessionState.update { it.copy(isSavingSuggestion = false) }

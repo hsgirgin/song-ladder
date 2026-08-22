@@ -28,9 +28,14 @@ import com.songladder.android.domain.model.scoreFirstComparator
 import com.songladder.android.domain.model.seedEloForScore
 import com.songladder.android.domain.model.validateScoreTenths
 import com.songladder.android.domain.repository.RankingRepository
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.shareIn
 
 class DefaultRankingRepository(
     private val database: SongLadderDatabase,
@@ -41,7 +46,8 @@ class DefaultRankingRepository(
     private val suggestionDismissalDao: SuggestionDismissalDao,
     private val appStatsDao: AppStatsDao? = null,
     private val timeSource: TimeSource = TimeSource { System.currentTimeMillis() },
-    private val suggestionEngine: SuggestionEngine = SuggestionEngine(matchupEngine)
+    private val suggestionEngine: SuggestionEngine = SuggestionEngine(matchupEngine),
+    private val repositoryScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 ) : RankingRepository {
     override fun observeStats(): Flow<AppStats> {
         val dao = requireNotNull(appStatsDao) { "AppStatsDao is required for observeStats." }
@@ -127,22 +133,6 @@ class DefaultRankingRepository(
     }
 
     /**
-     * Shared by [saveScore] (looked up by song id) and [acceptSuggestion]
-     * (looked up by ranking subject id, which is not always the same id -
-     * see the tombstone-restore matching flow). [resultId] echoes back
-     * whichever id the caller used, matching [saveScore]'s existing contract.
-     *
-     * Reseeding elo from the new score and replaying the full event history
-     * (below) generally does NOT reproduce the exact value just set - Elo
-     * replay is path-dependent, so a different seed produces a different
-     * trajectory. Without the checkpoint write, that reseed artifact alone
-     * could make [SuggestionEngine] immediately re-flag this subject as
-     * "disagreeing" with the score the user just confirmed, with zero new
-     * comparisons. The checkpoint records this confirmation so the engine's
-     * existing dismissal gate (new evidence + material movement) applies
-     * here too - the artifact from this replay isn't new evidence.
-     */
-    /**
      * Writes [scoreTenths] onto [current] (if changed) and always checkpoints the
      * suggestion dismissal: accepting a suggestion at the subject's current score
      * must still dismiss it, or the identical suggestion reappears on the next
@@ -213,8 +203,24 @@ class DefaultRankingRepository(
                 .lastOrNull { it.outcome == MatchupOutcome.WIN.name }
                 ?: return@withTransaction false
             matchupEventDao.delete(latestWinner.sequenceId)
+            listOf(latestWinner.firstSubjectId, latestWinner.secondSubjectId).forEach { subjectId ->
+                clearDismissalIfSupersededByRemoval(subjectId, latestWinner.sequenceId)
+            }
             rebuildCaches()
             true
+        }
+    }
+
+    /**
+     * A dismissal checkpoint must not outlive the event(s) it was checkpointed
+     * against. Clears [subjectId]'s checkpoint only if it was recorded at or
+     * after [removedSequenceId] - an older checkpoint predates the removed
+     * event entirely and is unrelated to it, so it must stay valid.
+     */
+    private suspend fun clearDismissalIfSupersededByRemoval(subjectId: String, removedSequenceId: Long) {
+        val dismissal = suggestionDismissalDao.get(subjectId)
+        if (dismissal != null && dismissal.dismissedAtSequenceId >= removedSequenceId) {
+            suggestionDismissalDao.delete(subjectId)
         }
     }
 
@@ -247,32 +253,48 @@ class DefaultRankingRepository(
         }
     }
 
-    override fun observeSuggestions(): Flow<List<Suggestion>> =
-        combine(
-            rankingSubjectDao.observeAllIncludingDeleted(),
-            matchupEventDao.observeAll(),
-            suggestionDismissalDao.observeAll()
-        ) { subjectEntities, eventEntities, dismissalEntities ->
-            // Include tombstoned subjects so events against a deleted opponent still
-            // resolve during replay (EloMatchupEngine requires both sides of every
-            // event to be present) instead of silently shrinking a still-active
-            // subject's win-event history once an old opponent is deleted.
-            // SuggestionEngine itself skips tombstoned subjects when emitting suggestions.
-            val subjects = subjectEntities.map { it.toDomain() }
-            val events = eventEntities.map { it.toDomain() }
-            suggestionEngine.computeSuggestions(
-                subjects = subjects,
-                events = events,
-                dismissals = dismissalEntities.map { it.toDomain() }
-            )
-        }
+    private val suggestionsFlow: Flow<List<Suggestion>> = combine(
+        rankingSubjectDao.observeAllIncludingDeleted(),
+        matchupEventDao.observeAll(),
+        suggestionDismissalDao.observeAll(),
+        songDao.observeRankingSubjectIdsWithSong()
+    ) { subjectEntities, eventEntities, dismissalEntities, subjectIdsWithSong ->
+        // Include tombstoned subjects so events against a deleted opponent still
+        // resolve during replay (EloMatchupEngine requires both sides of every
+        // event to be present) instead of silently shrinking a still-active
+        // subject's win-event history once an old opponent is deleted.
+        // SuggestionEngine itself skips tombstoned subjects when emitting suggestions.
+        val subjects = subjectEntities.map { it.toDomain() }
+        val events = eventEntities.map { it.toDomain() }
+        val songSubjectIds = subjectIdsWithSong.toSet()
+        // A subject with no matching song row (e.g. from a malformed import) can
+        // never be accepted - filter it out here so it never surfaces as a
+        // dead-end suggestion the user can't act on.
+        suggestionEngine.computeSuggestions(
+            subjects = subjects,
+            events = events,
+            dismissals = dismissalEntities.map { it.toDomain() }
+        ).filter { it.subjectId in songSubjectIds }
+    }.shareIn(repositoryScope, SharingStarted.WhileSubscribed(5_000), replay = 1)
+
+    override fun observeSuggestions(): Flow<List<Suggestion>> = suggestionsFlow
+
+    /**
+     * Shared by [acceptSuggestion] and [acceptSuggestions]: resolves the active
+     * (non-tombstoned) subject for [subjectId] and the song id it maps to.
+     */
+    private suspend fun resolveActiveSongId(subjectId: String): Pair<RankingSubject, String> {
+        val subject = rankingSubjectDao.get(subjectId) ?: error("Ranking subject not found.")
+        require(subject.tombstoneDeletedAt == null) { "Cannot score a deleted song." }
+        val songId = songDao.getSongIdForRankingSubject(subjectId) ?: error("Song not found for ranking subject.")
+        return subject.toDomain() to songId
+    }
 
     override suspend fun acceptSuggestion(subjectId: String, scoreTenths: Int): Result<ScoreSaveResult> = runCatching {
         validateScoreTenths(scoreTenths)
         database.withTransaction {
-            val subject = rankingSubjectDao.get(subjectId) ?: error("Ranking subject not found.")
-            require(subject.tombstoneDeletedAt == null) { "Cannot score a deleted song." }
-            applyScore(resultId = subjectId, current = subject.toDomain(), scoreTenths = scoreTenths)
+            val (subject, songId) = resolveActiveSongId(subjectId)
+            applyScore(resultId = songId, current = subject, scoreTenths = scoreTenths)
         }
     }
 
@@ -282,21 +304,21 @@ class DefaultRankingRepository(
             val beforeOrder = currentSongOrder()
             val epochSequence = matchupEventDao.maxSequenceId()
             var anyChanged = false
-            accepts.forEach { (subjectId, scoreTenths) ->
+            val songIds = accepts.map { (subjectId, scoreTenths) ->
                 validateScoreTenths(scoreTenths)
-                val subject = rankingSubjectDao.get(subjectId) ?: error("Ranking subject not found.")
-                require(subject.tombstoneDeletedAt == null) { "Cannot score a deleted song." }
-                if (writeScore(subject.toDomain(), scoreTenths, epochSequence)) {
+                val (subject, songId) = resolveActiveSongId(subjectId)
+                if (writeScore(subject, scoreTenths, epochSequence)) {
                     anyChanged = true
                 }
+                songId
             }
             if (anyChanged) {
                 rebuildCaches()
             }
             val afterOrder = currentSongOrder()
             val visibleOrderChanged = beforeOrder != afterOrder
-            accepts.map { (subjectId, scoreTenths) ->
-                ScoreSaveResult(songId = subjectId, scoreTenths = scoreTenths, visibleOrderChanged = visibleOrderChanged)
+            accepts.zip(songIds).map { (accept, songId) ->
+                ScoreSaveResult(songId = songId, scoreTenths = accept.second, visibleOrderChanged = visibleOrderChanged)
             }
         }
     }

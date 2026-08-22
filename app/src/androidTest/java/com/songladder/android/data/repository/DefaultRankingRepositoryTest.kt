@@ -316,7 +316,7 @@ class DefaultRankingRepositoryTest {
         val result = repository.acceptSuggestion("subject-a", 70).getOrThrow()
 
         assertEquals(70, result.scoreTenths)
-        assertEquals("subject-a", result.songId)
+        assertEquals("song-a", result.songId)
         assertEquals(70, database.rankingSubjectDao().get("subject-a")?.scoreTenths)
         val checkpoint = database.suggestionDismissalDao().get("subject-a")
         assertEquals(70, checkpoint?.dismissedScoreTenths)

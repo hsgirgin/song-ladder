@@ -92,6 +92,7 @@ private data class RankingsLocalState(
     val selectedSuggestionIds: Set<String> = emptySet(),
     val detailSongId: String? = null,
     val isSavingScore: Boolean = false,
+    val dismissingSuggestionIds: Set<String> = emptySet(),
     val pendingDeletedSong: PendingDeletedSong? = null,
     val status: RankingsStatus = RankingsStatus.None
 )
@@ -114,12 +115,25 @@ class RankingsViewModel(
     private var previewJob: Job? = null
     private var undoDeleteJob: Job? = null
 
-    private val rankingState = combine(
+    // Kept separate from `localState` below so that a UI-local change (e.g. a search
+    // keystroke) doesn't force songsBySubjectId/suggestionRows to be rebuilt - this
+    // combine only recomputes when songs or suggestions actually change.
+    private val songsAndSuggestionRows = combine(
         songRepository.observeSongs(),
+        rankingRepository.observeSuggestions()
+    ) { songs, suggestions ->
+        val songsBySubjectId = songs.associateBy { it.rankingSubjectId }
+        val suggestionRows = suggestions.mapNotNull { suggestion ->
+            songsBySubjectId[suggestion.subjectId]?.let { song -> SuggestionRow(suggestion, song) }
+        }
+        songs to suggestionRows
+    }
+
+    private val rankingState = combine(
+        songsAndSuggestionRows,
         settingsRepository.observeSettings(),
-        rankingRepository.observeSuggestions(),
         localState
-    ) { songs, settings, suggestions, local ->
+    ) { (songs, suggestionRows), settings, local ->
         val filtered = songs.filterByQuery(local.searchQuery)
         val ranked = filtered
             .filter { it.scoreTenths != null }
@@ -128,10 +142,6 @@ class RankingsViewModel(
         val unrated = filtered
             .filter { it.scoreTenths == null }
             .sortedByDescending { it.createdAt }
-        val songsBySubjectId = songs.associateBy { it.rankingSubjectId }
-        val suggestionRows = suggestions.mapNotNull { suggestion ->
-            songsBySubjectId[suggestion.subjectId]?.let { song -> SuggestionRow(suggestion, song) }
-        }
         RankingsUiState(
             allSongs = songs,
             rankedSongs = ranked,
@@ -278,17 +288,31 @@ class RankingsViewModel(
     }
 
     fun dismissSuggestionLater(subjectId: String) {
+        if (subjectId in localState.value.dismissingSuggestionIds) return
         val row = uiState.value.suggestionRows.firstOrNull { it.suggestion.subjectId == subjectId } ?: return
-        localState.update { it.copy(selectedSuggestionIds = it.selectedSuggestionIds - subjectId) }
+        val wasSelected = subjectId in localState.value.selectedSuggestionIds
+        localState.update {
+            it.copy(
+                selectedSuggestionIds = it.selectedSuggestionIds - subjectId,
+                dismissingSuggestionIds = it.dismissingSuggestionIds + subjectId
+            )
+        }
         viewModelScope.launch {
-            rankingRepository.dismissSuggestionLater(
-                subjectId = subjectId,
-                suggestedScoreTenths = row.suggestion.suggestedScoreTenths,
-                lastEventSequenceId = row.suggestion.lastEventSequenceId
-            ).onFailure {
-                localState.update { state ->
-                    state.copy(selectedSuggestionIds = state.selectedSuggestionIds + subjectId, status = RankingsStatus.SaveFailed)
+            try {
+                rankingRepository.dismissSuggestionLater(
+                    subjectId = subjectId,
+                    suggestedScoreTenths = row.suggestion.suggestedScoreTenths,
+                    lastEventSequenceId = row.suggestion.lastEventSequenceId
+                ).onFailure {
+                    localState.update { state ->
+                        state.copy(
+                            selectedSuggestionIds = if (wasSelected) state.selectedSuggestionIds + subjectId else state.selectedSuggestionIds,
+                            status = RankingsStatus.SaveFailed
+                        )
+                    }
                 }
+            } finally {
+                localState.update { it.copy(dismissingSuggestionIds = it.dismissingSuggestionIds - subjectId) }
             }
         }
     }

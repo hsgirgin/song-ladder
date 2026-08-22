@@ -18,6 +18,12 @@ interface SongDao {
     @Query("SELECT * FROM songs WHERE id = :songId")
     suspend fun getSongWithStats(songId: String): SongWithStatsEntity?
 
+    @Query("SELECT id FROM songs WHERE rankingSubjectId = :rankingSubjectId")
+    suspend fun getSongIdForRankingSubject(rankingSubjectId: String): String?
+
+    @Query("SELECT rankingSubjectId FROM songs")
+    fun observeRankingSubjectIdsWithSong(): Flow<List<String>>
+
     @Transaction
     @Query("SELECT * FROM songs ORDER BY createdAt DESC")
     suspend fun getSongsWithStats(): List<SongWithStatsEntity>
