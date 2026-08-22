@@ -52,6 +52,10 @@ interface RankingRepository {
     suspend fun acceptSuggestion(subjectId: String, scoreTenths: Int): Result<ScoreSaveResult> =
         Result.failure(UnsupportedOperationException("Suggestions are not available yet."))
 
+    suspend fun acceptSuggestions(accepts: List<Pair<String, Int>>): Result<List<ScoreSaveResult>> = runCatching {
+        accepts.map { (subjectId, scoreTenths) -> acceptSuggestion(subjectId, scoreTenths).getOrThrow() }
+    }
+
     suspend fun dismissSuggestionLater(
         subjectId: String,
         suggestedScoreTenths: Int,

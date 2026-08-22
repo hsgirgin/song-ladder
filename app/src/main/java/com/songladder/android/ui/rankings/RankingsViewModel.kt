@@ -279,7 +279,6 @@ class RankingsViewModel(
 
     fun dismissSuggestionLater(subjectId: String) {
         val row = uiState.value.suggestionRows.firstOrNull { it.suggestion.subjectId == subjectId } ?: return
-        val previousSelection = localState.value.selectedSuggestionIds
         localState.update { it.copy(selectedSuggestionIds = it.selectedSuggestionIds - subjectId) }
         viewModelScope.launch {
             rankingRepository.dismissSuggestionLater(
@@ -288,7 +287,7 @@ class RankingsViewModel(
                 lastEventSequenceId = row.suggestion.lastEventSequenceId
             ).onFailure {
                 localState.update { state ->
-                    state.copy(selectedSuggestionIds = previousSelection, status = RankingsStatus.SaveFailed)
+                    state.copy(selectedSuggestionIds = state.selectedSuggestionIds + subjectId, status = RankingsStatus.SaveFailed)
                 }
             }
         }
@@ -315,18 +314,16 @@ class RankingsViewModel(
         if (selected.isEmpty() || uiState.value.isSavingScore) return
         localState.update { it.copy(isSavingScore = true, status = RankingsStatus.None) }
         viewModelScope.launch {
-            var failed = false
-            selected.forEach { row ->
-                rankingRepository.acceptSuggestion(row.suggestion.subjectId, row.suggestion.suggestedScoreTenths)
-                    .onFailure { failed = true }
-            }
-            localState.update { state ->
-                state.copy(
-                    isSavingScore = false,
-                    selectedSuggestionIds = emptySet(),
-                    status = if (failed) RankingsStatus.SaveFailed else RankingsStatus.None
-                )
-            }
+            val accepts = selected.map { row -> row.suggestion.subjectId to row.suggestion.suggestedScoreTenths }
+            rankingRepository.acceptSuggestions(accepts)
+                .onSuccess {
+                    localState.update { state ->
+                        state.copy(isSavingScore = false, selectedSuggestionIds = emptySet(), status = RankingsStatus.None)
+                    }
+                }
+                .onFailure {
+                    localState.update { state -> state.copy(isSavingScore = false, status = RankingsStatus.SaveFailed) }
+                }
         }
     }
 

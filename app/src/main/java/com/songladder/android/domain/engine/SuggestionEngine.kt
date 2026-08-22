@@ -31,17 +31,25 @@ class SuggestionEngine(
         val dismissalsById = dismissals.associateBy { it.subjectId }
         val history = matchupEngine.replayWithHistory(subjects, events).eloHistoryBySubject
 
-        val suggestions = subjects.mapNotNull { subject ->
-            if (subject.tombstone != null) return@mapNotNull null
-            val ownWinEvents = events
+        val comparisonEventsBySubject: Map<String, List<MatchupEvent>> = run {
+            val bucket = HashMap<String, MutableList<MatchupEvent>>()
+            events
                 .asSequence()
                 .filter { it.outcome == MatchupOutcome.WIN }
-                .filter { it.winnerSubjectId == subject.id || it.loserSubjectId == subject.id }
                 .sortedBy { it.sequenceId }
-                .toList()
-            if (ownWinEvents.size < STABILITY_WINDOW) return@mapNotNull null
+                .forEach { event ->
+                    event.winnerSubjectId?.let { bucket.getOrPut(it) { mutableListOf() }.add(event) }
+                    event.loserSubjectId?.let { bucket.getOrPut(it) { mutableListOf() }.add(event) }
+                }
+            bucket
+        }
 
-            val recentEvents = ownWinEvents.takeLast(STABILITY_WINDOW)
+        val suggestions = subjects.mapNotNull { subject ->
+            if (subject.tombstone != null) return@mapNotNull null
+            val ownComparisonEvents = comparisonEventsBySubject[subject.id].orEmpty()
+            if (ownComparisonEvents.size < STABILITY_WINDOW) return@mapNotNull null
+
+            val recentEvents = ownComparisonEvents.takeLast(STABILITY_WINDOW)
             val allOpponentsRated = recentEvents.all { event ->
                 val opponentId = if (event.winnerSubjectId == subject.id) event.loserSubjectId else event.winnerSubjectId
                 subjectsById[opponentId]?.scoreTenths != null
@@ -71,7 +79,7 @@ class SuggestionEngine(
             Suggestion(
                 subjectId = subject.id,
                 suggestedScoreTenths = suggestedScoreTenths,
-                comparisonCount = ownWinEvents.size,
+                comparisonCount = ownComparisonEvents.size,
                 scoreGapTenths = scoreGapTenths,
                 lastEventSequenceId = lastEventSequenceId
             )

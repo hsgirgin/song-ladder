@@ -142,10 +142,16 @@ class DefaultRankingRepository(
      * existing dismissal gate (new evidence + material movement) applies
      * here too - the artifact from this replay isn't new evidence.
      */
-    private suspend fun applyScore(resultId: String, current: RankingSubject, scoreTenths: Int): ScoreSaveResult {
-        val beforeOrder = currentSongOrder()
-        val epochSequence = matchupEventDao.getAll().maxOfOrNull { it.sequenceId } ?: 0L
-        if (current.scoreTenths != scoreTenths) {
+    /**
+     * Writes [scoreTenths] onto [current] (if changed) and always checkpoints the
+     * suggestion dismissal: accepting a suggestion at the subject's current score
+     * must still dismiss it, or the identical suggestion reappears on the next
+     * recomputation. Does not rebuild elo caches - callers are responsible for
+     * calling [rebuildCaches] once after writing all scores in a batch.
+     */
+    private suspend fun writeScore(current: RankingSubject, scoreTenths: Int, epochSequence: Long): Boolean {
+        val changed = current.scoreTenths != scoreTenths
+        if (changed) {
             rankingSubjectDao.update(
                 current.copy(
                     scoreTenths = scoreTenths,
@@ -160,11 +166,7 @@ class DefaultRankingRepository(
                     lastRatedAt = nextEventTimestamp()
                 ).toEntity()
             )
-            rebuildCaches()
         }
-        // Always checkpoint, even when the score didn't change: accepting a suggestion at
-        // the subject's current score must still dismiss it, or the identical suggestion
-        // reappears on the next recomputation.
         suggestionDismissalDao.upsert(
             SuggestionDismissalEntity(
                 subjectId = current.id,
@@ -172,6 +174,31 @@ class DefaultRankingRepository(
                 dismissedScoreTenths = scoreTenths
             )
         )
+        return changed
+    }
+
+    /**
+     * Shared by [saveScore] (looked up by song id) and [acceptSuggestion]
+     * (looked up by ranking subject id, which is not always the same id -
+     * see the tombstone-restore matching flow). [resultId] echoes back
+     * whichever id the caller used, matching [saveScore]'s existing contract.
+     *
+     * Reseeding elo from the new score and replaying the full event history
+     * generally does NOT reproduce the exact value just set - Elo replay is
+     * path-dependent, so a different seed produces a different trajectory.
+     * Without the checkpoint write in [writeScore], that reseed artifact alone
+     * could make [SuggestionEngine] immediately re-flag this subject as
+     * "disagreeing" with the score the user just confirmed, with zero new
+     * comparisons. The checkpoint records this confirmation so the engine's
+     * existing dismissal gate (new evidence + material movement) applies
+     * here too - the artifact from this replay isn't new evidence.
+     */
+    private suspend fun applyScore(resultId: String, current: RankingSubject, scoreTenths: Int): ScoreSaveResult {
+        val beforeOrder = currentSongOrder()
+        val epochSequence = matchupEventDao.maxSequenceId()
+        if (writeScore(current, scoreTenths, epochSequence)) {
+            rebuildCaches()
+        }
         val afterOrder = currentSongOrder()
         return ScoreSaveResult(
             songId = resultId,
@@ -246,6 +273,31 @@ class DefaultRankingRepository(
             val subject = rankingSubjectDao.get(subjectId) ?: error("Ranking subject not found.")
             require(subject.tombstoneDeletedAt == null) { "Cannot score a deleted song." }
             applyScore(resultId = subjectId, current = subject.toDomain(), scoreTenths = scoreTenths)
+        }
+    }
+
+    override suspend fun acceptSuggestions(accepts: List<Pair<String, Int>>): Result<List<ScoreSaveResult>> = runCatching {
+        if (accepts.isEmpty()) return@runCatching emptyList()
+        database.withTransaction {
+            val beforeOrder = currentSongOrder()
+            val epochSequence = matchupEventDao.maxSequenceId()
+            var anyChanged = false
+            accepts.forEach { (subjectId, scoreTenths) ->
+                validateScoreTenths(scoreTenths)
+                val subject = rankingSubjectDao.get(subjectId) ?: error("Ranking subject not found.")
+                require(subject.tombstoneDeletedAt == null) { "Cannot score a deleted song." }
+                if (writeScore(subject.toDomain(), scoreTenths, epochSequence)) {
+                    anyChanged = true
+                }
+            }
+            if (anyChanged) {
+                rebuildCaches()
+            }
+            val afterOrder = currentSongOrder()
+            val visibleOrderChanged = beforeOrder != afterOrder
+            accepts.map { (subjectId, scoreTenths) ->
+                ScoreSaveResult(songId = subjectId, scoreTenths = scoreTenths, visibleOrderChanged = visibleOrderChanged)
+            }
         }
     }
 

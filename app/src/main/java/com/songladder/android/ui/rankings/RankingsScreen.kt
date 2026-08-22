@@ -335,7 +335,10 @@ private fun RankingsSongsContent(
         onAcceptSelected = onAcceptSelectedSuggestions,
         onClearSelection = onClearSuggestionSelection,
         onAccept = onAcceptSuggestion,
-        onEdit = { row -> editingSuggestionSubjectId = row.suggestion.subjectId },
+        onEdit = { row ->
+            gridRatingSongId = null
+            editingSuggestionSubjectId = row.suggestion.subjectId
+        },
         onDismissLater = onDismissSuggestion
     )
 
@@ -345,7 +348,10 @@ private fun RankingsSongsContent(
             onToggleUnrated = onToggleUnrated,
             onTogglePreview = onTogglePreview,
             onShowDetails = onShowDetails,
-            onEditScore = { songId -> gridRatingSongId = songId },
+            onEditScore = { songId ->
+                editingSuggestionSubjectId = null
+                gridRatingSongId = songId
+            },
             onDismissTip = onDismissTip,
             suggestionCallbacks = suggestionCallbacks,
             gridState = gridState,
@@ -623,6 +629,7 @@ private fun GridScoreButton(
         enabled = enabled,
         contentPadding = PaddingValues(4.dp),
         modifier = modifier
+            .fillMaxWidth()
             .heightIn(min = 48.dp)
             .semantics {
                 stateDescription = scoreStateDescription
