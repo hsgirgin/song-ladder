@@ -52,6 +52,9 @@ interface RankingSubjectDao {
     @Query("SELECT * FROM ranking_subjects WHERE tombstoneDeletedAt IS NULL ORDER BY id")
     fun observeAll(): Flow<List<RankingSubjectEntity>>
 
+    @Query("SELECT * FROM ranking_subjects ORDER BY id")
+    fun observeAllIncludingDeleted(): Flow<List<RankingSubjectEntity>>
+
     @Query("SELECT * FROM ranking_subjects WHERE tombstoneDeletedAt IS NOT NULL ORDER BY tombstoneDeletedAt DESC")
     fun observeDeleted(): Flow<List<RankingSubjectEntity>>
 

@@ -222,15 +222,17 @@ class DefaultRankingRepository(
 
     override fun observeSuggestions(): Flow<List<Suggestion>> =
         combine(
-            rankingSubjectDao.observeAll(),
+            rankingSubjectDao.observeAllIncludingDeleted(),
             matchupEventDao.observeAll(),
             suggestionDismissalDao.observeAll()
         ) { subjectEntities, eventEntities, dismissalEntities ->
+            // Include tombstoned subjects so events against a deleted opponent still
+            // resolve during replay (EloMatchupEngine requires both sides of every
+            // event to be present) instead of silently shrinking a still-active
+            // subject's win-event history once an old opponent is deleted.
+            // SuggestionEngine itself skips tombstoned subjects when emitting suggestions.
             val subjects = subjectEntities.map { it.toDomain() }
-            val knownSubjectIds = subjects.mapTo(mutableSetOf()) { it.id }
-            val events = eventEntities
-                .map { it.toDomain() }
-                .filter { it.firstSubjectId in knownSubjectIds && it.secondSubjectId in knownSubjectIds }
+            val events = eventEntities.map { it.toDomain() }
             suggestionEngine.computeSuggestions(
                 subjects = subjects,
                 events = events,

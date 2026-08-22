@@ -32,6 +32,7 @@ class SuggestionEngine(
         val history = matchupEngine.replayWithHistory(subjects, events).eloHistoryBySubject
 
         val suggestions = subjects.mapNotNull { subject ->
+            if (subject.tombstone != null) return@mapNotNull null
             val ownWinEvents = events
                 .asSequence()
                 .filter { it.outcome == MatchupOutcome.WIN }

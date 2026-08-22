@@ -104,6 +104,51 @@ class RankViewModelTest {
     }
 
     @Test
+    fun `isSavingSuggestion is true while accepting and clears once the save completes`() = runTest {
+        val songs = listOf(fakeSong("1", "Dreams"), fakeSong("2", "Go Your Own Way"))
+        val gate = CompletableDeferred<Unit>()
+        val rankingRepository = FakeRankingRepository(
+            initialSuggestions = listOf(
+                Suggestion("1", suggestedScoreTenths = 70, comparisonCount = 5, scoreGapTenths = null, lastEventSequenceId = 5L)
+            ),
+            acceptSuggestionGate = gate
+        )
+        val viewModel = RankViewModel(FakeRankSongRepository(songs), rankingRepository)
+        backgroundScope.launch(dispatcher) { viewModel.uiState.collect {} }
+        advanceUntilIdle()
+
+        viewModel.acceptPendingSuggestion(75)
+        runCurrent()
+
+        assertTrue(viewModel.uiState.value.isSavingSuggestion)
+
+        gate.complete(Unit)
+        advanceUntilIdle()
+
+        assertFalse(viewModel.uiState.value.isSavingSuggestion)
+    }
+
+    @Test
+    fun `a suggestion for a song outside the current list is ignored rather than blocking matchups`() = runTest {
+        val songs = listOf(fakeSong("1", "Dreams"), fakeSong("2", "Go Your Own Way"))
+        val rankingRepository = FakeRankingRepository(
+            initialSuggestions = listOf(
+                Suggestion("missing", suggestedScoreTenths = 70, comparisonCount = 5, scoreGapTenths = null, lastEventSequenceId = 5L)
+            )
+        )
+        val viewModel = RankViewModel(FakeRankSongRepository(songs), rankingRepository)
+        backgroundScope.launch(dispatcher) { viewModel.uiState.collect {} }
+        advanceUntilIdle()
+
+        assertEquals(null, viewModel.uiState.value.pendingSuggestion)
+
+        viewModel.rankWinner("1", "2")
+        advanceUntilIdle()
+
+        assertEquals(1, rankingRepository.battleCalls)
+    }
+
+    @Test
     fun `playback failure makes the preview unavailable`() = runTest {
         val songs = listOf(fakeSong("1", "Dreams"), fakeSong("2", "Go Your Own Way"))
         val player = FakeSongPreviewPlayer()
@@ -650,7 +695,8 @@ private class FakeRankingRepository(
     private val skipResult: Result<Unit> = Result.success(Unit),
     private val undoResult: Result<Boolean> = Result.success(true),
     initialEvents: List<MatchupEvent> = emptyList(),
-    initialSuggestions: List<Suggestion> = emptyList()
+    initialSuggestions: List<Suggestion> = emptyList(),
+    private val acceptSuggestionGate: CompletableDeferred<Unit>? = null
 ) : RankingRepository {
     private val stats = MutableStateFlow(AppStats())
     private val events = MutableStateFlow(initialEvents)
@@ -693,6 +739,7 @@ private class FakeRankingRepository(
     override fun observeSuggestions(): Flow<List<Suggestion>> = suggestions
 
     override suspend fun acceptSuggestion(subjectId: String, scoreTenths: Int): Result<ScoreSaveResult> {
+        acceptSuggestionGate?.await()
         acceptedSuggestions += subjectId to scoreTenths
         suggestions.update { list -> list.filterNot { it.subjectId == subjectId } }
         return Result.success(ScoreSaveResult(songId = subjectId, scoreTenths = scoreTenths))

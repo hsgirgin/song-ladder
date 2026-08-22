@@ -58,7 +58,8 @@ data class RankUiState(
     val visualFeedback: RankVisualFeedback = RankVisualFeedback.None,
     val streakCount: Int = 0,
     val autoplayArmed: Boolean = false,
-    val previews: Map<String, SongPreviewState> = emptyMap()
+    val previews: Map<String, SongPreviewState> = emptyMap(),
+    val isSavingSuggestion: Boolean = false
 )
 
 private data class RankSessionState(
@@ -73,7 +74,8 @@ private data class RankSessionState(
     val streakCount: Int = 0,
     val autoplayArmed: Boolean = false,
     val firstPreviewStartsLeft: Boolean = true,
-    val transientMessage: String = ""
+    val transientMessage: String = "",
+    val isSavingSuggestion: Boolean = false
 )
 
 private data class PreviewPlaybackSession(
@@ -139,7 +141,8 @@ class RankViewModel(
             undoStatus = session.undoStatus,
             visualFeedback = session.visualFeedback,
             streakCount = session.streakCount,
-            autoplayArmed = session.autoplayArmed
+            autoplayArmed = session.autoplayArmed,
+            isSavingSuggestion = session.isSavingSuggestion
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), RankUiState())
 
@@ -148,7 +151,10 @@ class RankViewModel(
         previewStates,
         rankingRepository.observeSuggestions()
     ) { state, previews, suggestions ->
-        state.copy(previews = previews, pendingSuggestion = suggestions.firstOrNull())
+        val resolvedSuggestion = suggestions.firstOrNull { suggestion ->
+            state.songs.any { it.rankingSubjectId == suggestion.subjectId }
+        }
+        state.copy(previews = previews, pendingSuggestion = resolvedSuggestion)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), RankUiState())
 
     init {
@@ -306,6 +312,7 @@ class RankViewModel(
         if (mutationInFlight) return
         val suggestion = uiState.value.pendingSuggestion ?: return
         mutationInFlight = true
+        sessionState.update { it.copy(isSavingSuggestion = true) }
         viewModelScope.launch {
             try {
                 rankingRepository.acceptSuggestion(suggestion.subjectId, scoreTenths)
@@ -317,6 +324,7 @@ class RankViewModel(
                     }
             } finally {
                 mutationInFlight = false
+                sessionState.update { it.copy(isSavingSuggestion = false) }
             }
         }
     }
@@ -325,6 +333,7 @@ class RankViewModel(
         if (mutationInFlight) return
         val suggestion = uiState.value.pendingSuggestion ?: return
         mutationInFlight = true
+        sessionState.update { it.copy(isSavingSuggestion = true) }
         viewModelScope.launch {
             try {
                 rankingRepository.dismissSuggestionLater(
@@ -339,6 +348,7 @@ class RankViewModel(
                 }
             } finally {
                 mutationInFlight = false
+                sessionState.update { it.copy(isSavingSuggestion = false) }
             }
         }
     }

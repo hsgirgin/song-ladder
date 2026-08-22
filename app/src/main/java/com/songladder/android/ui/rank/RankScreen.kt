@@ -140,7 +140,8 @@ fun RankScreen(
                 suggestion = pendingSuggestion,
                 song = suggestionSong,
                 onAccept = { scoreTenths -> viewModel.acceptPendingSuggestion(scoreTenths) },
-                onLater = viewModel::dismissPendingSuggestionLater
+                onLater = viewModel::dismissPendingSuggestionLater,
+                isSaving = uiState.isSavingSuggestion
             )
         }
     } else if (uiState.isReady && matchup != null && !uiState.caughtUp) {
@@ -183,7 +184,8 @@ internal fun CompactSuggestionCard(
     suggestion: Suggestion,
     song: Song,
     onAccept: (Int) -> Unit,
-    onLater: () -> Unit
+    onLater: () -> Unit,
+    isSaving: Boolean = false
 ) {
     var editing by rememberSaveable(suggestion.subjectId) { mutableStateOf(false) }
     var draftScore by rememberSaveable(suggestion.subjectId) { mutableIntStateOf(suggestion.suggestedScoreTenths) }
@@ -220,17 +222,18 @@ internal fun CompactSuggestionCard(
                     onCancel = {
                         draftScore = suggestion.suggestedScoreTenths
                         editing = false
-                    }
+                    },
+                    enabled = !isSaving
                 )
             } else {
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.End), modifier = Modifier.fillMaxWidth()) {
-                    TextButton(onClick = onLater) {
+                    TextButton(onClick = onLater, enabled = !isSaving) {
                         Text(stringResource(com.songladder.android.R.string.rank_skip_for_now))
                     }
-                    TextButton(onClick = { editing = true }) {
+                    TextButton(onClick = { editing = true }, enabled = !isSaving) {
                         Text(stringResource(com.songladder.android.R.string.rankings_suggestion_edit))
                     }
-                    Button(onClick = { onAccept(suggestion.suggestedScoreTenths) }) {
+                    Button(onClick = { onAccept(suggestion.suggestedScoreTenths) }, enabled = !isSaving) {
                         Text(stringResource(com.songladder.android.R.string.rankings_suggestion_accept))
                     }
                 }

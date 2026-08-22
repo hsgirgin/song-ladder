@@ -2,8 +2,10 @@ package com.songladder.android.domain.engine
 
 import com.songladder.android.domain.model.MatchupEvent
 import com.songladder.android.domain.model.MatchupOutcome
+import com.songladder.android.domain.model.MusicSourceType
 import com.songladder.android.domain.model.RankingSubject
 import com.songladder.android.domain.model.SuggestionDismissal
+import com.songladder.android.domain.model.Tombstone
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -110,6 +112,29 @@ class SuggestionEngineTest {
     }
 
     @Test
+    fun `a tombstoned opponent among past comparisons still counts toward the window`() {
+        val subjects = listOf(subject("hero", null)) +
+            (1..4).map { subject("opp$it", 50) } +
+            listOf(tombstonedSubject("opp5", 50))
+        val events = (1..5).map { winEvent(it.toLong(), "hero", "opp$it", 0.0) }
+
+        val suggestion = engine.computeSuggestions(subjects, events, emptyList()).single { it.subjectId == "hero" }
+
+        assertEquals(55, suggestion.suggestedScoreTenths)
+        assertEquals(5, suggestion.comparisonCount)
+    }
+
+    @Test
+    fun `a tombstoned subject never produces a suggestion`() {
+        val subjects = listOf(tombstonedSubject("hero", null)) + (1..5).map { subject("opp$it", 50) }
+        val events = (1..5).map { winEvent(it.toLong(), "hero", "opp$it", 0.0) }
+
+        val suggestions = engine.computeSuggestions(subjects, events, emptyList())
+
+        assertTrue(suggestions.none { it.subjectId == "hero" })
+    }
+
+    @Test
     fun `disagreement suggestions sort ahead of pending unrated suggestions`() {
         val (disagreeSubjects, disagreeEvents) = disagreementScenario(heroId = "hero-a", sequenceOffset = 0)
         val pendingSubjects = listOf(subject("hero-b", null)) + (1..5).map { subject("hero-b-opp$it", 50) }
@@ -160,4 +185,17 @@ class SuggestionEngineTest {
 
     private fun subject(id: String, scoreTenths: Int?): RankingSubject =
         RankingSubject(id = id, scoreTenths = scoreTenths)
+
+    private fun tombstonedSubject(id: String, scoreTenths: Int?): RankingSubject =
+        subject(id, scoreTenths).copy(
+            tombstone = Tombstone(
+                sourceType = MusicSourceType.MANUAL,
+                externalId = null,
+                normalizedTitle = "",
+                normalizedArtist = "",
+                scoreTenths = scoreTenths,
+                seedElo = 1200.0,
+                deletedAt = 0L
+            )
+        )
 }
