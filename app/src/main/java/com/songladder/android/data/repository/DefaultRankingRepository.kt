@@ -226,16 +226,23 @@ class DefaultRankingRepository(
 
     override suspend fun deleteRankingHistory(rankingSubjectId: String): Result<RankingHistoryDeletionResult> = runCatching {
         database.withTransaction {
-            val events = matchupEventDao.getAll()
-            val deletedEventCount = events.count {
+            val removedEvents = matchupEventDao.getAll().filter {
                 it.firstSubjectId == rankingSubjectId || it.secondSubjectId == rankingSubjectId
             }
             matchupEventDao.deleteForSubject(rankingSubjectId)
             suggestionDismissalDao.delete(rankingSubjectId)
+            removedEvents.forEach { event ->
+                val opponentId = if (event.firstSubjectId == rankingSubjectId) {
+                    event.secondSubjectId
+                } else {
+                    event.firstSubjectId
+                }
+                clearDismissalIfSupersededByRemoval(opponentId, event.sequenceId)
+            }
             rebuildCaches()
             RankingHistoryDeletionResult(
                 rankingSubjectId = rankingSubjectId,
-                deletedEventCount = deletedEventCount
+                deletedEventCount = removedEvents.size
             )
         }
     }
