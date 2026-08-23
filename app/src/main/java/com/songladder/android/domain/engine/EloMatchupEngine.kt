@@ -39,9 +39,14 @@ class EloMatchupEngine(
         val rated = songs.filter { it.scoreTenths != null }
         val unrated = songs.filter { it.scoreTenths == null }
         val matchupCount = if (displayedMatchups.isEmpty()) events.size else displayedMatchupCount
+        val unratedInterval = when {
+            unrated.size >= 5 -> 2
+            unrated.size >= 2 -> 3
+            else -> 4
+        }
         val includeUnrated = rated.isNotEmpty() &&
             unrated.isNotEmpty() &&
-            (matchupCount + 1) % 5 == 0
+            (matchupCount + 1) % unratedInterval == 0
 
         val candidatePairs = allPairs(songs).let { pairs ->
             when {
@@ -246,7 +251,11 @@ class EloMatchupEngine(
         pairs: List<Pair<Song, Song>>,
         includeUnrated: Boolean
     ): List<Pair<Song, Song>> {
-        if (includeUnrated) return pairs
+        if (includeUnrated) {
+            val unratedPairs = pairs.filter { it.hasUnrated() }.ifEmpty { pairs }
+            val minimumLifetimeBattles = unratedPairs.minOf { it.lifetimeBattles() }
+            return unratedPairs.filter { it.lifetimeBattles() == minimumLifetimeBattles }
+        }
 
         val ratedPairs = pairs.filter { it.bothRated() }
         if (ratedPairs.isEmpty()) return pairs
@@ -295,6 +304,9 @@ class EloMatchupEngine(
 
     private fun Pair<Song, Song>.hasUnrated(): Boolean =
         first.scoreTenths == null || second.scoreTenths == null
+
+    private fun Pair<Song, Song>.lifetimeBattles(): Int =
+        (first.wins + first.losses) + (second.wins + second.losses)
 
     private fun Pair<Song, Song>.scoreDifference(): Int =
         abs((first.scoreTenths ?: 55) - (second.scoreTenths ?: 55))
