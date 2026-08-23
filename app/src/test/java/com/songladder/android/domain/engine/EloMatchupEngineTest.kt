@@ -218,6 +218,61 @@ class EloMatchupEngineTest {
     }
 
     @Test
+    fun `uses the moderate interval for unrated backlogs sized two through four`() {
+        for (unratedCount in 2..4) {
+            val songs = listOf(song(id = "rated-one", scoreTenths = 80), song(id = "rated-two", scoreTenths = 90)) +
+                (1..unratedCount).map { song(id = "unrated-$it") }
+
+            // Interval is 3 for these backlog sizes: (matchupCount + 1) % 3 == 0 at matchupCount 2.
+            val onInterval = EloMatchupEngine(Random(1)).selectMatchup(
+                songs = songs,
+                events = listOf(
+                    event(1, "rated-one", "rated-two"),
+                    event(2, "rated-one", "rated-two")
+                )
+            )
+            assertTrue(
+                "expected an unrated song for backlog size $unratedCount",
+                onInterval.matchup?.left?.scoreTenths == null || onInterval.matchup?.right?.scoreTenths == null
+            )
+
+            // No prior events here: with only two rated songs, an event pairing them would
+            // block the sole rated-rated pair and force a fallback into unrated pairs,
+            // which would defeat the point of this off-interval assertion.
+            val offInterval = EloMatchupEngine(Random(1)).selectMatchup(
+                songs = songs,
+                events = emptyList()
+            )
+            assertTrue(
+                "expected only rated songs for backlog size $unratedCount",
+                offInterval.matchup?.left?.scoreTenths != null && offInterval.matchup?.right?.scoreTenths != null
+            )
+        }
+    }
+
+    @Test
+    fun `keeps a slightly-battled unrated song eligible alongside a completely fresh import`() {
+        val slightlyBattled = song(id = "slightly-battled", wins = 1, losses = 1)
+        val fresh = song(id = "fresh")
+
+        val selection = EloMatchupEngine(Random(1)).selectMatchup(
+            songs = listOf(
+                song(id = "rated-one", scoreTenths = 80),
+                song(id = "rated-two", scoreTenths = 90),
+                slightlyBattled,
+                fresh
+            ),
+            events = listOf(
+                event(1, "rated-one", "rated-two"),
+                event(2, "rated-one", "rated-two")
+            )
+        )
+
+        val matchup = requireNotNull(selection.matchup)
+        assertEquals(setOf("fresh", "slightly-battled"), setOf(matchup.left.id, matchup.right.id))
+    }
+
+    @Test
     fun `prefers unrated songs with the fewest lifetime battles over recently added ones`() {
         val heavilyBattled = song(id = "battled", wins = 10, losses = 10)
         val neverBattled = song(id = "fresh")

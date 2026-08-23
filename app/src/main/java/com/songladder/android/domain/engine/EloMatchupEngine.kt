@@ -18,6 +18,19 @@ import kotlin.random.Random
 class EloMatchupEngine(
     private val random: Random = Random.Default
 ) {
+    companion object {
+        private const val LARGE_UNRATED_BACKLOG = 5
+        private const val SMALL_UNRATED_BACKLOG = 2
+        private const val FREQUENT_UNRATED_INTERVAL = 2
+        private const val MODERATE_UNRATED_INTERVAL = 3
+        private const val SPARSE_UNRATED_INTERVAL = 4
+
+        // Songs with a few more battles than the current minimum still get a look-in, so a
+        // partially-battled unrated song isn't locked out forever by a steady trickle of
+        // brand-new zero-battle imports.
+        private const val UNRATED_BATTLE_TOLERANCE = 2
+    }
+
     fun pickMatchup(
         songs: List<Song>,
         previousMatchup: Matchup? = null
@@ -39,10 +52,12 @@ class EloMatchupEngine(
         val rated = songs.filter { it.scoreTenths != null }
         val unrated = songs.filter { it.scoreTenths == null }
         val matchupCount = if (displayedMatchups.isEmpty()) events.size else displayedMatchupCount
+        // Larger unrated backlogs surface unrated songs more frequently; the interval tapers
+        // back down as the backlog clears.
         val unratedInterval = when {
-            unrated.size >= 5 -> 2
-            unrated.size >= 2 -> 3
-            else -> 4
+            unrated.size >= LARGE_UNRATED_BACKLOG -> FREQUENT_UNRATED_INTERVAL
+            unrated.size >= SMALL_UNRATED_BACKLOG -> MODERATE_UNRATED_INTERVAL
+            else -> SPARSE_UNRATED_INTERVAL
         }
         val includeUnrated = rated.isNotEmpty() &&
             unrated.isNotEmpty() &&
@@ -51,7 +66,7 @@ class EloMatchupEngine(
         val candidatePairs = allPairs(songs).let { pairs ->
             when {
                 rated.isEmpty() -> pairs
-                includeUnrated -> pairs.filter { it.hasUnrated() }.ifEmpty { pairs }
+                includeUnrated -> pairs.preferringUnrated()
                 rated.size >= 2 -> pairs.filter { it.bothRated() }.ifEmpty { pairs }
                 else -> pairs
             }
@@ -252,9 +267,11 @@ class EloMatchupEngine(
         includeUnrated: Boolean
     ): List<Pair<Song, Song>> {
         if (includeUnrated) {
-            val unratedPairs = pairs.filter { it.hasUnrated() }.ifEmpty { pairs }
+            val unratedPairs = pairs.preferringUnrated()
             val minimumLifetimeBattles = unratedPairs.minOf { it.lifetimeBattles() }
-            return unratedPairs.filter { it.lifetimeBattles() == minimumLifetimeBattles }
+            return unratedPairs.filter {
+                it.lifetimeBattles() <= minimumLifetimeBattles + UNRATED_BATTLE_TOLERANCE
+            }
         }
 
         val ratedPairs = pairs.filter { it.bothRated() }
@@ -304,6 +321,9 @@ class EloMatchupEngine(
 
     private fun Pair<Song, Song>.hasUnrated(): Boolean =
         first.scoreTenths == null || second.scoreTenths == null
+
+    private fun List<Pair<Song, Song>>.preferringUnrated(): List<Pair<Song, Song>> =
+        filter { it.hasUnrated() }.ifEmpty { this }
 
     private fun Pair<Song, Song>.lifetimeBattles(): Int =
         (if (first.scoreTenths == null) first.wins + first.losses else 0) +
