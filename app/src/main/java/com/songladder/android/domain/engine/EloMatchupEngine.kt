@@ -306,7 +306,8 @@ class EloMatchupEngine(
         first.scoreTenths == null || second.scoreTenths == null
 
     private fun Pair<Song, Song>.lifetimeBattles(): Int =
-        (first.wins + first.losses) + (second.wins + second.losses)
+        (if (first.scoreTenths == null) first.wins + first.losses else 0) +
+            (if (second.scoreTenths == null) second.wins + second.losses else 0)
 
     private fun Pair<Song, Song>.scoreDifference(): Int =
         abs((first.scoreTenths ?: 55) - (second.scoreTenths ?: 55))
