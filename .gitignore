@@ -10,3 +10,4 @@ app/build/
 .android-sdk/
 .x86-root/
 song-ladder-release.jks
+.claude/settings.local.json
