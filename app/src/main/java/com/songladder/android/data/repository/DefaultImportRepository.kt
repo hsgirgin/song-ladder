@@ -15,6 +15,7 @@ import com.songladder.android.data.local.MatchupEventDao
 import com.songladder.android.data.local.SongDao
 import com.songladder.android.data.local.SongLadderDatabase
 import com.songladder.android.data.local.SongLadderJsonPorter
+import com.songladder.android.data.local.SuggestionDismissalDao
 import com.songladder.android.data.local.toEntities
 import com.songladder.android.data.local.toPayload
 import com.songladder.android.data.local.toSongAndRankingSubjectEntities
@@ -42,6 +43,7 @@ class DefaultImportRepository(
     private val rankingSettingsDao: RankingSettingsDao,
     private val importBatchDao: ImportBatchDao,
     private val appStatsDao: AppStatsDao,
+    private val suggestionDismissalDao: SuggestionDismissalDao? = null,
     private val jsonPorter: SongLadderJsonPorter,
     private val matchupEngine: EloMatchupEngine = EloMatchupEngine()
 ) : ImportRepository {
@@ -199,6 +201,7 @@ class DefaultImportRepository(
             songDao.clearSongs()
             rankingSubjectDao.clearAll()
             matchupEventDao.clearAll()
+            suggestionDismissalDao?.clearAll()
             rankingSubjectDao.insertAll(entities.subjects)
             entities.songs.forEach { song ->
                 songDao.insertSong(song)

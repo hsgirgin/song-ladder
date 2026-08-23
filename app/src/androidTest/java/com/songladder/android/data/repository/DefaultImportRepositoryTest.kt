@@ -137,6 +137,7 @@ class DefaultImportRepositoryTest {
         rankingSettingsDao = database.rankingSettingsDao(),
         importBatchDao = database.importBatchDao(),
         appStatsDao = database.appStatsDao(),
+        suggestionDismissalDao = database.suggestionDismissalDao(),
         jsonPorter = SongLadderJsonPorter()
     )
 
