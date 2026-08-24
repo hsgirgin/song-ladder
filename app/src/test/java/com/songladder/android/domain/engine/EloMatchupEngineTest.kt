@@ -362,6 +362,41 @@ class EloMatchupEngineTest {
     }
 
     @Test
+    fun `prefers an unrated song already partway toward a suggestion over an untouched one`() {
+        // Regression test for #49: an unrated song already partway through its five
+        // rated-opponent comparisons must be pushed to completion before a fresh,
+        // never-compared unrated song is given a turn - otherwise a large backlog
+        // spreads comparisons so thin that no song ever accumulates enough to
+        // produce a suggestion.
+        val ratedSongs = listOf(
+            song(id = "rated-a", scoreTenths = 10),
+            song(id = "rated-b", scoreTenths = 20),
+            song(id = "rated-c", scoreTenths = 30),
+            song(id = "rated-d", scoreTenths = 40)
+        )
+        val started = song(id = "started")
+        val fresh = song(id = "fresh")
+        val filler = Matchup(left = ratedSongs[0], right = ratedSongs[1])
+        val events = listOf(
+            winEvent(1L, winnerId = "started", loserId = "rated-a"),
+            winEvent(2L, winnerId = "started", loserId = "rated-b"),
+            winEvent(3L, winnerId = "started", loserId = "rated-c")
+        )
+
+        val selection = EloMatchupEngine(Random(1)).selectMatchup(
+            songs = ratedSongs + listOf(started, fresh),
+            events = events,
+            displayedMatchups = listOf(filler),
+            displayedMatchupCount = 2
+        )
+
+        val matchup = requireNotNull(selection.matchup)
+        val ids = setOf(matchup.left.id, matchup.right.id)
+        assertTrue("started" in ids)
+        assertTrue("fresh" !in ids)
+    }
+
+    @Test
     fun `replays winner events from score seeds using recorded effective factors`() {
         val result = EloMatchupEngine().replay(
             subjects = listOf(subject("one", 1200.0), subject("two", 1200.0)),

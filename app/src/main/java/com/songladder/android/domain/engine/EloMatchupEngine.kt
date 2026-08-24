@@ -30,6 +30,17 @@ class EloMatchupEngine(
         // brand-new zero-battle imports.
         private const val UNRATED_BATTLE_TOLERANCE = 2
 
+        // How many trailing rated-opponent comparisons count toward "in progress" - matches
+        // SuggestionEngine.STABILITY_WINDOW, since that's the number a song actually needs
+        // before it can ever produce a suggestion. Kept as a local literal (rather than a
+        // cross-module reference) since the two engines are allowed to evolve independently.
+        private const val SUGGESTION_STABILITY_WINDOW = 5
+
+        // Unrated songs already partway toward a suggestion stay within this many
+        // comparisons of the current leader to still be picked, so a couple of songs finish
+        // out together rather than strictly one at a time.
+        private const val PROGRESS_CONCENTRATION_TOLERANCE = 1
+
         // The repeat-avoidance window scales with the eligible pool so a small cluster of
         // similarly-scored songs isn't limited to the same fixed memory as a large one, while a
         // floor keeps small libraries behaving exactly as before and a cap keeps the window from
@@ -135,7 +146,16 @@ class EloMatchupEngine(
             else -> return MatchupSelection(matchup = null, caughtUp = candidatePairs.isNotEmpty())
         }
 
-        val preferredPairs = preferredPairs(selectablePairs, includeUnrated)
+        val unratedStreaks: Map<String, Int> by lazy {
+            val songsById = songs.associateBy { it.rankingSubjectId }
+            val sortedWinEvents = events
+                .asSequence()
+                .filter { it.outcome == MatchupOutcome.WIN }
+                .sortedBy { it.sequenceId }
+                .toList()
+            unrated.associate { it.rankingSubjectId to ratedStreak(it.rankingSubjectId, songsById, sortedWinEvents) }
+        }
+        val preferredPairs = preferredPairs(selectablePairs, includeUnrated, unratedStreaks)
         val lastSeen = if (displayedMatchups.isEmpty()) {
             val relevantSubjectIds = selectablePairs
                 .flatMapTo(mutableSetOf()) { listOf(it.first.rankingSubjectId, it.second.rankingSubjectId) }
@@ -290,10 +310,24 @@ class EloMatchupEngine(
 
     private fun preferredPairs(
         pairs: List<Pair<Song, Song>>,
-        includeUnrated: Boolean
+        includeUnrated: Boolean,
+        unratedStreaks: Map<String, Int>
     ): List<Pair<Song, Song>> {
         if (includeUnrated) {
             val unratedPairs = pairs.preferringUnrated()
+
+            // Finish songs that are already partway toward a suggestion before starting new
+            // ones: spreading turns evenly across the whole backlog (the old lifetimeBattles
+            // behavior below) means any single song only gets picked once every N unrated
+            // rounds, so with a large backlog no song ever accumulates the five
+            // rated-opponent comparisons a suggestion needs. See issue #49.
+            val maxProgress = unratedPairs.maxOf { it.unratedProgress(unratedStreaks) }
+            if (maxProgress > 0) {
+                return unratedPairs.filter {
+                    it.unratedProgress(unratedStreaks) >= maxProgress - PROGRESS_CONCENTRATION_TOLERANCE
+                }
+            }
+
             val minimumLifetimeBattles = unratedPairs.minOf { it.lifetimeBattles() }
             return unratedPairs.filter {
                 it.lifetimeBattles() <= minimumLifetimeBattles + UNRATED_BATTLE_TOLERANCE
@@ -364,6 +398,40 @@ class EloMatchupEngine(
     private fun List<Pair<Song, Song>>.preferringUnrated(): List<Pair<Song, Song>> {
         val mixed = filter { it.isMixed() }
         return mixed.ifEmpty { filter { it.hasUnrated() }.ifEmpty { this } }
+    }
+
+    // Counts the subject's trailing win-outcome comparisons that were against rated
+    // opponents, stopping at the first unrated opponent encountered (walking backwards) or
+    // once SUGGESTION_STABILITY_WINDOW is reached, whichever comes first. Mirrors
+    // SuggestionEngine's own "last five comparisons must all be against rated opponents"
+    // gate, so a song's progress here tracks its actual distance from a suggestion.
+    private fun ratedStreak(
+        subjectId: String,
+        songsById: Map<String, Song>,
+        sortedWinEvents: List<MatchupEvent>
+    ): Int {
+        var streak = 0
+        for (event in sortedWinEvents.asReversed()) {
+            val opponentId = when (subjectId) {
+                event.winnerSubjectId -> event.loserSubjectId
+                event.loserSubjectId -> event.winnerSubjectId
+                else -> null
+            } ?: continue
+            val opponentRated = songsById[opponentId]?.scoreTenths != null
+            if (!opponentRated) break
+            streak++
+            if (streak >= SUGGESTION_STABILITY_WINDOW) break
+        }
+        return streak
+    }
+
+    // The rated-comparison streak of whichever side is unrated; 0 for an unrated-vs-unrated
+    // pair, since pairing two unrated songs together doesn't advance either one's streak
+    // toward a suggestion.
+    private fun Pair<Song, Song>.unratedProgress(unratedStreaks: Map<String, Int>): Int = when {
+        first.scoreTenths == null && second.scoreTenths != null -> unratedStreaks[first.rankingSubjectId] ?: 0
+        second.scoreTenths == null && first.scoreTenths != null -> unratedStreaks[second.rankingSubjectId] ?: 0
+        else -> 0
     }
 
     // Sums battles from both sides when both are unrated, so an unrated-vs-unrated pair reads as
