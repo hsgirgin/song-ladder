@@ -114,8 +114,7 @@ class RankViewModel(
         settingsRepository.observeSettings(),
         sessionState
     ) { songs, stats, events, settings, session ->
-        val activeSongIds = songs.mapTo(mutableSetOf()) { it.id }
-        val selection = ensureMatchupSelected(session, songs, events, activeSongIds)
+        val selection = ensureMatchupSelected(session, songs, events)
         val matchup = selection.matchup
         RankUiState(
             songs = songs,
@@ -200,16 +199,16 @@ class RankViewModel(
     private fun ensureMatchupSelected(
         session: RankSessionState,
         songs: List<Song>,
-        events: List<MatchupEvent>,
-        activeSongIds: Set<String>
+        events: List<MatchupEvent>
     ): MatchupSelection {
         if (!session.visualFeedback.isSettled) {
             return MatchupSelection(session.previousMatchup)
         }
-        val validCurrent = session.currentMatchup
-            ?.takeIf { it.left.id in activeSongIds && it.right.id in activeSongIds }
-        if (validCurrent != null) {
-            return MatchupSelection(validCurrent)
+        val activeSongIds = songs.mapTo(mutableSetOf()) { it.id }
+        fun isValid(matchup: Matchup?) =
+            matchup != null && matchup.left.id in activeSongIds && matchup.right.id in activeSongIds
+        if (isValid(session.currentMatchup)) {
+            return MatchupSelection(session.currentMatchup)
         }
         val selection = matchupEngine.selectMatchup(
             songs = songs,
@@ -222,7 +221,7 @@ class RankViewModel(
         val matchup = selection.matchup
         if (matchup != null) {
             sessionState.update { current ->
-                if (current.currentMatchup != null || !current.visualFeedback.isSettled) {
+                if (isValid(current.currentMatchup) || !current.visualFeedback.isSettled) {
                     return@update current
                 }
                 current.copy(
