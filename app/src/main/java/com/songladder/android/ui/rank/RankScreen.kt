@@ -584,7 +584,7 @@ internal fun MinimalSongChoiceCard(
                 color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f)
             ) {
                 Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = if (compact) 12.dp else 16.dp)) {
-                    Text(song.title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Text(song.title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface, maxLines = 2, overflow = TextOverflow.Ellipsis)
                     Text(song.artist, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
