@@ -35,7 +35,9 @@ class EloMatchupEngine(
         // floor keeps small libraries behaving exactly as before and a cap keeps the window from
         // starving small pools into forced repeats.
         private const val MIN_BLOCK_WINDOW = 3
-        private const val MAX_BLOCK_WINDOW = 8
+        // Visible to callers so they know how much matchup history to retain for
+        // selectMatchup's displayedMatchups window to actually scale up to this cap.
+        internal const val MAX_BLOCK_WINDOW = 8
         private const val BLOCK_WINDOW_DIVISOR = 2
 
         // Pairs within this many score-tenths of the tightest cluster are still eligible, so a
@@ -84,14 +86,14 @@ class EloMatchupEngine(
             }
         }
 
+        val sortedEvents by lazy { events.sortedBy { it.sequenceId } }
         val blockWindow = (candidatePairs.size / BLOCK_WINDOW_DIVISOR)
             .coerceIn(MIN_BLOCK_WINDOW, MAX_BLOCK_WINDOW)
         val recentDisplayed = displayedMatchups.takeLast(blockWindow)
         val blocked = recentDisplayed
             .map { it.pairKey() }
             .ifEmpty {
-                events
-                    .sortedBy { it.sequenceId }
+                sortedEvents
                     .takeLast(blockWindow)
                     .map { it.pairKey() }
             }
@@ -114,6 +116,10 @@ class EloMatchupEngine(
                 pair.second.rankingSubjectId in temporarilyExcludedSubjectIds
         }
         var availablePairs = eligiblePairs.filterNot { it.key() in blocked }
+        // candidatePairs is already narrowed to the preferred unrated tier (when includeUnrated),
+        // so pairs drawn from it don't need that filtering redone below - only the fallback to
+        // raw allPairs(songs) does.
+        var availablePairsAlreadyPreferredUnrated = includeUnrated
         if (availablePairs.isEmpty() && !continueAnyway) {
             availablePairs = allPairs(songs)
                 .filterNot { pair ->
@@ -121,6 +127,7 @@ class EloMatchupEngine(
                         pair.second.rankingSubjectId in temporarilyExcludedSubjectIds
                 }
                 .filterNot { it.key() in blocked }
+            availablePairsAlreadyPreferredUnrated = false
         }
 
         if (availablePairs.isEmpty() && continueAnyway) {
@@ -133,11 +140,17 @@ class EloMatchupEngine(
             else -> return MatchupSelection(matchup = null, caughtUp = candidatePairs.isNotEmpty())
         }
 
-        val preferredPairs = preferredPairs(selectablePairs, includeUnrated)
+        val preferredPairs = preferredPairs(selectablePairs, includeUnrated, availablePairsAlreadyPreferredUnrated)
         val lastSeen = if (displayedMatchups.isEmpty()) {
-            events.sortedBy { it.sequenceId }
-                .flatMap { event -> listOf(event.firstSubjectId to event.sequenceId, event.secondSubjectId to event.sequenceId) }
-                .toMap()
+            val relevantSubjectIds = selectablePairs
+                .flatMapTo(mutableSetOf()) { listOf(it.first.rankingSubjectId, it.second.rankingSubjectId) }
+            val seen = mutableMapOf<String, Long>()
+            for (event in sortedEvents.asReversed()) {
+                if (seen.size >= relevantSubjectIds.size) break
+                if (event.firstSubjectId in relevantSubjectIds) seen.putIfAbsent(event.firstSubjectId, event.sequenceId)
+                if (event.secondSubjectId in relevantSubjectIds) seen.putIfAbsent(event.secondSubjectId, event.sequenceId)
+            }
+            seen
         } else {
             displayedMatchups.withIndex()
                 .flatMap { (index, matchup) ->
@@ -282,10 +295,11 @@ class EloMatchupEngine(
 
     private fun preferredPairs(
         pairs: List<Pair<Song, Song>>,
-        includeUnrated: Boolean
+        includeUnrated: Boolean,
+        alreadyPreferredUnrated: Boolean = false
     ): List<Pair<Song, Song>> {
         if (includeUnrated) {
-            val unratedPairs = pairs.preferringUnrated()
+            val unratedPairs = if (alreadyPreferredUnrated) pairs else pairs.preferringUnrated()
             val minimumLifetimeBattles = unratedPairs.minOf { it.lifetimeBattles() }
             return unratedPairs.filter {
                 it.lifetimeBattles() <= minimumLifetimeBattles + UNRATED_BATTLE_TOLERANCE
@@ -295,10 +309,11 @@ class EloMatchupEngine(
         val ratedPairs = pairs.filter { it.bothRated() }
         if (ratedPairs.isEmpty()) return pairs
 
-        val exactScorePairs = ratedPairs.filter { it.first.scoreTenths == it.second.scoreTenths }
-        val scoredPairs = exactScorePairs.ifEmpty { ratedPairs }
-        val minimumScoreDifference = scoredPairs.minOf { it.scoreDifference() }
-        return scoredPairs.filter { it.scoreDifference() <= minimumScoreDifference + SCORE_DIFFERENCE_TOLERANCE }
+        // Measured against the closest pair overall (not just exact ties) so a cluster too
+        // small to avoid repeats on its own - e.g. a single exact-tie pair - still pulls in
+        // other close-enough pairs within tolerance, per this constant's contract above.
+        val minimumScoreDifference = ratedPairs.minOf { it.scoreDifference() }
+        return ratedPairs.filter { it.scoreDifference() <= minimumScoreDifference + SCORE_DIFFERENCE_TOLERANCE }
     }
 
     private fun chooseTie(
