@@ -116,10 +116,6 @@ class EloMatchupEngine(
                 pair.second.rankingSubjectId in temporarilyExcludedSubjectIds
         }
         var availablePairs = eligiblePairs.filterNot { it.key() in blocked }
-        // candidatePairs is already narrowed to the preferred unrated tier (when includeUnrated),
-        // so pairs drawn from it don't need that filtering redone below - only the fallback to
-        // raw allPairs(songs) does.
-        var availablePairsAlreadyPreferredUnrated = includeUnrated
         if (availablePairs.isEmpty() && !continueAnyway) {
             availablePairs = allPairs(songs)
                 .filterNot { pair ->
@@ -127,7 +123,6 @@ class EloMatchupEngine(
                         pair.second.rankingSubjectId in temporarilyExcludedSubjectIds
                 }
                 .filterNot { it.key() in blocked }
-            availablePairsAlreadyPreferredUnrated = false
         }
 
         if (availablePairs.isEmpty() && continueAnyway) {
@@ -140,7 +135,7 @@ class EloMatchupEngine(
             else -> return MatchupSelection(matchup = null, caughtUp = candidatePairs.isNotEmpty())
         }
 
-        val preferredPairs = preferredPairs(selectablePairs, includeUnrated, availablePairsAlreadyPreferredUnrated)
+        val preferredPairs = preferredPairs(selectablePairs, includeUnrated)
         val lastSeen = if (displayedMatchups.isEmpty()) {
             val relevantSubjectIds = selectablePairs
                 .flatMapTo(mutableSetOf()) { listOf(it.first.rankingSubjectId, it.second.rankingSubjectId) }
@@ -295,11 +290,10 @@ class EloMatchupEngine(
 
     private fun preferredPairs(
         pairs: List<Pair<Song, Song>>,
-        includeUnrated: Boolean,
-        alreadyPreferredUnrated: Boolean = false
+        includeUnrated: Boolean
     ): List<Pair<Song, Song>> {
         if (includeUnrated) {
-            val unratedPairs = if (alreadyPreferredUnrated) pairs else pairs.preferringUnrated()
+            val unratedPairs = pairs.preferringUnrated()
             val minimumLifetimeBattles = unratedPairs.minOf { it.lifetimeBattles() }
             return unratedPairs.filter {
                 it.lifetimeBattles() <= minimumLifetimeBattles + UNRATED_BATTLE_TOLERANCE
