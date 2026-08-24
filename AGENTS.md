@@ -13,12 +13,9 @@ These instructions apply to the entire repository. Treat every rule below as man
 
 ## Graphify workflow
 
-- When `graphify-out/graph.json` exists, query it before broad repository exploration. Use the graph to find likely files and relationships, then verify conclusions against the source code and documentation.
-- After meaningful code or documentation changes, refresh the graph with `/graphify . --update`. Run a full `/graphify .` rebuild when architecture or documentation changes substantially, or when the graph is missing or stale.
-- Treat `graphify-out/graph.json`, `GRAPH_REPORT.md`, and `graph.html` as derived navigation artifacts, not sources of truth. Never edit them manually; regenerate them from the repository.
-- Review and preserve any Graphify health warnings. Do not silently rely on incomplete or dangling graph relationships.
-- Save useful, confirmed graph answers with `graphify save-result` when they would help future agents. Do not save speculative conclusions as facts.
-- Keep generated graph artifacts out of feature commits unless the task explicitly requires sharing a checked-in graph. If the graph is not present, agents should rebuild it rather than infer its contents.
+- This repo does not check in a maintained `graphify-out/graph.json`; it's a small single-module app where full-repo exploration is already cheap, so a checked-in graph isn't worth the staleness risk and upkeep. `graphify-out/` is gitignored — treat any graph you build locally as ephemeral, session-scoped scaffolding, not a repo artifact.
+- If you build a local graph, query it before broad repository exploration to find likely files and relationships, then verify conclusions against the source code and documentation. Treat `graph.json`, `GRAPH_REPORT.md`, and `graph.html` as derived navigation artifacts, not sources of truth — never edit them manually, and never commit them.
+- If the graph is missing or stale, rebuild it rather than infer its contents; do not assume one exists.
 
 ## Project architecture
 
