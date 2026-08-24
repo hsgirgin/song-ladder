@@ -206,7 +206,8 @@ class RankViewModel(
             } else {
                 state.copy(
                     currentMatchup = matchup,
-                    recentDisplayedMatchups = (state.recentDisplayedMatchups + matchup).takeLast(3),
+                    recentDisplayedMatchups = (state.recentDisplayedMatchups + matchup)
+                        .takeLast(EloMatchupEngine.MAX_BLOCK_WINDOW),
                     displayedMatchupCount = state.displayedMatchupCount + 1,
                     firstPreviewStartsLeft = state.displayedMatchupCount % 2 == 0
                 )

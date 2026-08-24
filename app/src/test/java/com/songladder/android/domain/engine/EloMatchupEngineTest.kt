@@ -171,6 +171,41 @@ class EloMatchupEngineTest {
     }
 
     @Test
+    fun `keeps near-tied score pairs eligible within tolerance so the elo-closest match wins`() {
+        // Strict score-difference minimum (1) only admits x-y, but the tolerance band lets
+        // x-z (difference 4) in too, and x-z has by far the closest elo -- so it should win
+        // the final tie-break instead of x-y being the sole, forced candidate.
+        val x = song(id = "x", scoreTenths = 70, elo = 1200.0)
+        val y = song(id = "y", scoreTenths = 71, elo = 1400.0)
+        val z = song(id = "z", scoreTenths = 74, elo = 1210.0)
+
+        val selection = EloMatchupEngine(Random(1)).selectMatchup(songs = listOf(x, y, z))
+
+        val matchup = requireNotNull(selection.matchup)
+        assertEquals(setOf("x", "z"), setOf(matchup.left.id, matchup.right.id))
+    }
+
+    @Test
+    fun `repeat-avoidance window scales up with a larger eligible pool`() {
+        val songs = (1..6).map { song(id = "s$it", scoreTenths = 80) }
+        // 6 same-score songs give 15 eligible pairs, scaling the block window to 7. Seven
+        // distinct prior pairs should all stay blocked, unlike the old fixed window of 3.
+        val shownPairs = listOf(
+            "s1" to "s2", "s1" to "s3", "s1" to "s4", "s1" to "s5",
+            "s1" to "s6", "s2" to "s3", "s2" to "s4"
+        )
+        val events = shownPairs.mapIndexed { index, (first, second) ->
+            event((index + 1).toLong(), first, second)
+        }
+
+        val selection = EloMatchupEngine(Random(1)).selectMatchup(songs = songs, events = events)
+
+        val matchup = requireNotNull(selection.matchup)
+        val selectedIds = setOf(matchup.left.id, matchup.right.id)
+        assertTrue(shownPairs.none { (first, second) -> setOf(first, second) == selectedIds })
+    }
+
+    @Test
     fun `falls back to nearest score difference when no exact pair exists`() {
         val selection = EloMatchupEngine(Random(1)).selectMatchup(
             songs = listOf(
@@ -251,7 +286,7 @@ class EloMatchupEngineTest {
     }
 
     @Test
-    fun `keeps a slightly-battled unrated song eligible alongside a completely fresh import`() {
+    fun `keeps a slightly-battled unrated song eligible for a mixed pairing alongside a fresh import`() {
         val slightlyBattled = song(id = "slightly-battled", wins = 1, losses = 1)
         val fresh = song(id = "fresh")
 
@@ -269,7 +304,38 @@ class EloMatchupEngineTest {
         )
 
         val matchup = requireNotNull(selection.matchup)
-        assertEquals(setOf("fresh", "slightly-battled"), setOf(matchup.left.id, matchup.right.id))
+        val ids = setOf(matchup.left.id, matchup.right.id)
+        // A mixed pair (one rated, one unrated) is preferred over pairing the two unrated
+        // songs against each other, so either unrated song may be picked here -- but always
+        // alongside a rated song, never the pure "fresh" vs "slightly-battled" pair.
+        assertTrue(
+            ids == setOf("rated-one", "fresh") ||
+                ids == setOf("rated-two", "fresh") ||
+                ids == setOf("rated-one", "slightly-battled") ||
+                ids == setOf("rated-two", "slightly-battled")
+        )
+    }
+
+    @Test
+    fun `prefers a rated-unrated pairing over pairing two unrated songs together`() {
+        val songs = listOf(
+            song(id = "rated", scoreTenths = 80),
+            song(id = "unrated-one"),
+            song(id = "unrated-two")
+        )
+
+        // Filler events unrelated to any real pair here, only to reach the unrated-inclusion
+        // interval without accidentally blocking one of the mixed pairs under test.
+        val selection = EloMatchupEngine(Random(1)).selectMatchup(
+            songs = songs,
+            events = listOf(
+                event(1, "filler-a", "filler-b"),
+                event(2, "filler-a", "filler-b")
+            )
+        )
+
+        val matchup = requireNotNull(selection.matchup)
+        assertTrue("rated" in setOf(matchup.left.id, matchup.right.id))
     }
 
     @Test
