@@ -5,6 +5,8 @@ import androidx.lifecycle.viewModelScope
 import com.songladder.android.domain.engine.EloMatchupEngine
 import com.songladder.android.domain.model.AppStats
 import com.songladder.android.domain.model.Matchup
+import com.songladder.android.domain.model.MatchupEvent
+import com.songladder.android.domain.model.MatchupSelection
 import com.songladder.android.domain.model.RankingSettings
 import com.songladder.android.domain.model.Song
 import com.songladder.android.domain.model.Suggestion
@@ -113,21 +115,7 @@ class RankViewModel(
         sessionState
     ) { songs, stats, events, settings, session ->
         val activeSongIds = songs.mapTo(mutableSetOf()) { it.id }
-        val currentMatchup = session.currentMatchup
-            ?.takeIf { it.left.id in activeSongIds && it.right.id in activeSongIds }
-        val selection = if (session.visualFeedback.isSettled) {
-            currentMatchup?.let { com.songladder.android.domain.model.MatchupSelection(it) }
-                ?: matchupEngine.selectMatchup(
-                    songs = songs,
-                    events = events,
-                    displayedMatchups = session.recentDisplayedMatchups,
-                    displayedMatchupCount = session.displayedMatchupCount,
-                    previousMatchup = session.previousMatchup,
-                    continueAnyway = session.continueAnyway
-                )
-        } else {
-            com.songladder.android.domain.model.MatchupSelection(session.previousMatchup)
-        }
+        val selection = ensureMatchupSelected(session, songs, events, activeSongIds)
         val matchup = selection.matchup
         RankUiState(
             songs = songs,
@@ -192,27 +180,61 @@ class RankViewModel(
 
     fun updatePreviewPrefetch(matchup: Matchup?) {
         if (matchup != null) {
-            markMatchupDisplayed(matchup)
             prefetchPreviews(matchup)
         } else {
             clearPreviewPrefetch()
         }
     }
 
-    private fun markMatchupDisplayed(matchup: Matchup) {
-        sessionState.update { state ->
-            if (state.currentMatchup.hasSamePairAs(matchup)) {
-                state
-            } else {
-                state.copy(
+    /**
+     * Selects the matchup to show, locking a freshly-chosen one into [sessionState]
+     * synchronously (in this same call) rather than waiting on a later, UI-driven side
+     * effect. [EloMatchupEngine.selectMatchup] breaks ties randomly, and this combine's
+     * transform can re-run several times in quick succession off a single burst of
+     * upstream emissions (e.g. the separate Room flow updates from one accept-suggestion
+     * DB transaction). Locking in-line closes that window: once a matchup is picked, every
+     * subsequent re-run in the same burst sees a non-null [RankSessionState.currentMatchup]
+     * and reuses it instead of re-rolling a different one - which previously caused the
+     * displayed matchup to flicker to a different pair right after it.
+     */
+    private fun ensureMatchupSelected(
+        session: RankSessionState,
+        songs: List<Song>,
+        events: List<MatchupEvent>,
+        activeSongIds: Set<String>
+    ): MatchupSelection {
+        if (!session.visualFeedback.isSettled) {
+            return MatchupSelection(session.previousMatchup)
+        }
+        val validCurrent = session.currentMatchup
+            ?.takeIf { it.left.id in activeSongIds && it.right.id in activeSongIds }
+        if (validCurrent != null) {
+            return MatchupSelection(validCurrent)
+        }
+        val selection = matchupEngine.selectMatchup(
+            songs = songs,
+            events = events,
+            displayedMatchups = session.recentDisplayedMatchups,
+            displayedMatchupCount = session.displayedMatchupCount,
+            previousMatchup = session.previousMatchup,
+            continueAnyway = session.continueAnyway
+        )
+        val matchup = selection.matchup
+        if (matchup != null) {
+            sessionState.update { current ->
+                if (current.currentMatchup != null || !current.visualFeedback.isSettled) {
+                    return@update current
+                }
+                current.copy(
                     currentMatchup = matchup,
-                    recentDisplayedMatchups = (state.recentDisplayedMatchups + matchup)
+                    recentDisplayedMatchups = (current.recentDisplayedMatchups + matchup)
                         .takeLast(EloMatchupEngine.MAX_BLOCK_WINDOW),
-                    displayedMatchupCount = state.displayedMatchupCount + 1,
-                    firstPreviewStartsLeft = state.displayedMatchupCount % 2 == 0
+                    displayedMatchupCount = current.displayedMatchupCount + 1,
+                    firstPreviewStartsLeft = current.displayedMatchupCount % 2 == 0
                 )
             }
         }
+        return selection
     }
 
     private fun prefetchPreviews(matchup: Matchup) {
@@ -509,12 +531,6 @@ class RankViewModel(
             sessionState.update { it.copy(visualFeedback = RankVisualFeedback.None, transientMessage = "") }
         }
     }
-}
-
-private fun Matchup?.hasSamePairAs(other: Matchup): Boolean {
-    if (this == null) return false
-    return setOf(left.rankingSubjectId, right.rankingSubjectId) ==
-        setOf(other.left.rankingSubjectId, other.right.rankingSubjectId)
 }
 
 private data object DefaultRankSettingsRepository : SettingsRepository {
