@@ -71,6 +71,7 @@ import com.songladder.android.domain.model.Suggestion
 import com.songladder.android.ui.components.ScoreTransitionBadges
 import com.songladder.android.ui.components.SongArtwork
 import com.songladder.android.ui.components.SongRatingControl
+import kotlin.math.abs
 
 internal enum class CardReaction {
     Idle,
@@ -297,16 +298,26 @@ internal fun RankMatchupContent(
                 .fillMaxSize()
                 .testTag("rank_matchup_drag_area")
                 .pointerInput(matchup.left.id, matchup.right.id) {
+                    val touchSlop = viewConfiguration.touchSlop
                     awaitEachGesture {
                         val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
                         var lastPosition = down.position
+                        var dragIntentEstablished = false
                         do {
                             val event = awaitPointerEvent(PointerEventPass.Initial)
                             event.changes.firstOrNull { it.id == down.id }
-                                ?.let {
-                                    lastPosition = it.position
+                                ?.let { change ->
+                                    lastPosition = change.position
                                     dragOffset = (lastPosition.y - down.position.y)
                                         .coerceIn(-dragThresholdPx * 1.35f, dragThresholdPx * 1.35f)
+                                    if (!dragIntentEstablished &&
+                                        abs(lastPosition.y - down.position.y) > touchSlop
+                                    ) {
+                                        dragIntentEstablished = true
+                                    }
+                                    if (dragIntentEstablished) {
+                                        change.consume()
+                                    }
                                 }
                         } while (event.changes.any { it.pressed })
 

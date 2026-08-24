@@ -272,6 +272,43 @@ class RankScreenTest {
     }
 
     @Test
+    fun verticalSwipeChoosingASongDoesNotAlsoTriggerPreview() {
+        val left = Song(id = "left", title = "Left song", artist = "Left artist", createdAt = 1L)
+        val right = Song(id = "right", title = "Right song", artist = "Right artist", createdAt = 2L)
+        var chosen: Pair<String, String>? = null
+        val previewedSongIds = mutableListOf<String>()
+
+        composeRule.setContent {
+            SongLadderTheme {
+                RankMatchupContent(
+                    uiState = RankUiState(
+                        songs = listOf(left, right),
+                        previews = mapOf(
+                            left.id to SongPreviewState.Unavailable,
+                            right.id to SongPreviewState.Unavailable
+                        )
+                    ),
+                    matchup = Matchup(left, right),
+                    modifier = Modifier
+                        .width(360.dp)
+                        .height(760.dp),
+                    onChoose = { winner, loser -> chosen = winner to loser },
+                    onPreview = { previewedSongIds.add(it) }
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag("rank_matchup_drag_area").performTouchInput {
+            swipeUp()
+        }
+
+        composeRule.runOnIdle {
+            assertEquals("right" to "left", chosen)
+            assertEquals(emptyList<String>(), previewedSongIds)
+        }
+    }
+
+    @Test
     fun matchup_keepsBothSongsReachableAtCompactHeight() {
         val left = Song(
             id = "left",
