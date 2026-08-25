@@ -12,8 +12,6 @@ import com.songladder.android.data.repository.DefaultImportRepository
 import com.songladder.android.data.repository.DefaultRankingRepository
 import com.songladder.android.data.repository.DefaultSettingsRepository
 import com.songladder.android.data.repository.DefaultSongRepository
-import com.songladder.android.data.spotify.SpotifyAuthManager
-import com.songladder.android.data.spotify.SpotifyPlaylistClient
 import com.songladder.android.data.youtubemusic.YoutubeMusicPlaylistClient
 import com.songladder.android.domain.engine.EloMatchupEngine
 import com.songladder.android.domain.repository.ImportRepository
@@ -45,8 +43,6 @@ class AppContainer(context: Context) {
     )
     val songPreviewPlayer = AndroidSongPreviewPlayer(appContext)
     val playlistSourceClient: PlaylistSourceClient = YoutubeMusicPlaylistClient(httpClient)
-    val spotifyAuthManager = SpotifyAuthManager(appContext, httpClient)
-    val spotifyPlaylistClient: PlaylistSourceClient = SpotifyPlaylistClient(spotifyAuthManager, httpClient)
     val songRepository: SongRepository = DefaultSongRepository(
         database = database,
         songDao = database.songDao(),

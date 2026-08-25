@@ -4,8 +4,6 @@ import android.content.ContentResolver
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.songladder.android.data.spotify.SpotifyAuthManager
-import com.songladder.android.data.spotify.SpotifyAuthState
 import com.songladder.android.data.spotify.SpotifyPlaylistJsonImporter
 import com.songladder.android.domain.model.AppStats
 import com.songladder.android.domain.model.MusicSourceType
@@ -92,8 +90,6 @@ data class LibraryUiState(
     val youtubeMusicPlaylistUrl: String = "",
     val isPreviewLoading: Boolean = false,
     val youtubeMusicPreview: PlaylistImportPreview? = null,
-    val spotifyAuthState: SpotifyAuthState = SpotifyAuthState.LoggedOut,
-    val spotifyPlaylistUrl: String = "",
     val spotifyPreview: PlaylistImportPreview? = null,
     val previewError: String? = null,
     val isImportingPreview: Boolean = false,
@@ -128,9 +124,7 @@ class LibraryViewModel(
     private val rankingRepository: RankingRepository = DefaultLibraryRankingRepository,
     private val settingsRepository: SettingsRepository = DefaultLibrarySettingsRepository,
     private val songPreviewResolver: SongPreviewResolver = UnavailablePreviewResolver,
-    private val songPreviewPlayer: SongPreviewPlayer = NoOpPreviewPlayer,
-    private val spotifyAuthManager: SpotifyAuthManager? = null,
-    private val spotifyPlaylistClient: PlaylistSourceClient? = null
+    private val songPreviewPlayer: SongPreviewPlayer = NoOpPreviewPlayer
 ) : ViewModel() {
     private val localState = MutableStateFlow(LibraryUiState())
     private var clearAddedStateJob: Job? = null
@@ -144,10 +138,9 @@ class LibraryViewModel(
     val uiState: StateFlow<LibraryUiState> = combine(
         songRepository.observeSongs(),
         settingsRepository.observeSettings(),
-        spotifyAuthManager?.state ?: MutableStateFlow(SpotifyAuthState.LoggedOut),
         localState
-    ) { songs, settings, spotifyAuthState, local ->
-        local.copy(songs = songs, settings = settings, spotifyAuthState = spotifyAuthState)
+    ) { songs, settings, local ->
+        local.copy(songs = songs, settings = settings)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), LibraryUiState())
 
     init {
@@ -496,88 +489,6 @@ class LibraryViewModel(
         }
     }
 
-    val isSpotifyConfigured: Boolean
-        get() = spotifyAuthManager?.isConfigured == true
-
-    fun beginSpotifySignIn(): Uri? {
-        val manager = spotifyAuthManager
-        if (manager == null || !manager.isConfigured) {
-            localState.update { it.copy(statusMessage = "Spotify import isn't configured yet.") }
-            return null
-        }
-        return manager.buildAuthorizeUri()
-    }
-
-    fun handleSpotifyAuthRedirect(uri: Uri) {
-        val manager = spotifyAuthManager ?: return
-        viewModelScope.launch {
-            manager.handleRedirect(uri)
-                .onSuccess {
-                    localState.update { it.copy(statusMessage = "Connected to Spotify.") }
-                }
-                .onFailure { error ->
-                    localState.update { it.copy(statusMessage = error.message ?: "Spotify sign-in failed.") }
-                }
-        }
-    }
-
-    fun signOutSpotify() {
-        spotifyAuthManager?.signOut()
-        localState.update { it.copy(spotifyPreview = null, spotifyPlaylistUrl = "") }
-    }
-
-    fun updateSpotifyPlaylistUrl(url: String) {
-        localState.update {
-            it.copy(
-                spotifyPlaylistUrl = url,
-                previewError = null,
-                spotifyPreview = null
-            )
-        }
-    }
-
-    fun previewSpotifyPlaylist() {
-        val client = spotifyPlaylistClient
-        if (client == null) {
-            localState.update { it.copy(previewError = "Spotify import isn't configured yet.") }
-            return
-        }
-        viewModelScope.launch {
-            val playlistUrl = localState.value.spotifyPlaylistUrl.trim()
-            if (playlistUrl.isBlank()) {
-                localState.update { it.copy(previewError = "Paste a link to one of your Spotify playlists.") }
-                return@launch
-            }
-
-            localState.update {
-                it.copy(
-                    isPreviewLoading = true,
-                    previewError = null,
-                    spotifyPreview = null
-                )
-            }
-
-            client.previewPlaylist(playlistUrl)
-                .onSuccess { preview ->
-                    localState.update {
-                        it.copy(
-                            isPreviewLoading = false,
-                            spotifyPreview = preview,
-                            statusMessage = "Previewed ${preview.importableTracks.size} Spotify tracks."
-                        )
-                    }
-                }
-                .onFailure { error ->
-                    localState.update {
-                        it.copy(
-                            isPreviewLoading = false,
-                            previewError = error.message ?: "Could not preview this Spotify playlist."
-                        )
-                    }
-                }
-        }
-    }
-
     fun confirmSpotifyPreviewImport() {
         viewModelScope.launch {
             val preview = localState.value.spotifyPreview ?: return@launch
@@ -794,8 +705,7 @@ class LibraryViewModel(
                         spotifyPreview = null,
                         previewError = null,
                         statusMessage = "Imported $count songs from $playlistTitle.",
-                        youtubeMusicPlaylistUrl = "",
-                        spotifyPlaylistUrl = ""
+                        youtubeMusicPlaylistUrl = ""
                     )
                 }
                 scheduleRatingQueueLaunch(

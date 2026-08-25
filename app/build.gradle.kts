@@ -13,7 +13,6 @@ android {
     val releaseKeystorePassword = providers.environmentVariable("SONG_LADDER_KEYSTORE_PASSWORD")
     val releaseKeyAlias = providers.environmentVariable("SONG_LADDER_KEY_ALIAS")
     val releaseKeyPassword = providers.environmentVariable("SONG_LADDER_KEY_PASSWORD")
-    val spotifyClientId = providers.environmentVariable("SONG_LADDER_SPOTIFY_CLIENT_ID").orElse("")
 
     signingConfigs {
         create("release") {
@@ -33,9 +32,6 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
-
-        buildConfigField("String", "SPOTIFY_CLIENT_ID", "\"${spotifyClientId.get()}\"")
-        buildConfigField("String", "SPOTIFY_REDIRECT_URI", "\"songladder://spotify-callback\"")
     }
 
     buildTypes {
@@ -106,8 +102,6 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("io.coil-kt:coil-compose:2.7.0")
-    implementation("androidx.browser:browser:1.8.0")
-    implementation("androidx.security:security-crypto:1.1.0-alpha06")
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")

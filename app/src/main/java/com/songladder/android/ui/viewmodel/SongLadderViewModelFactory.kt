@@ -32,9 +32,7 @@ class SongLadderViewModelFactory(
                     rankingRepository = container.rankingRepository,
                     settingsRepository = container.settingsRepository,
                     songPreviewResolver = container.songPreviewResolver,
-                    songPreviewPlayer = container.songPreviewPlayer,
-                    spotifyAuthManager = container.spotifyAuthManager,
-                    spotifyPlaylistClient = container.spotifyPlaylistClient
+                    songPreviewPlayer = container.songPreviewPlayer
                 ) as T
             }
             modelClass.isAssignableFrom(RankingsViewModel::class.java) -> {

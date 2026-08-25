@@ -1,6 +1,5 @@
 package com.songladder.android
 
-import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -37,19 +36,6 @@ class MainActivity : ComponentActivity() {
                 rankingsViewModel = rankingsViewModel,
                 settingsViewModel = settingsViewModel
             )
-        }
-        handleSpotifyRedirect(intent)
-    }
-
-    override fun onNewIntent(intent: Intent) {
-        super.onNewIntent(intent)
-        handleSpotifyRedirect(intent)
-    }
-
-    private fun handleSpotifyRedirect(intent: Intent) {
-        val data = intent.data ?: return
-        if (data.scheme == "songladder" && data.host == "spotify-callback") {
-            libraryViewModel.handleSpotifyAuthRedirect(data)
         }
     }
 }
