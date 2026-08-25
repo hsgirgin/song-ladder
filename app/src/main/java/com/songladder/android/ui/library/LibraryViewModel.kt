@@ -4,6 +4,7 @@ import android.content.ContentResolver
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.songladder.android.data.spotify.SpotifyPlaylistJsonImporter
 import com.songladder.android.domain.model.AppStats
 import com.songladder.android.domain.model.MusicSourceType
 import com.songladder.android.domain.model.MusicTrackCandidate
@@ -24,6 +25,7 @@ import com.songladder.android.domain.repository.SongPreviewResolver
 import com.songladder.android.domain.repository.SongRepository
 import com.songladder.android.ui.NoOpPreviewPlayer
 import com.songladder.android.ui.UnavailablePreviewResolver
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -39,6 +41,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 enum class ImportRatingQueueKind {
     PLAYLIST,
@@ -87,6 +90,7 @@ data class LibraryUiState(
     val youtubeMusicPlaylistUrl: String = "",
     val isPreviewLoading: Boolean = false,
     val youtubeMusicPreview: PlaylistImportPreview? = null,
+    val spotifyPreview: PlaylistImportPreview? = null,
     val previewError: String? = null,
     val isImportingPreview: Boolean = false,
     val tombstoneConflict: TombstoneImportConflict? = null,
@@ -129,6 +133,7 @@ class LibraryViewModel(
     private val queuePreviewUrls = mutableMapOf<String, String>()
     private var pendingRatingQueueLaunches: List<PendingRatingQueueLaunch> = emptyList()
     private var pendingRatingQueueLaunchWatcherJob: Job? = null
+    private val spotifyPlaylistJsonImporter = SpotifyPlaylistJsonImporter()
 
     val uiState: StateFlow<LibraryUiState> = combine(
         songRepository.observeSongs(),
@@ -440,6 +445,7 @@ class LibraryViewModel(
                                 pendingImportSourceLabel = "",
                                 tombstoneResolutions = emptyMap(),
                                 youtubeMusicPreview = null,
+                                spotifyPreview = null,
                                 statusMessage = "Imported $count songs."
                             )
                         }
@@ -480,6 +486,89 @@ class LibraryViewModel(
                 isPreviewLoading = false,
                 isImportingPreview = false
             )
+        }
+    }
+
+    fun confirmSpotifyPreviewImport() {
+        viewModelScope.launch {
+            val preview = localState.value.spotifyPreview ?: return@launch
+            localState.update { it.copy(isImportingPreview = true, previewError = null) }
+            val conflicts = importRepository.findTombstoneMatches(preview.importableTracks).getOrElse { error ->
+                localState.update {
+                    it.copy(
+                        isImportingPreview = false,
+                        previewError = error.message ?: "Could not import this playlist."
+                    )
+                }
+                return@launch
+            }
+            if (conflicts.isNotEmpty()) {
+                localState.update {
+                    it.copy(
+                        isImportingPreview = false,
+                        tombstoneConflict = conflicts.first(),
+                        pendingImportCandidates = preview.importableTracks,
+                        pendingImportSourceLabel = "Spotify Playlist"
+                    )
+                }
+            } else {
+                importPlaylistTracks(preview.importableTracks, preview.playlistTitle, sourceLabel = "Spotify Playlist")
+            }
+        }
+    }
+
+    fun clearSpotifyPreview() {
+        localState.update {
+            it.copy(
+                spotifyPreview = null,
+                previewError = null,
+                isPreviewLoading = false,
+                isImportingPreview = false
+            )
+        }
+    }
+
+    fun importSpotifyPlaylistFile(contentResolver: ContentResolver, uri: Uri) {
+        viewModelScope.launch {
+            localState.update {
+                it.copy(
+                    isPreviewLoading = true,
+                    previewError = null,
+                    spotifyPreview = null
+                )
+            }
+
+            val raw = withContext(Dispatchers.IO) {
+                runCatching {
+                    contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
+                }.getOrNull()
+            }
+
+            if (raw == null) {
+                localState.update {
+                    it.copy(isPreviewLoading = false, previewError = "Could not read the selected file.")
+                }
+                return@launch
+            }
+
+            spotifyPlaylistJsonImporter.parse(raw)
+                .onSuccess { preview ->
+                    localState.update {
+                        it.copy(
+                            isPreviewLoading = false,
+                            spotifyPreview = preview,
+                            statusMessage = "Previewed ${preview.importableTracks.size} tracks from file."
+                        )
+                    }
+                }
+                .onFailure { error ->
+                    localState.update {
+                        it.copy(
+                            isPreviewLoading = false,
+                            previewError = error.message ?: "Could not read this playlist file."
+                        )
+                    }
+                }
         }
     }
 
@@ -603,15 +692,17 @@ class LibraryViewModel(
 
     private suspend fun importPlaylistTracks(
         candidates: List<MusicTrackCandidate>,
-        playlistTitle: String
+        playlistTitle: String,
+        sourceLabel: String = "YouTube Music Playlist"
     ) {
         val existingSongIds = currentSongIds()
-        importRepository.importTracks(candidates, "YouTube Music Playlist")
+        importRepository.importTracks(candidates, sourceLabel)
             .onSuccess { count ->
                 localState.update {
                     it.copy(
                         isImportingPreview = false,
                         youtubeMusicPreview = null,
+                        spotifyPreview = null,
                         previewError = null,
                         statusMessage = "Imported $count songs from $playlistTitle.",
                         youtubeMusicPlaylistUrl = ""
