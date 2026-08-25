@@ -321,8 +321,11 @@ class EloMatchupEngineTest {
             displayedMatchupCount = 1
         )
 
-        val bothUnrated = selection.matchup?.left?.scoreTenths == null &&
-            selection.matchup?.right?.scoreTenths == null
+        // With both rated songs temporarily excluded, no mixed pair is currently available --
+        // the correct outcome is no matchup (caught up) rather than falling back to an
+        // unrated-vs-unrated pick, so a null matchup here is fine; only both-unrated is not.
+        val matchup = selection.matchup
+        val bothUnrated = matchup != null && matchup.left.scoreTenths == null && matchup.right.scoreTenths == null
         assertTrue(
             "expected no matchup or a mixed pairing, never two unrated songs together",
             !bothUnrated
