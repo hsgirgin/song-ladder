@@ -286,6 +286,76 @@ class EloMatchupEngineTest {
     }
 
     @Test
+    fun `forces a mixed pairing regardless of matchup count once the backlog is massive`() {
+        val songs = listOf(song(id = "rated-one", scoreTenths = 80), song(id = "rated-two", scoreTenths = 90)) +
+            (1..15).map { song(id = "unrated-$it") }
+
+        // Each of these matchup counts would have been off the tapered interval before the
+        // massive-backlog tier existed (interval is 2 at this size), so this is the
+        // regression test that the interval no longer gates inclusion at 15+ unrated.
+        for (matchupCount in listOf(0, 1, 3)) {
+            val events = (1..matchupCount).map { event(it.toLong(), "rated-one", "rated-two") }
+            val selection = EloMatchupEngine(Random(1)).selectMatchup(songs = songs, events = events)
+
+            assertTrue(
+                "expected a mixed pairing at matchupCount $matchupCount",
+                (selection.matchup?.left?.scoreTenths == null) != (selection.matchup?.right?.scoreTenths == null)
+            )
+        }
+    }
+
+    @Test
+    fun `never falls back to an unrated pair at the massive tier, even when a tied rated pair was just shown`() {
+        // Regression test: with exactly two rated songs tied in score, showing that pair
+        // recently temporarily excludes both of them (see the tied-pair cooldown below),
+        // which used to make the emergency block-relaxation fallback fall through to raw
+        // allPairs(songs) -- including unrated-vs-unrated pairs -- defeating the massive-tier
+        // guarantee that every matchup stays mixed.
+        val songs = listOf(song(id = "rated-one", scoreTenths = 80), song(id = "rated-two", scoreTenths = 80)) +
+            (1..15).map { song(id = "unrated-$it") }
+        val displayed = Matchup(left = songs[0], right = songs[1])
+
+        val selection = EloMatchupEngine(Random(1)).selectMatchup(
+            songs = songs,
+            displayedMatchups = listOf(displayed),
+            displayedMatchupCount = 1
+        )
+
+        // With both rated songs temporarily excluded, no mixed pair is currently available --
+        // the correct outcome is no matchup (caught up) rather than falling back to an
+        // unrated-vs-unrated pick, so a null matchup here is fine; only both-unrated is not.
+        val matchup = selection.matchup
+        val bothUnrated = matchup != null && matchup.left.scoreTenths == null && matchup.right.scoreTenths == null
+        assertTrue(
+            "expected no matchup or a mixed pairing, never two unrated songs together",
+            !bothUnrated
+        )
+    }
+
+    @Test
+    fun `only forces mixed pairings once the backlog reaches the massive threshold`() {
+        fun songsFor(unratedCount: Int) =
+            listOf(song(id = "rated-one", scoreTenths = 80), song(id = "rated-two", scoreTenths = 90)) +
+                (1..unratedCount).map { song(id = "unrated-$it") }
+
+        // At 14 unrated, the existing tapered interval still applies: with no prior events
+        // (matchupCount 0) this is off the interval (interval 2 at this backlog size), so
+        // the pairing stays all-rated.
+        val belowThreshold = EloMatchupEngine(Random(1)).selectMatchup(songs = songsFor(14), events = emptyList())
+        assertTrue(
+            "expected only rated songs below the massive threshold",
+            belowThreshold.matchup?.left?.scoreTenths != null && belowThreshold.matchup?.right?.scoreTenths != null
+        )
+
+        // At 15 unrated, the massive-backlog tier forces a mixed pairing even off-interval.
+        val atThreshold = EloMatchupEngine(Random(1)).selectMatchup(songs = songsFor(15), events = emptyList())
+        assertTrue(
+            "expected a mixed pairing at the massive threshold",
+            (atThreshold.matchup?.left?.scoreTenths == null) != (atThreshold.matchup?.right?.scoreTenths == null)
+        )
+    }
+
+    @Test
     fun `keeps a slightly-battled unrated song eligible for a mixed pairing alongside a fresh import`() {
         val slightlyBattled = song(id = "slightly-battled", wins = 1, losses = 1)
         val fresh = song(id = "fresh")
