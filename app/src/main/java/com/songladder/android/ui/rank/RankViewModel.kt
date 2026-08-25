@@ -204,9 +204,21 @@ class RankViewModel(
         if (!session.visualFeedback.isSettled) {
             return MatchupSelection(session.previousMatchup)
         }
-        val activeSongIds = songs.mapTo(mutableSetOf()) { it.id }
-        fun isValid(matchup: Matchup?) =
-            matchup != null && matchup.left.id in activeSongIds && matchup.right.id in activeSongIds
+        val songsById = songs.associateBy { it.id }
+        fun isValid(matchup: Matchup?): Boolean {
+            if (matchup == null) return false
+            val left = songsById[matchup.left.id] ?: return false
+            val right = songsById[matchup.right.id] ?: return false
+            // A song can only move from unrated to rated, never back, so if either cached
+            // side was unrated when this matchup was chosen but has since been scored (e.g.
+            // the user just accepted a suggestion for it while the matchup was hidden behind
+            // that suggestion card), the pairing's rated/unrated shape is stale: it may no
+            // longer satisfy the active selection tier, and the stale snapshot would still
+            // render as unrated. Force a fresh pick instead of showing it.
+            val leftNewlyRated = matchup.left.scoreTenths == null && left.scoreTenths != null
+            val rightNewlyRated = matchup.right.scoreTenths == null && right.scoreTenths != null
+            return !leftNewlyRated && !rightNewlyRated
+        }
         if (isValid(session.currentMatchup)) {
             return MatchupSelection(session.currentMatchup)
         }
