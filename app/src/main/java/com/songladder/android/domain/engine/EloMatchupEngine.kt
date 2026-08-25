@@ -22,6 +22,7 @@ class EloMatchupEngine(
     companion object {
         private const val LARGE_UNRATED_BACKLOG = 5
         private const val MODERATE_UNRATED_BACKLOG = 2
+        private const val MASSIVE_UNRATED_BACKLOG = 15
         private const val FREQUENT_UNRATED_INTERVAL = 2
         private const val MODERATE_UNRATED_INTERVAL = 3
         private const val SPARSE_UNRATED_INTERVAL = 4
@@ -78,6 +79,10 @@ class EloMatchupEngine(
         val rated = songs.filter { it.scoreTenths != null }
         val unrated = songs.filter { it.scoreTenths == null }
         val matchupCount = if (displayedMatchups.isEmpty()) events.size else displayedMatchupCount
+        // At a very large backlog, anchor every matchup to a rated song so every comparison
+        // counts toward SuggestionEngine's stabilization window -- no rated-vs-rated and no
+        // unrated-vs-unrated matchups until the backlog drops back below this size.
+        val forceRatedVsUnrated = rated.isNotEmpty() && unrated.size >= MASSIVE_UNRATED_BACKLOG
         // Larger unrated backlogs surface unrated songs more frequently; the interval tapers
         // back down as the backlog clears.
         val unratedInterval = when {
@@ -85,13 +90,13 @@ class EloMatchupEngine(
             unrated.size >= MODERATE_UNRATED_BACKLOG -> MODERATE_UNRATED_INTERVAL
             else -> SPARSE_UNRATED_INTERVAL
         }
-        val includeUnrated = rated.isNotEmpty() &&
-            unrated.isNotEmpty() &&
-            (matchupCount + 1) % unratedInterval == 0
+        val includeUnrated = forceRatedVsUnrated ||
+            (rated.isNotEmpty() && unrated.isNotEmpty() && (matchupCount + 1) % unratedInterval == 0)
 
         val candidatePairs = allPairs(songs).let { pairs ->
             when {
                 rated.isEmpty() -> pairs
+                forceRatedVsUnrated -> pairs.filter { it.isMixed() }
                 includeUnrated -> pairs.preferringUnrated()
                 rated.size >= 2 -> pairs.filter { it.bothRated() }.ifEmpty { pairs }
                 else -> pairs
@@ -129,7 +134,11 @@ class EloMatchupEngine(
         }
         var availablePairs = eligiblePairs.filterNot { it.key() in blocked }
         if (availablePairs.isEmpty() && !continueAnyway) {
-            availablePairs = allPairs(songs)
+            // Relaxing the block/cooldown filters must not also relax the mixed-only
+            // requirement below, or a stale cooldown on the rated side could let an
+            // unrated-vs-unrated pair through while the backlog is still massive.
+            val relaxedPairs = if (forceRatedVsUnrated) allPairs(songs).filter { it.isMixed() } else allPairs(songs)
+            availablePairs = relaxedPairs
                 .filterNot { pair ->
                     pair.first.rankingSubjectId in temporarilyExcludedSubjectIds ||
                         pair.second.rankingSubjectId in temporarilyExcludedSubjectIds
