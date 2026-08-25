@@ -1,5 +1,9 @@
 package com.songladder.android.ui.library
 
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.browser.customtabs.CustomTabsIntent
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -43,17 +47,20 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.songladder.android.data.spotify.SpotifyAuthState
 import com.songladder.android.domain.model.MusicTrackCandidate
 import com.songladder.android.domain.model.PlaylistImportPreview
 import com.songladder.android.ui.components.SongArtwork
 
 private enum class AddSongSection {
     YoutubeMusic,
+    Spotify,
     Add
 }
 
@@ -64,6 +71,7 @@ fun AddSongSheet(
     onDismiss: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val context = LocalContext.current
     var expandedSection by rememberSaveable { mutableStateOf<AddSongSection?>(null) }
     var title by rememberSaveable { mutableStateOf("") }
     var artist by rememberSaveable { mutableStateOf("") }
@@ -130,6 +138,35 @@ fun AddSongSheet(
                             onPreview = viewModel::previewYoutubeMusicPlaylist,
                             onConfirmImport = viewModel::confirmYoutubeMusicPreviewImport,
                             onClearPreview = viewModel::clearYoutubeMusicPreview
+                        )
+                    }
+                }
+
+                item {
+                    ExpandableSectionHeader(
+                        label = "Import from Spotify",
+                        expanded = expandedSection == AddSongSection.Spotify,
+                        onClick = {
+                            expandedSection = if (expandedSection == AddSongSection.Spotify) {
+                                null
+                            } else {
+                                AddSongSection.Spotify
+                            }
+                        }
+                    )
+                }
+                if (expandedSection == AddSongSection.Spotify) {
+                    item {
+                        SpotifySectionContent(
+                            uiState = uiState,
+                            isConfigured = viewModel.isSpotifyConfigured,
+                            onBeginSignIn = viewModel::beginSpotifySignIn,
+                            onSignOut = viewModel::signOutSpotify,
+                            onImportFile = { uri -> viewModel.importSpotifyPlaylistFile(context.contentResolver, uri) },
+                            onUrlChange = viewModel::updateSpotifyPlaylistUrl,
+                            onPreview = viewModel::previewSpotifyPlaylist,
+                            onConfirmImport = viewModel::confirmSpotifyPreviewImport,
+                            onClearPreview = viewModel::clearSpotifyPreview
                         )
                     }
                 }
@@ -422,7 +459,7 @@ private fun YoutubeMusicSectionContent(
             }
         }
         uiState.youtubeMusicPreview?.let { preview ->
-            YoutubeMusicPreviewCard(
+            PlaylistPreviewCard(
                 preview = preview,
                 isImporting = uiState.isImportingPreview,
                 onConfirmImport = onConfirmImport
@@ -432,7 +469,121 @@ private fun YoutubeMusicSectionContent(
 }
 
 @Composable
-private fun YoutubeMusicPreviewCard(
+private fun SpotifySectionContent(
+    uiState: LibraryUiState,
+    isConfigured: Boolean,
+    onBeginSignIn: () -> Uri?,
+    onSignOut: () -> Unit,
+    onImportFile: (Uri) -> Unit,
+    onUrlChange: (String) -> Unit,
+    onPreview: () -> Unit,
+    onConfirmImport: () -> Unit,
+    onClearPreview: () -> Unit
+) {
+    val context = LocalContext.current
+    val filePickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri?.let(onImportFile)
+    }
+
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    "Import a playlist you've exported to JSON with an external tool — no Spotify login needed.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                OutlinedButton(
+                    onClick = { filePickerLauncher.launch(arrayOf("application/json", "text/plain", "*/*")) },
+                    enabled = !uiState.isPreviewLoading && !uiState.isImportingPreview,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Choose playlist JSON file")
+                }
+            }
+        }
+
+        when (val authState = uiState.spotifyAuthState) {
+            is SpotifyAuthState.LoggedOut -> {
+                Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text(
+                            "Or connect your Spotify account to import your own playlists directly. " +
+                                "Spotify's developer restrictions mean only playlists you own can be imported this way.",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Button(
+                            onClick = {
+                                val authorizeUri = onBeginSignIn() ?: return@Button
+                                CustomTabsIntent.Builder().build().launchUrl(context, authorizeUri)
+                            },
+                            enabled = isConfigured,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(if (isConfigured) "Connect Spotify" else "Spotify login isn't configured")
+                        }
+                    }
+                }
+            }
+
+            is SpotifyAuthState.LoggedIn -> {
+                Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("Connected as ${authState.displayName}", style = MaterialTheme.typography.titleMedium)
+                            TextButton(onClick = onSignOut) {
+                                Text("Disconnect")
+                            }
+                        }
+                        OutlinedTextField(
+                            value = uiState.spotifyPlaylistUrl,
+                            onValueChange = onUrlChange,
+                            label = { Text("Your playlist URL") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Button(
+                            onClick = onPreview,
+                            enabled = !uiState.isPreviewLoading && !uiState.isImportingPreview,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(if (uiState.isPreviewLoading) "Previewing..." else "Preview playlist")
+                        }
+                    }
+                }
+            }
+        }
+
+        if (!uiState.previewError.isNullOrBlank() || uiState.spotifyPreview != null) {
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                if (!uiState.previewError.isNullOrBlank()) {
+                    Text(
+                        uiState.previewError,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+                TextButton(onClick = onClearPreview) {
+                    Text("Clear")
+                }
+            }
+        }
+
+        uiState.spotifyPreview?.let { preview ->
+            PlaylistPreviewCard(
+                preview = preview,
+                isImporting = uiState.isImportingPreview,
+                onConfirmImport = onConfirmImport
+            )
+        }
+    }
+}
+
+@Composable
+private fun PlaylistPreviewCard(
     preview: PlaylistImportPreview,
     isImporting: Boolean,
     onConfirmImport: () -> Unit
