@@ -9,6 +9,7 @@ import com.songladder.android.domain.model.MatchupSelection
 import com.songladder.android.domain.model.RankingSubject
 import com.songladder.android.domain.model.ResponsivenessEpoch
 import com.songladder.android.domain.model.Song
+import com.songladder.android.domain.model.libraryAnchorScoreTenths
 import com.songladder.android.domain.model.seedEloForScore
 import kotlin.math.abs
 import kotlin.math.exp
@@ -225,9 +226,10 @@ class EloMatchupEngine(
         subjects: List<RankingSubject>,
         events: List<MatchupEvent>
     ): EloReplayResult {
+        val anchorTenths = libraryAnchorScoreTenths(subjects)
         val replayed = subjects.associate { subject ->
             subject.id to subject.copy(
-                elo = seedEloForScore(subject.scoreTenths),
+                elo = seedEloForScore(subject.scoreTenths, anchorTenths),
                 wins = 0,
                 losses = 0,
                 skips = 0,

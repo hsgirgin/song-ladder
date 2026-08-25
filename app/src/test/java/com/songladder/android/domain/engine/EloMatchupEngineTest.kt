@@ -508,6 +508,22 @@ class EloMatchupEngineTest {
     }
 
     @Test
+    fun `replay seeds an unrated song at the library's average score, not a flat base Elo`() {
+        // Library average is 8.5 (85 tenths), so a fresh unrated import should seed near
+        // 1440.0 instead of BASE_ELO (1200.0) - the whole point being that it starts among
+        // its actual peers instead of artificially below an all-favorites library.
+        val subjects = listOf(
+            subject("favorite-one").copy(scoreTenths = 90),
+            subject("favorite-two").copy(scoreTenths = 80),
+            subject("fresh-import").copy(scoreTenths = null)
+        )
+
+        val result = EloMatchupEngine().replay(subjects, events = emptyList()).associateBy { it.id }
+
+        assertEquals(1440.0, result.getValue("fresh-import").elo, 0.000001)
+    }
+
+    @Test
     fun `displayed matchups are used for cooldown before an event is recorded`() {
         val songs = listOf(
             song(id = "one", scoreTenths = 80),
