@@ -149,6 +149,48 @@ class RankViewModelTest {
     }
 
     @Test
+    fun `stops showing a stale unrated snapshot after its suggestion is accepted mid-display`() = runTest {
+        // At 15+ unrated songs, EloMatchupEngine always pairs the rated anchor with an
+        // unrated song. Lock one in first (no suggestion yet, so it's directly observable).
+        val ratedAnchor = fakeSong("rated-anchor", "Anchor", scoreTenths = 80)
+        val unratedSongs = (1..15).map { fakeSong("unrated-$it", "Song $it") }
+        val songRepository = FakeRankSongRepository(listOf(ratedAnchor) + unratedSongs)
+        val rankingRepository = FakeRankingRepository()
+        val viewModel = RankViewModel(songRepository, rankingRepository)
+        backgroundScope.launch(dispatcher) { viewModel.uiState.collect {} }
+        advanceUntilIdle()
+
+        val lockedMatchup = requireNotNull(viewModel.uiState.value.matchup)
+        val unratedSideId = listOf(lockedMatchup.left, lockedMatchup.right).first { it.scoreTenths == null }.id
+
+        // A suggestion now appears for that same song (its trailing comparisons were all
+        // against rated opponents), masking the matchup behind a suggestion card without
+        // resolving it -- the locked matchup stays cached underneath, still unrated.
+        rankingRepository.pushSuggestion(
+            Suggestion(unratedSideId, suggestedScoreTenths = 75, comparisonCount = 5, scoreGapTenths = null, lastEventSequenceId = 5L)
+        )
+        advanceUntilIdle()
+        assertEquals(unratedSideId, viewModel.uiState.value.pendingSuggestion?.subjectId)
+
+        // Accepting it scores the song; simulate the repository's reactive song list update
+        // the same way the real Room-backed repository would after the write commits.
+        viewModel.acceptPendingSuggestion(75)
+        songRepository.setSongs(
+            viewModel.uiState.value.songs.map { song ->
+                if (song.id == unratedSideId) song.copy(scoreTenths = 75) else song
+            }
+        )
+        advanceUntilIdle()
+
+        // The revealed matchup must reflect the song's real, current score -- not the stale
+        // unrated snapshot captured back when the matchup was first locked in.
+        val liveById = viewModel.uiState.value.songs.associateBy { it.id }
+        val matchup = requireNotNull(viewModel.uiState.value.matchup)
+        assertEquals(liveById[matchup.left.id]?.scoreTenths, matchup.left.scoreTenths)
+        assertEquals(liveById[matchup.right.id]?.scoreTenths, matchup.right.scoreTenths)
+    }
+
+    @Test
     fun `playback failure makes the preview unavailable`() = runTest {
         val songs = listOf(fakeSong("1", "Dreams"), fakeSong("2", "Go Your Own Way"))
         val player = FakeSongPreviewPlayer()
@@ -737,6 +779,10 @@ private class FakeRankingRepository(
     }
 
     override fun observeSuggestions(): Flow<List<Suggestion>> = suggestions
+
+    fun pushSuggestion(suggestion: Suggestion) {
+        suggestions.update { it + suggestion }
+    }
 
     override suspend fun acceptSuggestion(subjectId: String, scoreTenths: Int): Result<ScoreSaveResult> {
         acceptSuggestionGate?.await()
