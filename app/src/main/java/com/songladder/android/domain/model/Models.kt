@@ -9,13 +9,23 @@ const val BASE_ELO = 1200.0
 const val MIN_SCORE_TENTHS = 10
 const val MAX_SCORE_TENTHS = 100
 
-fun seedEloForScore(scoreTenths: Int?): Double =
-    BASE_ELO + 80.0 * ((scoreTenths ?: 55) / 10.0 - 5.5)
+fun seedEloForScore(scoreTenths: Int?, fallbackTenths: Int = 55): Double =
+    BASE_ELO + 80.0 * ((scoreTenths ?: fallbackTenths) / 10.0 - 5.5)
 
 fun scoreTenthsForElo(elo: Double): Int =
     (((elo - BASE_ELO) / 80.0 + 5.5) * 10.0)
         .roundToInt()
         .coerceIn(MIN_SCORE_TENTHS, MAX_SCORE_TENTHS)
+
+// The seed for a freshly imported song when it has no score yet: the average of the
+// user's own rated songs, so a library of all-favorites doesn't seed new arrivals at
+// an absolute neutral 5.5 and then watch them lose every early matchup against those
+// favorites. Falls back to 5.5 only when there's nothing rated yet to anchor to.
+fun libraryAnchorScoreTenths(subjects: List<RankingSubject>): Int {
+    val rated = subjects.filter { it.tombstone == null && it.scoreTenths != null }
+    if (rated.isEmpty()) return 55
+    return rated.sumOf { it.scoreTenths!! } / rated.size
+}
 
 fun validateScoreTenths(scoreTenths: Int) {
     require(scoreTenths in MIN_SCORE_TENTHS..MAX_SCORE_TENTHS) {

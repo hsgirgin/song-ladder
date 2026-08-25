@@ -59,12 +59,14 @@ class SuggestionEngineTest {
 
     @Test
     fun `a stable trajectory for an unrated subject produces a pending suggestion`() {
+        // hero seeds at the library anchor (the opponents' own 50), not a flat neutral 55,
+        // and K=0 pins it there exactly - so the suggestion lands on the anchor.
         val subjects = listOf(subject("hero", null)) + (1..5).map { subject("opp$it", 50) }
         val events = (1..5).map { winEvent(it.toLong(), "hero", "opp$it", 0.0) }
 
         val suggestion = engine.computeSuggestions(subjects, events, emptyList()).single { it.subjectId == "hero" }
 
-        assertEquals(55, suggestion.suggestedScoreTenths)
+        assertEquals(50, suggestion.suggestedScoreTenths)
         assertNull(suggestion.scoreGapTenths)
         assertEquals(5, suggestion.comparisonCount)
     }
@@ -120,7 +122,9 @@ class SuggestionEngineTest {
 
         val suggestion = engine.computeSuggestions(subjects, events, emptyList()).single { it.subjectId == "hero" }
 
-        assertEquals(55, suggestion.suggestedScoreTenths)
+        // The tombstoned opp5 is excluded from the library anchor too, but the remaining
+        // opp1..opp4 are all 50 anyway, so the anchor (and hence the suggestion) is still 50.
+        assertEquals(50, suggestion.suggestedScoreTenths)
         assertEquals(5, suggestion.comparisonCount)
     }
 

@@ -12,6 +12,31 @@ class RankingSubjectTest {
     }
 
     @Test
+    fun `score seed falls back to a caller-supplied anchor instead of base Elo when unrated`() {
+        assertEquals(1400.0, seedEloForScore(scoreTenths = null, fallbackTenths = 80), 0.0)
+    }
+
+    @Test
+    fun `library anchor is the average score of rated, non-tombstoned subjects`() {
+        val subjects = listOf(
+            rankingSubject(id = "one", scoreTenths = 90),
+            rankingSubject(id = "two", scoreTenths = 80),
+            rankingSubject(id = "three", scoreTenths = null),
+            rankingSubject(id = "tombstoned", scoreTenths = 100, tombstoned = true)
+        )
+
+        assertEquals(85, libraryAnchorScoreTenths(subjects))
+    }
+
+    @Test
+    fun `library anchor defaults to 5-point-5 when nothing is rated yet`() {
+        val subjects = listOf(rankingSubject(id = "one", scoreTenths = null))
+
+        assertEquals(55, libraryAnchorScoreTenths(subjects))
+        assertEquals(55, libraryAnchorScoreTenths(emptyList()))
+    }
+
+    @Test
     fun `score for elo is the inverse of seed elo for score, clamped to the valid range`() {
         assertEquals(MIN_SCORE_TENTHS, scoreTenthsForElo(840.0))
         assertEquals(55, scoreTenthsForElo(BASE_ELO))
@@ -52,5 +77,27 @@ class RankingSubjectTest {
         scoreTenths = scoreTenths,
         elo = elo,
         lastRankedAt = lastRatedAt
+    )
+
+    private fun rankingSubject(
+        id: String,
+        scoreTenths: Int?,
+        tombstoned: Boolean = false
+    ) = RankingSubject(
+        id = id,
+        scoreTenths = scoreTenths,
+        tombstone = if (tombstoned) {
+            Tombstone(
+                sourceType = MusicSourceType.MANUAL,
+                externalId = null,
+                normalizedTitle = "",
+                normalizedArtist = "",
+                scoreTenths = scoreTenths,
+                seedElo = BASE_ELO,
+                deletedAt = 0L
+            )
+        } else {
+            null
+        }
     )
 }
