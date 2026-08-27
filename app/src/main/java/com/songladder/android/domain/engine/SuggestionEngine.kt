@@ -5,6 +5,7 @@ import com.songladder.android.domain.model.MatchupOutcome
 import com.songladder.android.domain.model.RankingSubject
 import com.songladder.android.domain.model.Suggestion
 import com.songladder.android.domain.model.SuggestionDismissal
+import com.songladder.android.domain.model.ratedSubjects
 import com.songladder.android.domain.model.scoreTenthsForElo
 import kotlin.math.abs
 
@@ -32,7 +33,7 @@ class SuggestionEngine(
     ): List<Suggestion> {
         val subjectsById = subjects.associateBy { it.id }
         val dismissalsById = dismissals.associateBy { it.subjectId }
-        val ratedSubjects = subjects.filter { it.tombstone == null && it.scoreTenths != null }
+        val rated = ratedSubjects(subjects)
         val history = matchupEngine.replayWithHistory(subjects, events).eloHistoryBySubject
 
         val comparisonEventsBySubject: Map<String, List<MatchupEvent>> = run {
@@ -55,8 +56,7 @@ class SuggestionEngine(
 
             val recentEvents = ownComparisonEvents.takeLast(STABILITY_WINDOW)
             val allOpponentsRated = recentEvents.all { event ->
-                val opponentId = if (event.winnerSubjectId == subject.id) event.loserSubjectId else event.winnerSubjectId
-                subjectsById[opponentId]?.scoreTenths != null
+                subjectsById[event.opponentOf(subject.id)]?.scoreTenths != null
             }
             if (!allOpponentsRated) return@mapNotNull null
 
@@ -67,15 +67,6 @@ class SuggestionEngine(
             if (!stable) return@mapNotNull null
 
             val suggestedScoreTenths = candidateScores.last()
-
-            val directOpponentIds = ownComparisonEvents.mapNotNullTo(mutableSetOf()) { event ->
-                if (event.winnerSubjectId == subject.id) event.loserSubjectId else event.winnerSubjectId
-            }
-            val otherRatedSubjects = ratedSubjects.filter { it.id != subject.id }
-            if (nearestUncomparedNeighbor(suggestedScoreTenths, otherRatedSubjects, directOpponentIds) != null) {
-                return@mapNotNull null
-            }
-
             val currentScoreTenths = subject.scoreTenths
             val scoreGapTenths = currentScoreTenths?.let { abs(suggestedScoreTenths - it) }
             val eligible = currentScoreTenths == null || (scoreGapTenths != null && scoreGapTenths >= DISAGREEMENT_THRESHOLD_TENTHS)
@@ -87,6 +78,14 @@ class SuggestionEngine(
                 val hasNewEvidence = lastEventSequenceId > dismissal.dismissedAtSequenceId
                 val movedMaterially = abs(suggestedScoreTenths - dismissal.dismissedScoreTenths) >= STABILITY_THRESHOLD_TENTHS
                 if (!hasNewEvidence || !movedMaterially) return@mapNotNull null
+            }
+
+            // Checked last since it's the most expensive gate - no point scanning the rated
+            // ladder for subjects that would've been filtered out by a cheaper check anyway.
+            val directOpponentIds = ownComparisonEvents.mapNotNullTo(mutableSetOf()) { it.opponentOf(subject.id) }
+            val otherRatedSubjects = rated.filter { it.id != subject.id }
+            if (nearestUncomparedNeighbor(suggestedScoreTenths, otherRatedSubjects, directOpponentIds) != null) {
+                return@mapNotNull null
             }
 
             Suggestion(
@@ -106,12 +105,18 @@ class SuggestionEngine(
     }
 
     /**
-     * The rated subject closest in score to [suggestedScoreTenths] (checking only the
-     * single nearest neighbor, whichever side it falls on - not both brackets), if that
-     * subject was never directly compared against. Requiring a comparison against the far
-     * neighbor too - one on the side of a placement the subject isn't actually claiming to
-     * cross - would suppress nearly every legitimate suggestion in a reasonably-sized
-     * library, since there's almost always some uncompared song further out either way.
+     * A representative of the nearest-scored rated group to [suggestedScoreTenths] that was
+     * never directly compared against, if any. Only the group(s) at the single smallest
+     * distance are checked - not every rated subject - since requiring a comparison against
+     * something far on the side of a placement the subject isn't actually claiming to cross
+     * would suppress nearly every legitimate suggestion in a reasonably-sized library.
+     *
+     * A given distance can only be achieved by at most two distinct scores (one just below
+     * [suggestedScoreTenths], one just above), so this checks at most those two groups. Each
+     * is satisfied if *any* of its members was directly compared - multiple rated subjects
+     * sharing the exact same nearest score are one piece of evidence, not one requirement
+     * per song, but the below-group and above-group (when both tie for nearest) are
+     * independent and both must be satisfied.
      */
     private fun nearestUncomparedNeighbor(
         suggestedScoreTenths: Int,
@@ -119,11 +124,15 @@ class SuggestionEngine(
         directOpponentIds: Set<String>
     ): RankingSubject? {
         if (otherRatedSubjects.isEmpty()) return null
-        val sorted = otherRatedSubjects.sortedBy { it.scoreTenths }
-        val below = sorted.lastOrNull { it.scoreTenths!! <= suggestedScoreTenths }
-        val above = sorted.firstOrNull { it.scoreTenths!! >= suggestedScoreTenths }
-        val nearest = listOfNotNull(below, above)
-            .minByOrNull { abs(it.scoreTenths!! - suggestedScoreTenths) }
-        return nearest?.takeIf { it.id !in directOpponentIds }
+        val minDistance = otherRatedSubjects.minOf { abs(it.scoreTenths!! - suggestedScoreTenths) }
+        val nearestGroupsByScore = otherRatedSubjects
+            .filter { abs(it.scoreTenths!! - suggestedScoreTenths) == minDistance }
+            .groupBy { it.scoreTenths }
+        return nearestGroupsByScore.values
+            .firstOrNull { group -> group.none { it.id in directOpponentIds } }
+            ?.first()
     }
+
+    private fun MatchupEvent.opponentOf(subjectId: String): String? =
+        if (winnerSubjectId == subjectId) loserSubjectId else winnerSubjectId
 }
