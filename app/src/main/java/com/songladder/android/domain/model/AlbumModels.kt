@@ -52,8 +52,11 @@ data class AlbumTrackRow(
     val trackNumber: Int? = null
 )
 
+// rank is nullable because the repository layer (which emits these) doesn't know the
+// final display order - that depends on UI-level filtering (e.g. singles are hidden)
+// and sorting, so it's assigned once by whoever builds the final displayed list.
 data class RankedAlbum(
-    val rank: Int,
+    val rank: Int?,
     val album: Album,
     val scoreTenths: Int?,
     val includedRatedTrackCount: Int,
@@ -66,6 +69,38 @@ data class AlbumDetail(
     val missingTracks: List<AlbumMissingTrack>,
     val scoreTenths: Int?,
     val includedRatedTrackCount: Int
+)
+
+/** A release returned by a metadata provider's search, not yet fully looked up. */
+data class AlbumReleaseCandidate(
+    val collectionId: String,
+    val collectionName: String,
+    val artistName: String,
+    val artworkUrl: String? = null,
+    val trackCount: Int? = null
+)
+
+data class AlbumReleaseTrack(
+    val trackId: String,
+    val title: String,
+    val trackNumber: Int? = null,
+    val artworkUrl: String? = null
+)
+
+/** The full result of looking up one release by its provider collection id. */
+data class AlbumReleaseLookup(
+    val collectionId: String,
+    val collectionName: String,
+    val artistName: String,
+    val artworkUrl: String? = null,
+    val trackCount: Int? = null,
+    val tracks: List<AlbumReleaseTrack> = emptyList()
+)
+
+data class AlbumMatchOutcome(
+    val status: AlbumMatchStatus,
+    val bestCandidate: AlbumReleaseCandidate? = null,
+    val confidence: Double? = null
 )
 
 // Deterministic so re-discovering the same (artist, album) grouping across app runs

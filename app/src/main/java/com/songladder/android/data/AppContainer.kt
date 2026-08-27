@@ -1,25 +1,35 @@
 package com.songladder.android.data
 
 import android.content.Context
+import com.songladder.android.data.connectivity.NetworkAvailabilityMonitor
 import com.songladder.android.data.deezer.DeezerSongPreviewResolver
+import com.songladder.android.data.itunes.ItunesAlbumMetadataProvider
 import com.songladder.android.data.itunes.ItunesMusicSourceClient
 import com.songladder.android.data.itunes.ItunesSongPreviewResolver
 import com.songladder.android.data.local.SongLadderDatabase
 import com.songladder.android.data.local.SongLadderJsonPorter
 import com.songladder.android.data.preview.AndroidSongPreviewPlayer
 import com.songladder.android.data.preview.FallbackSongPreviewResolver
+import com.songladder.android.data.repository.DefaultAlbumRepository
 import com.songladder.android.data.repository.DefaultImportRepository
 import com.songladder.android.data.repository.DefaultRankingRepository
 import com.songladder.android.data.repository.DefaultSettingsRepository
 import com.songladder.android.data.repository.DefaultSongRepository
 import com.songladder.android.data.youtubemusic.YoutubeMusicPlaylistClient
 import com.songladder.android.domain.engine.EloMatchupEngine
+import com.songladder.android.domain.repository.AlbumMetadataProvider
+import com.songladder.android.domain.repository.AlbumRepository
 import com.songladder.android.domain.repository.ImportRepository
 import com.songladder.android.domain.repository.MusicSourceClient
 import com.songladder.android.domain.repository.PlaylistSourceClient
 import com.songladder.android.domain.repository.RankingRepository
 import com.songladder.android.domain.repository.SettingsRepository
 import com.songladder.android.domain.repository.SongRepository
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
 import java.util.concurrent.TimeUnit
 
@@ -28,6 +38,7 @@ class AppContainer(context: Context) {
     private val database = SongLadderDatabase.getDatabase(appContext)
     private val matchupEngine = EloMatchupEngine()
     private val jsonPorter = SongLadderJsonPorter()
+    private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val httpClient = OkHttpClient.Builder()
         .connectTimeout(10, TimeUnit.SECONDS)
         .readTimeout(10, TimeUnit.SECONDS)
@@ -78,4 +89,31 @@ class AppContainer(context: Context) {
     val settingsRepository: SettingsRepository = DefaultSettingsRepository(
         settingsDao = database.rankingSettingsDao()
     )
+    private val albumMetadataProvider: AlbumMetadataProvider = ItunesAlbumMetadataProvider(httpClient)
+    val albumRepository: AlbumRepository = DefaultAlbumRepository(
+        database = database,
+        songDao = database.songDao(),
+        albumDao = database.albumDao(),
+        albumTrackExclusionDao = database.albumTrackExclusionDao(),
+        albumMissingTrackDao = database.albumMissingTrackDao(),
+        albumMetadataProvider = albumMetadataProvider,
+        settingsRepository = settingsRepository
+    )
+    private val networkAvailabilityMonitor = NetworkAvailabilityMonitor(appContext)
+
+    // ConnectivityManager can fire onAvailable in rapid bursts (flaky wifi
+    // reconnecting repeatedly); without this guard each burst would launch its own
+    // overlapping retryPendingMatches() call. DefaultAlbumRepository's own per-album
+    // in-flight guard already prevents duplicate provider calls for the same album,
+    // but skipping the launch entirely when one is already running avoids the
+    // redundant work altogether.
+    private var retryPendingMatchesJob: Job? = null
+
+    init {
+        networkAvailabilityMonitor.start {
+            if (retryPendingMatchesJob?.isActive != true) {
+                retryPendingMatchesJob = appScope.launch { albumRepository.retryPendingMatches() }
+            }
+        }
+    }
 }

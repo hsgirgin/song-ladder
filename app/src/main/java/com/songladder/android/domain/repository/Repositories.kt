@@ -2,9 +2,13 @@ package com.songladder.android.domain.repository
 
 import android.content.ContentResolver
 import android.net.Uri
+import com.songladder.android.domain.model.AlbumDetail
+import com.songladder.android.domain.model.AlbumReleaseCandidate
+import com.songladder.android.domain.model.AlbumReleaseLookup
 import com.songladder.android.domain.model.AppStats
 import com.songladder.android.domain.model.DeletedRankingHistory
 import com.songladder.android.domain.model.PlaylistImportPreview
+import com.songladder.android.domain.model.RankedAlbum
 import com.songladder.android.domain.model.RankingHistoryDeletionResult
 import com.songladder.android.domain.model.RankingSettings
 import com.songladder.android.domain.model.ScoreSaveResult
@@ -91,4 +95,36 @@ interface MusicSourceClient {
 
 interface PlaylistSourceClient {
     suspend fun previewPlaylist(url: String): Result<PlaylistImportPreview>
+}
+
+interface AlbumMetadataProvider {
+    suspend fun searchReleases(artist: String, album: String): Result<List<AlbumReleaseCandidate>>
+
+    /**
+     * [forceRefresh] bypasses the provider's own TTL cache. Only an explicit
+     * "Refresh metadata" action should pass true - every other caller (auto-match,
+     * an explicit release choice) should accept a recent cached lookup rather than
+     * spending another network round trip, so refresh remains the one action that's
+     * actually guaranteed to re-fetch.
+     */
+    suspend fun lookupRelease(collectionId: String, forceRefresh: Boolean = false): Result<AlbumReleaseLookup>
+}
+
+/**
+ * Raised by an [AlbumMetadataProvider] when the provider itself couldn't be reached
+ * (network failure, timeout, rate limiting, non-2xx) - distinct from a successful
+ * response that simply contains no good candidates. [DefaultAlbumRepository] uses this
+ * distinction to leave an album PENDING for a later retry rather than marking it
+ * NO_MATCH from an inconclusive network failure.
+ */
+class AlbumMetadataUnavailableException(message: String, cause: Throwable? = null) : Exception(message, cause)
+
+interface AlbumRepository {
+    fun observeAlbums(): Flow<List<RankedAlbum>>
+    fun observeAlbumDetail(albumId: String): Flow<AlbumDetail?>
+    suspend fun setTrackExcluded(albumId: String, songId: String, excluded: Boolean): Result<Unit>
+    suspend fun chooseRelease(albumId: String, providerCollectionId: String): Result<Unit>
+    suspend fun addMissingTracks(albumId: String, providerTrackIds: List<String>): Result<Int>
+    suspend fun refreshMetadata(albumId: String): Result<Unit>
+    suspend fun retryPendingMatches(): Result<Unit>
 }
