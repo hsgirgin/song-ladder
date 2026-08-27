@@ -68,6 +68,9 @@ class AppContainer(context: Context) {
         rankingSettingsDao = database.rankingSettingsDao(),
         importBatchDao = database.importBatchDao(),
         appStatsDao = database.appStatsDao(),
+        albumDao = database.albumDao(),
+        albumTrackExclusionDao = database.albumTrackExclusionDao(),
+        albumMissingTrackDao = database.albumMissingTrackDao(),
         suggestionDismissalDao = database.suggestionDismissalDao(),
         jsonPorter = jsonPorter,
         matchupEngine = matchupEngine

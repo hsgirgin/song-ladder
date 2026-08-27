@@ -14,9 +14,12 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         RankingSettingsEntity::class,
         AppStatsEntity::class,
         ImportBatchEntity::class,
-        SuggestionDismissalEntity::class
+        SuggestionDismissalEntity::class,
+        AlbumEntity::class,
+        AlbumTrackExclusionEntity::class,
+        AlbumMissingTrackEntity::class
     ],
-    version = 2,
+    version = 3,
     exportSchema = true
 )
 abstract class SongLadderDatabase : RoomDatabase() {
@@ -27,6 +30,9 @@ abstract class SongLadderDatabase : RoomDatabase() {
     abstract fun appStatsDao(): AppStatsDao
     abstract fun importBatchDao(): ImportBatchDao
     abstract fun suggestionDismissalDao(): SuggestionDismissalDao
+    abstract fun albumDao(): AlbumDao
+    abstract fun albumTrackExclusionDao(): AlbumTrackExclusionDao
+    abstract fun albumMissingTrackDao(): AlbumMissingTrackDao
 
     companion object {
         val MIGRATION_1_2 = object : androidx.room.migration.Migration(1, 2) {
@@ -44,6 +50,65 @@ abstract class SongLadderDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_2_3 = object : androidx.room.migration.Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `albums` (
+                        `id` TEXT NOT NULL,
+                        `title` TEXT NOT NULL,
+                        `artist` TEXT NOT NULL,
+                        `artworkUrl` TEXT,
+                        `normalizedTitle` TEXT NOT NULL,
+                        `normalizedArtist` TEXT NOT NULL,
+                        `providerSourceType` TEXT NOT NULL,
+                        `providerCollectionId` TEXT,
+                        `providerTrackCount` INTEGER,
+                        `matchStatus` TEXT NOT NULL,
+                        `matchConfidence` REAL,
+                        `createdAt` INTEGER NOT NULL,
+                        `lastMatchAttemptAt` INTEGER,
+                        `lastMatchedAt` INTEGER,
+                        PRIMARY KEY(`id`)
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_albums_matchStatus` ON `albums` (`matchStatus`)"
+                )
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `album_track_exclusions` (
+                        `songId` TEXT NOT NULL,
+                        `albumId` TEXT NOT NULL,
+                        `excludedAt` INTEGER NOT NULL,
+                        PRIMARY KEY(`songId`)
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_album_track_exclusions_albumId` " +
+                        "ON `album_track_exclusions` (`albumId`)"
+                )
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `album_missing_tracks` (
+                        `albumId` TEXT NOT NULL,
+                        `providerTrackId` TEXT NOT NULL,
+                        `title` TEXT NOT NULL,
+                        `trackNumber` INTEGER,
+                        `artworkUrl` TEXT,
+                        PRIMARY KEY(`albumId`, `providerTrackId`)
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    "ALTER TABLE `ranking_settings` ADD COLUMN `metadataRetrievalEnabled` " +
+                        "INTEGER NOT NULL DEFAULT 1"
+                )
+            }
+        }
+
         @Volatile
         private var instance: SongLadderDatabase? = null
 
@@ -53,7 +118,7 @@ abstract class SongLadderDatabase : RoomDatabase() {
                     context,
                     SongLadderDatabase::class.java,
                     "song_ladder.db"
-                ).addMigrations(MIGRATION_1_2).build().also { instance = it }
+                ).addMigrations(MIGRATION_1_2, MIGRATION_2_3).build().also { instance = it }
             }
         }
     }

@@ -6,6 +6,8 @@ import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.PrimaryKey
 import androidx.room.Relation
+import com.songladder.android.domain.model.AlbumMatchStatus
+import com.songladder.android.domain.model.AlbumMetadataProviderType
 import com.songladder.android.domain.model.BASE_ELO
 
 @Entity(
@@ -84,7 +86,8 @@ data class RankingSettingsEntity(
     @PrimaryKey val id: Int = 0,
     val autoPlayMatchupPreviews: Boolean = true,
     val showTips: Boolean = true,
-    val presentation: String = "GRID"
+    val presentation: String = "GRID",
+    val metadataRetrievalEnabled: Boolean = true
 )
 
 @Entity(tableName = "import_batches")
@@ -106,4 +109,42 @@ data class SongWithStatsEntity(
     @Embedded val song: SongEntity,
     @Relation(parentColumn = "rankingSubjectId", entityColumn = "id")
     val stats: RankingSubjectEntity
+)
+
+// No @ForeignKey to songs/albums here (unlike SongEntity -> RankingSubjectEntity):
+// SongDao.deleteSong performs a hard delete, and there's no cleanup path for
+// orphaned exclusion/album rows yet. Enforcing FKs now would make song deletion
+// throw. Slice 2's AlbumRepository is expected to add that cleanup and can revisit.
+@Entity(tableName = "albums", indices = [Index(value = ["matchStatus"])])
+data class AlbumEntity(
+    @PrimaryKey val id: String,
+    val title: String,
+    val artist: String,
+    val artworkUrl: String? = null,
+    val normalizedTitle: String = "",
+    val normalizedArtist: String = "",
+    val providerSourceType: String = AlbumMetadataProviderType.ITUNES.name,
+    val providerCollectionId: String? = null,
+    val providerTrackCount: Int? = null,
+    val matchStatus: String = AlbumMatchStatus.PENDING.name,
+    val matchConfidence: Double? = null,
+    val createdAt: Long,
+    val lastMatchAttemptAt: Long? = null,
+    val lastMatchedAt: Long? = null
+)
+
+@Entity(tableName = "album_track_exclusions", indices = [Index(value = ["albumId"])])
+data class AlbumTrackExclusionEntity(
+    @PrimaryKey val songId: String,
+    val albumId: String,
+    val excludedAt: Long
+)
+
+@Entity(tableName = "album_missing_tracks", primaryKeys = ["albumId", "providerTrackId"])
+data class AlbumMissingTrackEntity(
+    val albumId: String,
+    val providerTrackId: String,
+    val title: String,
+    val trackNumber: Int? = null,
+    val artworkUrl: String? = null
 )

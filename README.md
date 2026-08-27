@@ -44,6 +44,7 @@ Use the Library screen to search iTunes, add songs manually, load the sample pac
 - [Phase 1: Score-First Rankings](docs/phase-1-score-first-rankings-spec.md)
 - [Product decision record](docs/product-decisions.md)
 - [Phase 1 implementation plan](docs/phase-1-implementation-plan.md)
+- [Phase 3 implementation plan: Albums](docs/phase-3-albums-implementation-plan.md)
 
 ## License
 

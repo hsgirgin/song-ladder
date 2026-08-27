@@ -1,5 +1,7 @@
 package com.songladder.android.data.local
 
+import com.songladder.android.domain.model.AlbumExport
+import com.songladder.android.domain.model.AlbumTrackExclusionExport
 import com.songladder.android.domain.model.ExportPayload
 import com.songladder.android.domain.model.MatchupOutcome
 import com.songladder.android.domain.model.RankingPresentation
@@ -10,6 +12,7 @@ import com.songladder.android.domain.model.TombstoneExport
 import com.songladder.android.domain.engine.EloMatchupEngine
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Test
@@ -407,6 +410,215 @@ class SongLadderJsonPorterTest {
             fail("Expected invalid skip event to be rejected")
         } catch (error: IllegalArgumentException) {
             assertTrue(error.message.orEmpty().contains("effective K"))
+        }
+    }
+
+    @Test
+    fun `maps empty export payload to album defaults`() {
+        val entities = ExportPayload().toEntities()
+
+        assertEquals(emptyList<AlbumEntity>(), entities.albums)
+        assertEquals(emptyList<AlbumTrackExclusionEntity>(), entities.albumTrackExclusions)
+    }
+
+    @Test
+    fun `only a confirmed album survives export as a confirmed pick`() {
+        val autoMatched = AlbumEntity(
+            id = "album-auto",
+            title = "Blonde",
+            artist = "Frank Ocean",
+            normalizedTitle = "blonde",
+            normalizedArtist = "frank ocean",
+            providerSourceType = "ITUNES",
+            providerCollectionId = "collection-auto",
+            providerTrackCount = 17,
+            matchStatus = "AUTO_MATCHED",
+            matchConfidence = 0.92,
+            createdAt = 1000L
+        )
+        val confirmed = AlbumEntity(
+            id = "album-confirmed",
+            title = "Channel Orange",
+            artist = "Frank Ocean",
+            normalizedTitle = "channel orange",
+            normalizedArtist = "frank ocean",
+            providerSourceType = "ITUNES",
+            providerCollectionId = "collection-confirmed",
+            providerTrackCount = 17,
+            matchStatus = "CONFIRMED",
+            createdAt = 2000L
+        )
+
+        val exported = listOf(autoMatched, confirmed).map { it.toExport() }
+        val autoMatchedExport = exported.single { it.id == "album-auto" }
+        val confirmedExport = exported.single { it.id == "album-confirmed" }
+
+        assertNull(autoMatchedExport.confirmedProviderCollectionId)
+        assertNull(autoMatchedExport.confirmedProviderSourceType)
+        assertEquals("collection-confirmed", confirmedExport.confirmedProviderCollectionId)
+        assertEquals("ITUNES", confirmedExport.confirmedProviderSourceType)
+    }
+
+    @Test
+    fun `an auto-matched album downgrades to pending on import while a confirmed album and exclusions survive`() {
+        val autoMatched = AlbumEntity(
+            id = "album-auto",
+            title = "Blonde",
+            artist = "Frank Ocean",
+            normalizedTitle = "blonde",
+            normalizedArtist = "frank ocean",
+            providerCollectionId = "collection-auto",
+            providerTrackCount = 17,
+            matchStatus = "AUTO_MATCHED",
+            matchConfidence = 0.92,
+            createdAt = 1000L
+        )
+        val confirmed = AlbumEntity(
+            id = "album-confirmed",
+            title = "Channel Orange",
+            artist = "Frank Ocean",
+            normalizedTitle = "channel orange",
+            normalizedArtist = "frank ocean",
+            providerCollectionId = "collection-confirmed",
+            providerTrackCount = 17,
+            matchStatus = "CONFIRMED",
+            createdAt = 2000L
+        )
+        val exclusion = AlbumTrackExclusionEntity(
+            songId = "song-1",
+            albumId = "album-confirmed",
+            excludedAt = 3000L
+        )
+        val song = SongEntity(
+            id = "song-1",
+            rankingSubjectId = "song-1",
+            sourceType = "ITUNES",
+            title = "Pyramids",
+            artist = "Frank Ocean",
+            createdAt = 500L
+        )
+        val subject = RankingSubjectEntity(
+            id = "song-1",
+            normalizedTitle = "pyramids",
+            normalizedArtist = "frank ocean"
+        )
+        val payload = ExportEntities(
+            songs = listOf(song),
+            subjects = listOf(subject),
+            events = emptyList(),
+            settings = RankingSettingsEntity(),
+            appStats = AppStatsEntity(),
+            albums = listOf(autoMatched, confirmed),
+            albumTrackExclusions = listOf(exclusion)
+        ).toPayload()
+
+        val decoded = porter.decode(porter.encode(payload))
+        decoded.validateForImport()
+        val restored = decoded.toEntities()
+
+        val restoredAuto = restored.albums.single { it.id == "album-auto" }
+        val restoredConfirmed = restored.albums.single { it.id == "album-confirmed" }
+
+        assertEquals("PENDING", restoredAuto.matchStatus)
+        assertNull(restoredAuto.providerCollectionId)
+        assertNull(restoredAuto.providerTrackCount)
+        assertNull(restoredAuto.matchConfidence)
+
+        assertEquals("CONFIRMED", restoredConfirmed.matchStatus)
+        assertEquals("collection-confirmed", restoredConfirmed.providerCollectionId)
+        assertNull(restoredConfirmed.providerTrackCount)
+
+        assertEquals(listOf(exclusion), restored.albumTrackExclusions)
+    }
+
+    @Test
+    fun `validate for import still accepts a schema version one backup with no albums field`() {
+        val payload = ExportPayload(
+            schemaVersion = 1,
+            songs = listOf(
+                SongExport(
+                    id = "song-1",
+                    rankingSubjectId = "subject-1",
+                    sourceType = "MANUAL",
+                    title = "Nights",
+                    artist = "Frank Ocean",
+                    createdAt = 1234L
+                )
+            ),
+            rankingSubjects = listOf(RankingSubjectExport(id = "subject-1"))
+        )
+
+        payload.validateForImport()
+
+        assertEquals(emptyList<AlbumExport>(), payload.albums)
+        assertEquals(emptyList<AlbumTrackExclusionExport>(), payload.albumTrackExclusions)
+    }
+
+    @Test
+    fun `rejects an album track exclusion that references a missing song`() {
+        val payload = ExportPayload(
+            albums = listOf(
+                AlbumExport(id = "album-1", title = "Blonde", artist = "Frank Ocean")
+            ),
+            albumTrackExclusions = listOf(
+                AlbumTrackExclusionExport(songId = "missing-song", albumId = "album-1")
+            )
+        )
+
+        try {
+            payload.validateForImport()
+            fail("Expected exclusion referencing a missing song to be rejected")
+        } catch (error: IllegalArgumentException) {
+            assertTrue(error.message.orEmpty().contains("missing song"))
+        }
+    }
+
+    @Test
+    fun `rejects an album with a confirmed collection id but no confirmed source type`() {
+        val payload = ExportPayload(
+            albums = listOf(
+                AlbumExport(
+                    id = "album-1",
+                    title = "Blonde",
+                    artist = "Frank Ocean",
+                    confirmedProviderSourceType = null,
+                    confirmedProviderCollectionId = "collection-1"
+                )
+            )
+        )
+
+        try {
+            payload.validateForImport()
+            fail("Expected a partially-confirmed album to be rejected")
+        } catch (error: IllegalArgumentException) {
+            assertTrue(error.message.orEmpty().contains("set together"))
+        }
+    }
+
+    @Test
+    fun `rejects an album track exclusion that references a missing album`() {
+        val payload = ExportPayload(
+            songs = listOf(
+                SongExport(
+                    id = "song-1",
+                    rankingSubjectId = "subject-1",
+                    sourceType = "MANUAL",
+                    title = "Nights",
+                    artist = "Frank Ocean",
+                    createdAt = 1234L
+                )
+            ),
+            rankingSubjects = listOf(RankingSubjectExport(id = "subject-1")),
+            albumTrackExclusions = listOf(
+                AlbumTrackExclusionExport(songId = "song-1", albumId = "missing-album")
+            )
+        )
+
+        try {
+            payload.validateForImport()
+            fail("Expected exclusion referencing a missing album to be rejected")
+        } catch (error: IllegalArgumentException) {
+            assertTrue(error.message.orEmpty().contains("missing album"))
         }
     }
 }

@@ -8,6 +8,7 @@ const val K_FACTOR = 32
 const val BASE_ELO = 1200.0
 const val MIN_SCORE_TENTHS = 10
 const val MAX_SCORE_TENTHS = 100
+const val CURRENT_EXPORT_SCHEMA_VERSION = 2
 
 fun seedEloForScore(scoreTenths: Int?, fallbackTenths: Int = 55): Double =
     BASE_ELO + 80.0 * ((scoreTenths ?: fallbackTenths) / 10.0 - 5.5)
@@ -170,7 +171,8 @@ data class EloMatchupResult(
 data class RankingSettings(
     val autoPlayMatchupPreviews: Boolean = true,
     val showTips: Boolean = true,
-    val presentation: RankingPresentation = RankingPresentation.GRID
+    val presentation: RankingPresentation = RankingPresentation.GRID,
+    val metadataRetrievalEnabled: Boolean = true
 )
 
 data class Matchup(
@@ -306,7 +308,8 @@ data class MatchupEventExport(
 data class RankingSettingsExport(
     val autoPlayMatchupPreviews: Boolean = true,
     val showTips: Boolean = true,
-    val presentation: String = RankingPresentation.GRID.name
+    val presentation: String = RankingPresentation.GRID.name,
+    val metadataRetrievalEnabled: Boolean = true
 )
 
 @Serializable
@@ -315,14 +318,43 @@ data class AppStatsExport(
     val skipCount: Int = 0
 )
 
+/**
+ * Only the user-explicit half of album state: identity and, when the user has
+ * explicitly confirmed a release, which one. Auto-match state (AUTO_MATCHED,
+ * NEEDS_REVIEW, NO_MATCH, confidence) is matcher-derived and intentionally not
+ * exported - it is rebuilt post-import, the same way Elo is replayed rather than
+ * trusted from a backup.
+ */
+@Serializable
+data class AlbumExport(
+    val id: String,
+    val title: String,
+    val artist: String,
+    val artworkUrl: String? = null,
+    val normalizedTitle: String = "",
+    val normalizedArtist: String = "",
+    val createdAt: Long = 0L,
+    val confirmedProviderSourceType: String? = null,
+    val confirmedProviderCollectionId: String? = null
+)
+
+@Serializable
+data class AlbumTrackExclusionExport(
+    val songId: String,
+    val albumId: String,
+    val excludedAt: Long = 0L
+)
+
 @Serializable
 data class ExportPayload(
-    val schemaVersion: Int = 1,
+    val schemaVersion: Int = CURRENT_EXPORT_SCHEMA_VERSION,
     val songs: List<SongExport> = emptyList(),
     val rankingSubjects: List<RankingSubjectExport> = emptyList(),
     val matchupEvents: List<MatchupEventExport> = emptyList(),
     val rankingSettings: RankingSettingsExport = RankingSettingsExport(),
-    val appStats: AppStatsExport = AppStatsExport()
+    val appStats: AppStatsExport = AppStatsExport(),
+    val albums: List<AlbumExport> = emptyList(),
+    val albumTrackExclusions: List<AlbumTrackExclusionExport> = emptyList()
 )
 
 data class ScoreSaveResult(

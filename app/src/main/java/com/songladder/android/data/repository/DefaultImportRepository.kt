@@ -3,6 +3,9 @@ package com.songladder.android.data.repository
 import android.content.ContentResolver
 import android.net.Uri
 import androidx.room.withTransaction
+import com.songladder.android.data.local.AlbumDao
+import com.songladder.android.data.local.AlbumMissingTrackDao
+import com.songladder.android.data.local.AlbumTrackExclusionDao
 import com.songladder.android.data.local.AppStatsDao
 import com.songladder.android.data.local.AppStatsEntity
 import com.songladder.android.data.local.ExportEntities
@@ -43,6 +46,9 @@ class DefaultImportRepository(
     private val rankingSettingsDao: RankingSettingsDao,
     private val importBatchDao: ImportBatchDao,
     private val appStatsDao: AppStatsDao,
+    private val albumDao: AlbumDao,
+    private val albumTrackExclusionDao: AlbumTrackExclusionDao,
+    private val albumMissingTrackDao: AlbumMissingTrackDao,
     private val suggestionDismissalDao: SuggestionDismissalDao? = null,
     private val jsonPorter: SongLadderJsonPorter,
     private val matchupEngine: EloMatchupEngine = EloMatchupEngine()
@@ -202,6 +208,13 @@ class DefaultImportRepository(
             rankingSubjectDao.clearAll()
             matchupEventDao.clearAll()
             suggestionDismissalDao?.clearAll()
+            // Album match state is matcher-derived, not restored verbatim (see
+            // AlbumExport) - a fresh import invalidates any prior matches/missing-track
+            // caches the same way it invalidates cached Elo, so they're cleared here and
+            // left for the matcher to re-resolve rather than left stale.
+            albumMissingTrackDao.clearAll()
+            albumTrackExclusionDao.clearAll()
+            albumDao.clearAll()
             rankingSubjectDao.insertAll(entities.subjects)
             entities.songs.forEach { song ->
                 songDao.insertSong(song)
@@ -209,6 +222,8 @@ class DefaultImportRepository(
             matchupEventDao.insertAll(entities.events)
             rankingSettingsDao.upsert(entities.settings)
             appStatsDao.upsert(entities.appStats)
+            albumDao.insertAll(entities.albums)
+            albumTrackExclusionDao.insertAll(entities.albumTrackExclusions)
         }
         recomputed.repairedSubjectCount
     }
@@ -220,7 +235,9 @@ class DefaultImportRepository(
                 subjects = rankingSubjectDao.getAll(),
                 events = matchupEventDao.getAll(),
                 settings = rankingSettingsDao.get() ?: RankingSettingsEntity(),
-                appStats = appStatsDao.getAppStats() ?: AppStatsEntity()
+                appStats = appStatsDao.getAppStats() ?: AppStatsEntity(),
+                albums = albumDao.getAll(),
+                albumTrackExclusions = albumTrackExclusionDao.getAll()
             )
         }
         val payload = entities.toPayload()

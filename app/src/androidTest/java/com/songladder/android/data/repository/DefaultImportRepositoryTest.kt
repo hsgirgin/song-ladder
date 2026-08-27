@@ -1,8 +1,11 @@
 package com.songladder.android.data.repository
 
+import android.net.Uri
 import androidx.room.Room
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.songladder.android.data.local.AlbumEntity
+import com.songladder.android.data.local.AlbumTrackExclusionEntity
 import com.songladder.android.data.local.RankingSubjectEntity
 import com.songladder.android.data.local.SongEntity
 import com.songladder.android.data.local.SongLadderDatabase
@@ -20,6 +23,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
+import java.io.File
 
 @RunWith(AndroidJUnit4::class)
 class DefaultImportRepositoryTest {
@@ -129,6 +133,69 @@ class DefaultImportRepositoryTest {
         assertNotNull(database.rankingSubjectDao().get("subject-1")?.tombstoneDeletedAt)
     }
 
+    @Test
+    fun exportAndImportRoundTripsAlbumsAndTrackExclusionsThroughTheRealRepository() = runBlocking {
+        database.songDao().insertSongWithStats(
+            song = SongEntity(
+                id = "song-1",
+                rankingSubjectId = "song-1",
+                sourceType = "ITUNES",
+                title = "Pyramids",
+                artist = "Frank Ocean",
+                createdAt = 1L
+            ),
+            stats = RankingSubjectEntity(
+                id = "song-1",
+                normalizedTitle = "pyramids",
+                normalizedArtist = "frank ocean"
+            )
+        )
+        val album = AlbumEntity(
+            id = "frank ocean::channel orange",
+            title = "channel ORANGE",
+            artist = "Frank Ocean",
+            normalizedTitle = "channel orange",
+            normalizedArtist = "frank ocean",
+            providerCollectionId = "collection-1",
+            providerTrackCount = 17,
+            matchStatus = "CONFIRMED",
+            createdAt = 2L
+        )
+        database.albumDao().insert(album)
+        database.albumTrackExclusionDao().insert(
+            AlbumTrackExclusionEntity(songId = "song-1", albumId = album.id, excludedAt = 3L)
+        )
+
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val file = File.createTempFile("song-ladder-export", ".json", context.cacheDir)
+        val uri = Uri.fromFile(file)
+        val repository = repository()
+
+        try {
+            repository.exportToJson(context.contentResolver, uri).getOrThrow()
+
+            // importFromJson replaces the whole library; pre-clearing here mirrors that
+            // so the assertions below prove the import path restored the data, not that
+            // it was merely left over from the export.
+            database.songDao().clearSongs()
+            database.rankingSubjectDao().clearAll()
+            database.albumDao().clearAll()
+            database.albumTrackExclusionDao().clearAll()
+
+            repository.importFromJson(context.contentResolver, uri).getOrThrow()
+
+            val restoredAlbum = database.albumDao().get(album.id)
+            assertEquals("CONFIRMED", restoredAlbum?.matchStatus)
+            assertEquals("collection-1", restoredAlbum?.providerCollectionId)
+            assertEquals(
+                AlbumTrackExclusionEntity(songId = "song-1", albumId = album.id, excludedAt = 3L),
+                database.albumTrackExclusionDao().get("song-1")
+            )
+        } finally {
+            file.delete()
+        }
+    }
+
     private fun repository() = DefaultImportRepository(
         database = database,
         songDao = database.songDao(),
@@ -137,6 +204,9 @@ class DefaultImportRepositoryTest {
         rankingSettingsDao = database.rankingSettingsDao(),
         importBatchDao = database.importBatchDao(),
         appStatsDao = database.appStatsDao(),
+        albumDao = database.albumDao(),
+        albumTrackExclusionDao = database.albumTrackExclusionDao(),
+        albumMissingTrackDao = database.albumMissingTrackDao(),
         suggestionDismissalDao = database.suggestionDismissalDao(),
         jsonPorter = SongLadderJsonPorter()
     )
