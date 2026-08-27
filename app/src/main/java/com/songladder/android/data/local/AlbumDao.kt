@@ -17,6 +17,9 @@ interface AlbumDao {
     @Query("SELECT * FROM albums WHERE id = :albumId")
     suspend fun get(albumId: String): AlbumEntity?
 
+    @Query("SELECT * FROM albums WHERE id = :albumId")
+    fun observe(albumId: String): Flow<AlbumEntity?>
+
     @Query("SELECT * FROM albums WHERE matchStatus = :matchStatus")
     suspend fun getByMatchStatus(matchStatus: String): List<AlbumEntity>
 
@@ -70,6 +73,9 @@ interface AlbumMissingTrackDao {
 
     @Query("DELETE FROM album_missing_tracks WHERE albumId = :albumId")
     suspend fun clearForAlbum(albumId: String)
+
+    @Query("DELETE FROM album_missing_tracks WHERE albumId = :albumId AND providerTrackId IN (:providerTrackIds)")
+    suspend fun delete(albumId: String, providerTrackIds: List<String>)
 
     @Query("DELETE FROM album_missing_tracks")
     suspend fun clearAll()

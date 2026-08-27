@@ -125,5 +125,9 @@ internal data class ItunesTrackResult(
     @SerialName("artistName") val artistName: String? = null,
     @SerialName("collectionName") val collectionName: String? = null,
     @SerialName("artworkUrl100") val artworkUrl100: String? = null,
-    @SerialName("previewUrl") val previewUrl: String? = null
+    @SerialName("previewUrl") val previewUrl: String? = null,
+    @SerialName("trackNumber") val trackNumber: Int? = null,
+    @SerialName("trackCount") val trackCount: Int? = null,
+    @SerialName("artistId") val artistId: Long? = null,
+    @SerialName("collectionArtistId") val collectionArtistId: Long? = null
 )
