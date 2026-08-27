@@ -18,6 +18,7 @@ import com.songladder.android.domain.repository.AlbumMetadataUnavailableExceptio
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -153,12 +154,55 @@ class DefaultAlbumRepositoryTest {
         assertEquals("chosen-collection", confirmed?.providerCollectionId)
 
         // A later song-list change re-runs discoverAndMatch, but only PENDING albums
-        // are ever auto-(re)matched - a CONFIRMED album must not be overwritten.
-        insertSong(id = "song-2", title = "Ivy", artist = "Frank Ocean", album = "Blonde")
-        delay(200)
+        // are ever auto-(re)matched - a CONFIRMED album must not be overwritten. Using
+        // a second track on the *same* grouping wouldn't actually prove this: the
+        // derived groupings list would be structurally unchanged, so
+        // distinctUntilChanged would suppress the re-emission and no match pass would
+        // run at all. Insert a song under a *different* grouping instead, so a real
+        // discoverAndMatch pass is guaranteed to run (and, per the invariant under
+        // test, must skip the already-CONFIRMED album).
+        insertSong(id = "song-2", title = "Get Lucky", artist = "Daft Punk", album = "Random Access Memories")
+        waitForAlbum { it.title == "Random Access Memories" && it.matchStatus == AlbumMatchStatus.NO_MATCH.name }
+
         val stillConfirmed = database.albumDao().get(albumId)
         assertEquals(AlbumMatchStatus.CONFIRMED.name, stillConfirmed?.matchStatus)
         assertEquals("chosen-collection", stillConfirmed?.providerCollectionId)
+    }
+
+    @Test
+    fun concurrentRetryPassesNeverDoubleMatchTheSameAlbum() = runBlocking {
+        // Every search call fails (leaving the album PENDING forever, exactly like
+        // autoMatchLeavesAlbumPendingWhenTheProviderIsUnavailable) and is
+        // artificially delayed, so there's a real window for two overlapping calls to
+        // race - and so provider.searchCalls stays a reliable count regardless of how
+        // many times matching is retried.
+        val provider = FakeAlbumMetadataProvider(
+            searchResult = Result.failure(AlbumMetadataUnavailableException("rate limited")),
+            searchDelayMillis = 150
+        )
+        val repository = repository(provider)
+        insertSong(id = "song-1", title = "Nikes", artist = "Frank Ocean", album = "Blonde")
+        waitForAlbum { it.lastMatchAttemptAt != null }
+        // lastMatchAttemptAt is written before the (delayed) search call, so wait out
+        // the delay to let the initial auto-discovery attempt actually finish and
+        // release the in-flight guard before manipulating state below.
+        delay(300)
+        val searchCallsBeforeRetry = provider.searchCalls.size
+
+        // Rewind the backoff so the album looks eligible for another attempt to both
+        // concurrent callers, the same way a flaky-wifi burst of connectivity
+        // callbacks could each see it as eligible before either one's status write
+        // commits. Run on a real multi-threaded dispatcher (not the repository's own
+        // Unconfined test scope) so the two calls can genuinely overlap.
+        val album = database.albumDao().getAll().single()
+        database.albumDao().insert(album.copy(lastMatchAttemptAt = null))
+
+        val first = async(Dispatchers.Default) { repository.retryPendingMatches() }
+        val second = async(Dispatchers.Default) { repository.retryPendingMatches() }
+        first.await().getOrThrow()
+        second.await().getOrThrow()
+
+        assertEquals(searchCallsBeforeRetry + 1, provider.searchCalls.size)
     }
 
     @Test
@@ -290,16 +334,18 @@ class DefaultAlbumRepositoryTest {
 
 private class FakeAlbumMetadataProvider(
     private val searchResult: Result<List<AlbumReleaseCandidate>> = Result.success(emptyList()),
-    private val lookupResults: MutableMap<String, Result<AlbumReleaseLookup>> = mutableMapOf()
+    private val lookupResults: MutableMap<String, Result<AlbumReleaseLookup>> = mutableMapOf(),
+    private val searchDelayMillis: Long = 0L
 ) : AlbumMetadataProvider {
     val searchCalls = mutableListOf<Pair<String, String>>()
 
     override suspend fun searchReleases(artist: String, album: String): Result<List<AlbumReleaseCandidate>> {
         searchCalls += artist to album
+        if (searchDelayMillis > 0) delay(searchDelayMillis)
         return searchResult
     }
 
-    override suspend fun lookupRelease(collectionId: String): Result<AlbumReleaseLookup> =
+    override suspend fun lookupRelease(collectionId: String, forceRefresh: Boolean): Result<AlbumReleaseLookup> =
         lookupResults[collectionId]
             ?: Result.failure(AlbumMetadataUnavailableException("No fixture for $collectionId"))
 }

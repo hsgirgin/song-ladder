@@ -1,5 +1,6 @@
 package com.songladder.android.data.repository
 
+import android.util.Log
 import androidx.room.withTransaction
 import com.songladder.android.data.local.AlbumDao
 import com.songladder.android.data.local.AlbumEntity
@@ -26,10 +27,13 @@ import com.songladder.android.domain.model.normalizedAlbumId
 import com.songladder.android.domain.repository.AlbumMetadataProvider
 import com.songladder.android.domain.repository.AlbumRepository
 import com.songladder.android.domain.repository.SettingsRepository
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
@@ -37,6 +41,7 @@ import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 
 class DefaultAlbumRepository(
     private val database: SongLadderDatabase,
@@ -48,8 +53,16 @@ class DefaultAlbumRepository(
     private val settingsRepository: SettingsRepository,
     private val matchingEngine: AlbumMatchingEngine = AlbumMatchingEngine(),
     private val timeSource: TimeSource = TimeSource { System.currentTimeMillis() },
+    private val matchAttemptSpacingMillis: Long = MATCH_ATTEMPT_SPACING_MILLIS,
     private val repositoryScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 ) : AlbumRepository {
+
+    // Guards against the same album ever being matched by two overlapping calls at
+    // once - e.g. a flaky-wifi burst of connectivity callbacks each firing
+    // retryPendingMatches() before the previous one's status write has committed,
+    // which would otherwise both see the album as PENDING-and-eligible and both
+    // hit the provider for it.
+    private val matchesInFlight = ConcurrentHashMap.newKeySet<String>()
 
     init {
         // Discovers new (artist, album) groupings and attempts an initial match for
@@ -58,10 +71,29 @@ class DefaultAlbumRepository(
         // needed in DefaultSongRepository/DefaultImportRepository. distinctUntilChanged
         // means a song's score/rating changing (which doesn't affect its grouping)
         // never re-triggers this.
+        //
+        // A failure inside discoverAndMatch (a Room I/O error, an unexpected provider
+        // exception, etc.) must never be allowed to escape this collector: launchIn
+        // has no restart path, so an uncaught exception here would either silently and
+        // permanently kill background album matching for the rest of the process's
+        // lifetime, or crash the app outright (there's no CoroutineExceptionHandler
+        // anywhere in this app). The inner try/catch keeps the collector alive across
+        // a single bad pass; the outer catch is a last-resort net for a failure in the
+        // flow machinery itself (map/distinctUntilChanged/the underlying Room query),
+        // logged rather than left to crash the process.
         songDao.observeSongsWithStats()
             .map(::deriveGroupings)
             .distinctUntilChanged()
-            .onEach { groupings -> discoverAndMatch(groupings) }
+            .onEach { groupings ->
+                try {
+                    discoverAndMatch(groupings)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Log.e(TAG, "Album auto-discovery/match pass failed; will retry on the next library change.", e)
+                }
+            }
+            .catch { e -> Log.e(TAG, "Album auto-discovery collector terminated unexpectedly.", e) }
             .launchIn(repositoryScope)
     }
 
@@ -143,15 +175,14 @@ class DefaultAlbumRepository(
             lastMatchAttemptAt = timeSource.now(),
             lastMatchedAt = timeSource.now()
         )
-        database.withTransaction { albumDao.insert(confirmed) }
-        writeMissingTracks(confirmed, lookup)
+        persistAlbumAndMissingTracks(confirmed, lookup)
     }
 
     override suspend fun addMissingTracks(albumId: String, providerTrackIds: List<String>): Result<Int> = runCatching {
-        val album = albumDao.get(albumId) ?: error("Album not found.")
-        val toAdd = albumMissingTrackDao.getForAlbum(albumId).filter { it.providerTrackId in providerTrackIds }
-        if (toAdd.isEmpty()) return@runCatching 0
         database.withTransaction {
+            val album = albumDao.get(albumId) ?: error("Album not found.")
+            val toAdd = albumMissingTrackDao.getForAlbum(albumId).filter { it.providerTrackId in providerTrackIds }
+            if (toAdd.isEmpty()) return@withTransaction 0
             toAdd.forEach { track ->
                 val id = UUID.randomUUID().toString()
                 songDao.insertSongWithStats(
@@ -176,23 +207,26 @@ class DefaultAlbumRepository(
                 )
             }
             albumMissingTrackDao.delete(albumId, toAdd.map { it.providerTrackId })
+            toAdd.size
         }
-        toAdd.size
     }
 
     override suspend fun refreshMetadata(albumId: String): Result<Unit> = runCatching {
         val album = albumDao.get(albumId) ?: error("Album not found.")
         val collectionId = album.providerCollectionId
         if (collectionId != null) {
-            val lookup = albumMetadataProvider.lookupRelease(collectionId).getOrThrow()
+            // forceRefresh = true: this is the one action that must actually bypass
+            // the provider's TTL cache - every other caller is fine reusing a recent
+            // lookup, but "Refresh metadata" that silently replays a cached snapshot
+            // isn't a refresh at all.
+            val lookup = albumMetadataProvider.lookupRelease(collectionId, forceRefresh = true).getOrThrow()
             val updated = album.copy(
                 providerTrackCount = lookup.trackCount ?: album.providerTrackCount,
                 artworkUrl = lookup.artworkUrl ?: album.artworkUrl,
                 lastMatchAttemptAt = timeSource.now(),
                 lastMatchedAt = timeSource.now()
             )
-            database.withTransaction { albumDao.insert(updated) }
-            writeMissingTracks(updated, lookup)
+            persistAlbumAndMissingTracks(updated, lookup)
         } else {
             // No confirmed/matched release yet - an explicit refresh bypasses the
             // normal PENDING backoff rather than making the user wait for it.
@@ -228,70 +262,90 @@ class DefaultAlbumRepository(
 
     private suspend fun matchPendingAlbums(candidates: List<AlbumEntity>) {
         val now = timeSource.now()
-        candidates
-            .filter { (it.lastMatchAttemptAt ?: 0L) + MATCH_ATTEMPT_BACKOFF_MILLIS <= now }
-            .forEach { attemptMatch(it) }
+        val eligible = candidates.filter { (it.lastMatchAttemptAt ?: 0L) + MATCH_ATTEMPT_BACKOFF_MILLIS <= now }
+        // Spaced out rather than fired back-to-back: iTunes' informal per-IP rate
+        // limit (~20 req/min) can't absorb a burst of one-or-two requests per album
+        // for an entire library at once - e.g. on first sync of a real collection.
+        eligible.forEachIndexed { index, album ->
+            if (index > 0) delay(matchAttemptSpacingMillis)
+            attemptMatch(album)
+        }
     }
 
     private suspend fun attemptMatch(album: AlbumEntity) {
-        database.withTransaction {
-            albumDao.insert(album.copy(lastMatchAttemptAt = timeSource.now()))
-        }
-        val ownedTitles = ownedTrackTitles(album)
-        val candidates = albumMetadataProvider.searchReleases(album.artist, album.title).getOrNull()
-            ?: return // provider unavailable - stays PENDING, lastMatchAttemptAt already recorded above
-        val outcome = matchingEngine.classifyMatch(album.title, album.artist, ownedTitles, candidates)
+        if (!matchesInFlight.add(album.id)) return // already being matched by another in-flight call
+        try {
+            database.withTransaction {
+                albumDao.insert(album.copy(lastMatchAttemptAt = timeSource.now()))
+            }
+            val ownedTitles = ownedTrackTitles(album)
+            val candidates = albumMetadataProvider.searchReleases(album.artist, album.title).getOrNull()
+                ?: return // provider unavailable - stays PENDING, lastMatchAttemptAt already recorded above
+            val outcome = matchingEngine.classifyMatch(album.title, album.artist, ownedTitles, candidates)
 
-        when (outcome.status) {
-            AlbumMatchStatus.NO_MATCH -> database.withTransaction {
-                albumDao.insert(
+            when (outcome.status) {
+                AlbumMatchStatus.NO_MATCH -> persistAlbumAndMissingTracks(
                     album.copy(
                         matchStatus = AlbumMatchStatus.NO_MATCH.name,
                         matchConfidence = outcome.confidence,
                         lastMatchAttemptAt = timeSource.now()
+                    ),
+                    lookup = null
+                )
+
+                AlbumMatchStatus.AUTO_MATCHED, AlbumMatchStatus.NEEDS_REVIEW -> {
+                    val candidate = outcome.bestCandidate ?: return
+                    val updated = album.copy(
+                        providerCollectionId = candidate.collectionId,
+                        providerTrackCount = candidate.trackCount,
+                        artworkUrl = candidate.artworkUrl ?: album.artworkUrl,
+                        matchStatus = outcome.status.name,
+                        matchConfidence = outcome.confidence,
+                        lastMatchAttemptAt = timeSource.now(),
+                        lastMatchedAt = timeSource.now()
                     )
-                )
-            }
-
-            AlbumMatchStatus.AUTO_MATCHED, AlbumMatchStatus.NEEDS_REVIEW -> {
-                val candidate = outcome.bestCandidate ?: return
-                val updated = album.copy(
-                    providerCollectionId = candidate.collectionId,
-                    providerTrackCount = candidate.trackCount,
-                    artworkUrl = candidate.artworkUrl ?: album.artworkUrl,
-                    matchStatus = outcome.status.name,
-                    matchConfidence = outcome.confidence,
-                    lastMatchAttemptAt = timeSource.now(),
-                    lastMatchedAt = timeSource.now()
-                )
-                database.withTransaction { albumDao.insert(updated) }
-                if (outcome.status == AlbumMatchStatus.AUTO_MATCHED) {
-                    val lookup = albumMetadataProvider.lookupRelease(candidate.collectionId).getOrNull()
-                    if (lookup != null) writeMissingTracks(updated, lookup)
+                    val lookup = if (outcome.status == AlbumMatchStatus.AUTO_MATCHED) {
+                        albumMetadataProvider.lookupRelease(candidate.collectionId).getOrNull()
+                    } else {
+                        null
+                    }
+                    persistAlbumAndMissingTracks(updated, lookup)
                 }
-            }
 
-            else -> Unit
+                else -> Unit
+            }
+        } finally {
+            matchesInFlight.remove(album.id)
         }
     }
 
-    private suspend fun writeMissingTracks(album: AlbumEntity, lookup: AlbumReleaseLookup) {
-        val missing = matchingEngine.missingTracks(ownedTrackTitles(album), lookup)
+    /**
+     * Writes the album row and (when [lookup] is known) its missing-track diff in a
+     * single transaction. Both used to be two separate transactions with a real gap
+     * between them - a process death in that window left an AUTO_MATCHED/CONFIRMED
+     * album with stale or absent missing-track rows and nothing to self-heal it,
+     * since only PENDING albums are ever auto-(re)matched. [lookup] is always
+     * resolved (a suspending network call) before this is called, so the transaction
+     * itself never spans a network round trip.
+     */
+    private suspend fun persistAlbumAndMissingTracks(album: AlbumEntity, lookup: AlbumReleaseLookup?) {
+        val finalAlbum = if (lookup?.trackCount != null) album.copy(providerTrackCount = lookup.trackCount) else album
+        val missing = lookup?.let { matchingEngine.missingTracks(ownedTrackTitles(finalAlbum), it) }
         database.withTransaction {
-            albumMissingTrackDao.clearForAlbum(album.id)
-            albumMissingTrackDao.insertAll(
-                missing.map { track ->
-                    AlbumMissingTrackEntity(
-                        albumId = album.id,
-                        providerTrackId = track.trackId,
-                        title = track.title,
-                        trackNumber = track.trackNumber,
-                        artworkUrl = track.artworkUrl
-                    )
-                }
-            )
-            if (lookup.trackCount != null && lookup.trackCount != album.providerTrackCount) {
-                albumDao.insert(album.copy(providerTrackCount = lookup.trackCount))
+            albumDao.insert(finalAlbum)
+            if (lookup != null) {
+                albumMissingTrackDao.clearForAlbum(finalAlbum.id)
+                albumMissingTrackDao.insertAll(
+                    missing.orEmpty().map { track ->
+                        AlbumMissingTrackEntity(
+                            albumId = finalAlbum.id,
+                            providerTrackId = track.trackId,
+                            title = track.title,
+                            trackNumber = track.trackNumber,
+                            artworkUrl = track.artworkUrl
+                        )
+                    }
+                )
             }
         }
     }
@@ -331,6 +385,13 @@ class DefaultAlbumRepository(
     )
 
     private companion object {
+        const val TAG = "DefaultAlbumRepository"
         const val MATCH_ATTEMPT_BACKOFF_MILLIS = 60_000L
+
+        // Worst case an eligible album costs 2 requests (search + lookup, on an
+        // auto-match). Spacing attempts this far apart caps that at ~10 albums/min,
+        // safely under iTunes' informal ~20 req/min/IP limit even if every album in
+        // the batch auto-matches.
+        const val MATCH_ATTEMPT_SPACING_MILLIS = 6_000L
     }
 }

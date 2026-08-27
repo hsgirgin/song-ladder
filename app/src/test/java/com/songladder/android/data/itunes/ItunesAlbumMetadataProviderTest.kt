@@ -1,5 +1,6 @@
 package com.songladder.android.data.itunes
 
+import com.songladder.android.domain.model.TimeSource
 import com.songladder.android.domain.repository.AlbumMetadataUnavailableException
 import kotlinx.coroutines.test.runTest
 import okhttp3.OkHttpClient
@@ -115,6 +116,59 @@ class ItunesAlbumMetadataProviderTest {
 
             assertEquals(first, second)
             assertEquals(1, server.requestCount)
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    @Test
+    fun `lookup release ignores the cache and re-requests when forceRefresh is true`() = runTest {
+        val server = MockWebServer()
+        server.enqueue(MockResponse().setBody(collectionLookupResponse()))
+        server.enqueue(MockResponse().setBody(collectionLookupResponse()))
+        server.start()
+
+        try {
+            val provider = ItunesAlbumMetadataProvider(
+                httpClient = OkHttpClient(),
+                lookupBaseUrl = server.url("/lookup")
+            )
+
+            provider.lookupRelease("123456").getOrThrow()
+            provider.lookupRelease("123456", forceRefresh = true).getOrThrow()
+
+            assertEquals(2, server.requestCount)
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    @Test
+    fun `lookup release re-requests once the cache ttl has expired`() = runTest {
+        val server = MockWebServer()
+        server.enqueue(MockResponse().setBody(collectionLookupResponse()))
+        server.enqueue(MockResponse().setBody(collectionLookupResponse()))
+        server.start()
+
+        try {
+            var clockMillis = 0L
+            val provider = ItunesAlbumMetadataProvider(
+                httpClient = OkHttpClient(),
+                lookupBaseUrl = server.url("/lookup"),
+                timeSource = TimeSource { clockMillis }
+            )
+
+            provider.lookupRelease("123456").getOrThrow()
+            assertEquals(1, server.requestCount)
+
+            val cacheTtlMillis = 30 * 60 * 1000L // must match ItunesAlbumMetadataProvider's private CACHE_TTL_MILLIS
+            clockMillis += cacheTtlMillis - 1
+            provider.lookupRelease("123456").getOrThrow()
+            assertEquals(1, server.requestCount) // still within the ttl
+
+            clockMillis += 2 // now past the ttl
+            provider.lookupRelease("123456").getOrThrow()
+            assertEquals(2, server.requestCount)
         } finally {
             server.shutdown()
         }

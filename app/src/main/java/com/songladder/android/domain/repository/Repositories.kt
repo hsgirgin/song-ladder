@@ -99,7 +99,15 @@ interface PlaylistSourceClient {
 
 interface AlbumMetadataProvider {
     suspend fun searchReleases(artist: String, album: String): Result<List<AlbumReleaseCandidate>>
-    suspend fun lookupRelease(collectionId: String): Result<AlbumReleaseLookup>
+
+    /**
+     * [forceRefresh] bypasses the provider's own TTL cache. Only an explicit
+     * "Refresh metadata" action should pass true - every other caller (auto-match,
+     * an explicit release choice) should accept a recent cached lookup rather than
+     * spending another network round trip, so refresh remains the one action that's
+     * actually guaranteed to re-fetch.
+     */
+    suspend fun lookupRelease(collectionId: String, forceRefresh: Boolean = false): Result<AlbumReleaseLookup>
 }
 
 /**

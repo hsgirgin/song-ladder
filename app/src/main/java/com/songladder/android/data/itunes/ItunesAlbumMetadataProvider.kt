@@ -3,10 +3,13 @@ package com.songladder.android.data.itunes
 import com.songladder.android.domain.model.AlbumReleaseCandidate
 import com.songladder.android.domain.model.AlbumReleaseLookup
 import com.songladder.android.domain.model.AlbumReleaseTrack
+import com.songladder.android.domain.model.TimeSource
 import com.songladder.android.domain.repository.AlbumMetadataProvider
 import com.songladder.android.domain.repository.AlbumMetadataUnavailableException
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 import okhttp3.Call
 import okhttp3.Callback
@@ -32,7 +35,8 @@ import kotlin.coroutines.resume
 class ItunesAlbumMetadataProvider(
     private val httpClient: OkHttpClient,
     private val searchBaseUrl: HttpUrl = "https://itunes.apple.com/search".toHttpUrl(),
-    private val lookupBaseUrl: HttpUrl = "https://itunes.apple.com/lookup".toHttpUrl()
+    private val lookupBaseUrl: HttpUrl = "https://itunes.apple.com/lookup".toHttpUrl(),
+    private val timeSource: TimeSource = TimeSource { System.currentTimeMillis() }
 ) : AlbumMetadataProvider {
     private val json = Json { ignoreUnknownKeys = true }
 
@@ -43,7 +47,7 @@ class ItunesAlbumMetadataProvider(
     private val lookupCache = ConcurrentHashMap<String, CachedLookup>()
 
     override suspend fun searchReleases(artist: String, album: String): Result<List<AlbumReleaseCandidate>> =
-        runCatching {
+        runCatchingCancellable {
             require(album.isNotBlank()) { "Album title is required." }
             val term = listOf(artist, album).filter { it.isNotBlank() }.joinToString(" ")
             val url = searchBaseUrl.newBuilder()
@@ -54,20 +58,35 @@ class ItunesAlbumMetadataProvider(
             parseCandidates(executeRequest(url))
         }.recoverProviderFailure()
 
-    override suspend fun lookupRelease(collectionId: String): Result<AlbumReleaseLookup> = runCatching {
-        val now = System.currentTimeMillis()
-        val cached = lookupCache[collectionId]?.takeIf { it.expiresAtMillis > now }
-        if (cached != null) return@runCatching cached.lookup
+    override suspend fun lookupRelease(collectionId: String, forceRefresh: Boolean): Result<AlbumReleaseLookup> =
+        runCatchingCancellable {
+            val now = timeSource.now()
+            if (!forceRefresh) {
+                val cached = lookupCache[collectionId]?.takeIf { it.expiresAtMillis > now }
+                if (cached != null) return@runCatchingCancellable cached.lookup
+            }
 
-        val url = lookupBaseUrl.newBuilder()
-            .addQueryParameter("id", collectionId)
-            .addQueryParameter("entity", "song")
-            .build()
-        val lookup = parseLookup(collectionId, executeRequest(url))
-            ?: throw AlbumMetadataUnavailableException("Release $collectionId was not found.")
-        lookupCache[collectionId] = CachedLookup(lookup, now + CACHE_TTL_MILLIS)
-        lookup
-    }.recoverProviderFailure()
+            val url = lookupBaseUrl.newBuilder()
+                .addQueryParameter("id", collectionId)
+                .addQueryParameter("entity", "song")
+                .build()
+            val lookup = parseLookup(collectionId, executeRequest(url))
+                ?: throw AlbumMetadataUnavailableException("Release $collectionId was not found.")
+            lookupCache[collectionId] = CachedLookup(lookup, now + CACHE_TTL_MILLIS)
+            lookup
+        }.recoverProviderFailure()
+
+    // Plain kotlin.runCatching also catches CancellationException, which would turn
+    // structured-concurrency cancellation into an ordinary Result.failure instead of
+    // letting it propagate - rethrow it before it can be mistaken for a provider
+    // failure.
+    private inline fun <T> runCatchingCancellable(block: () -> T): Result<T> = try {
+        Result.success(block())
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Throwable) {
+        Result.failure(e)
+    }
 
     private fun <T> Result<T>.recoverProviderFailure(): Result<T> = recoverCatching { throwable ->
         when (throwable) {
@@ -76,6 +95,8 @@ class ItunesAlbumMetadataProvider(
                 throw AlbumMetadataUnavailableException("iTunes album lookup timed out.", throwable)
             is IOException ->
                 throw AlbumMetadataUnavailableException("Could not reach iTunes for album metadata.", throwable)
+            is SerializationException ->
+                throw AlbumMetadataUnavailableException("iTunes returned an unexpected response.", throwable)
             is IllegalStateException ->
                 throw AlbumMetadataUnavailableException(throwable.message.orEmpty(), throwable)
             else -> throw throwable

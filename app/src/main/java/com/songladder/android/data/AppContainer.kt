@@ -27,6 +27,7 @@ import com.songladder.android.domain.repository.SettingsRepository
 import com.songladder.android.domain.repository.SongRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
@@ -100,9 +101,19 @@ class AppContainer(context: Context) {
     )
     private val networkAvailabilityMonitor = NetworkAvailabilityMonitor(appContext)
 
+    // ConnectivityManager can fire onAvailable in rapid bursts (flaky wifi
+    // reconnecting repeatedly); without this guard each burst would launch its own
+    // overlapping retryPendingMatches() call. DefaultAlbumRepository's own per-album
+    // in-flight guard already prevents duplicate provider calls for the same album,
+    // but skipping the launch entirely when one is already running avoids the
+    // redundant work altogether.
+    private var retryPendingMatchesJob: Job? = null
+
     init {
         networkAvailabilityMonitor.start {
-            appScope.launch { albumRepository.retryPendingMatches() }
+            if (retryPendingMatchesJob?.isActive != true) {
+                retryPendingMatchesJob = appScope.launch { albumRepository.retryPendingMatches() }
+            }
         }
     }
 }
