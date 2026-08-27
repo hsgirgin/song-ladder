@@ -17,12 +17,18 @@ fun scoreTenthsForElo(elo: Double): Int =
         .roundToInt()
         .coerceIn(MIN_SCORE_TENTHS, MAX_SCORE_TENTHS)
 
+// A subject counts as part of the visible ranked ladder only once it has a score and
+// hasn't been deleted - shared by every computation that needs "the currently rated
+// library" (anchor seeding, nearest-neighbor suggestion checks, etc).
+fun ratedSubjects(subjects: List<RankingSubject>): List<RankingSubject> =
+    subjects.filter { it.tombstone == null && it.scoreTenths != null }
+
 // The seed for a freshly imported song when it has no score yet: the average of the
 // user's own rated songs, so a library of all-favorites doesn't seed new arrivals at
 // an absolute neutral 5.5 and then watch them lose every early matchup against those
 // favorites. Falls back to 5.5 only when there's nothing rated yet to anchor to.
 fun libraryAnchorScoreTenths(subjects: List<RankingSubject>): Int {
-    val rated = subjects.filter { it.tombstone == null && it.scoreTenths != null }
+    val rated = ratedSubjects(subjects)
     if (rated.isEmpty()) return 55
     return rated.sumOf { it.scoreTenths!! } / rated.size
 }

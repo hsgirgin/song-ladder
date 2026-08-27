@@ -94,6 +94,79 @@ class SuggestionEngineTest {
     }
 
     @Test
+    fun `a suggestion is suppressed when its nearest rated neighbor was never compared`() {
+        val (baseSubjects, events) = disagreementScenario(heroId = "hero", sequenceOffset = 0)
+        // Suggested score is 23 (see disagreementScenario's doc comment); this neighbor at
+        // 20 is closer to it than either compared subject (at 10 and 50) but was never
+        // directly compared against hero.
+        val subjects = baseSubjects + subject("closer-neighbor", 20)
+
+        val suggestions = engine.computeSuggestions(subjects, events, emptyList())
+
+        assertTrue(suggestions.none { it.subjectId == "hero" })
+    }
+
+    @Test
+    fun `a distant uncompared subject does not suppress the suggestion`() {
+        val (baseSubjects, events) = disagreementScenario(heroId = "hero", sequenceOffset = 0)
+        // 90 is far from the suggested 23 -- much farther than the compared subject at 10
+        // (distance 13) -- so it shouldn't block the suggestion.
+        val subjects = baseSubjects + subject("distant-neighbor", 90)
+
+        val suggestion = engine.computeSuggestions(subjects, events, emptyList()).single { it.subjectId == "hero" }
+
+        assertEquals(23, suggestion.suggestedScoreTenths)
+        assertEquals(13, suggestion.scoreGapTenths)
+    }
+
+    @Test
+    fun `a subject is excluded from its own nearest-neighbor check`() {
+        // hero starts rated at 40 (elo 1080). One K=88 win against a 90-rated opponent
+        // (expected score exactly 1/11) moves hero to exactly elo 1160; four further K=0
+        // wins against the same opponent pin it there. scoreTenthsForElo(1160) = 50, which
+        // disagrees with hero's current 40 by 10 (>= the eligibility threshold).
+        //
+        // Without excluding hero from its own candidate neighbor list, hero itself (at 40,
+        // distance 10 from the suggested 50) would look closer than the only other rated
+        // subject here (the opponent, at 90, distance 40) -- and since a subject never
+        // directly compares against itself, that would wrongly suppress the suggestion.
+        val subjects = listOf(subject("hero", 40), subject("opp90", 90))
+        val events = listOf(winEvent(1L, "hero", "opp90", winnerK = 88.0, loserK = 0.0)) +
+            (2..5).map { winEvent(it.toLong(), "hero", "opp90", winnerK = 0.0, loserK = 0.0) }
+
+        val suggestion = engine.computeSuggestions(subjects, events, emptyList()).single { it.subjectId == "hero" }
+
+        assertEquals(50, suggestion.suggestedScoreTenths)
+        assertEquals(10, suggestion.scoreGapTenths)
+    }
+
+    @Test
+    fun `an equally-near uncompared neighbor on the other side still suppresses the suggestion`() {
+        // hero starts rated at 30 (elo 1000). One K=88 win against an 80-rated favorite
+        // (elo gap of exactly 400, expected score exactly 1/11) moves hero to exactly elo
+        // 1080; four further K=0 wins against a 35-rated song (any rated opponent works for
+        // a K=0 pin) leave it there. scoreTenthsForElo(1080) = 40.
+        //
+        // sym-below (35) and sym-above (45) are equidistant (5) from the suggested 40, but
+        // only sym-below was ever compared. Regression test for a tie-break bug where
+        // picking one nearest-neighbor object arbitrarily favored whichever side happened
+        // to be closest-below, silently ignoring an equally-close, never-played neighbor on
+        // the other side.
+        val subjects = listOf(
+            subject("hero", 30),
+            subject("partner80", 80),
+            subject("sym-below", 35),
+            subject("sym-above", 45)
+        )
+        val events = listOf(winEvent(1L, "hero", "partner80", winnerK = 88.0, loserK = 0.0)) +
+            (2..5).map { winEvent(it.toLong(), "hero", "sym-below", winnerK = 0.0, loserK = 0.0) }
+
+        val suggestions = engine.computeSuggestions(subjects, events, emptyList())
+
+        assertTrue(suggestions.none { it.subjectId == "hero" })
+    }
+
+    @Test
     fun `a dismissal with no new evidence keeps the suggestion suppressed`() {
         val (subjects, events) = disagreementScenario(heroId = "hero", sequenceOffset = 0)
         val dismissals = listOf(SuggestionDismissal("hero", dismissedAtSequenceId = 6L, dismissedScoreTenths = 23))
@@ -141,8 +214,17 @@ class SuggestionEngineTest {
     @Test
     fun `disagreement suggestions sort ahead of pending unrated suggestions`() {
         val (disagreeSubjects, disagreeEvents) = disagreementScenario(heroId = "hero-a", sequenceOffset = 0)
-        val pendingSubjects = listOf(subject("hero-b", null)) + (1..5).map { subject("hero-b-opp$it", 50) }
-        val pendingEvents = (1..5).map { winEvent(100L + it, "hero-b", "hero-b-opp$it", 0.0) }
+        // hero-b is unrated, so it seeds at the shared library anchor - which, blended with
+        // hero-a's low-scored group above, comes out to 43, not simply hero-b-opp's own 50.
+        // Left pinned there (K=0 throughout), hero-b's suggestion would sit closer to a
+        // hero-a subject it never played than to hero-b-opp, and get suppressed by the
+        // nearest-neighbor gate. A K=200 win against a same-anchor "zero" opponent (expected
+        // exactly 0.5, mirroring disagreementScenario's own technique) moves it solidly
+        // toward hero-b-opp's own 50 before five K=0 wins pin it there.
+        val pendingSubjects = listOf(subject("hero-b", null), subject("hero-b-zero", 43)) +
+            (1..5).map { subject("hero-b-opp$it", 50) }
+        val pendingEvents = listOf(winEvent(100L, "hero-b", "hero-b-zero", winnerK = 200.0, loserK = 0.0)) +
+            (1..5).map { winEvent(100L + it, "hero-b", "hero-b-opp$it", 0.0) }
 
         val suggestions = engine.computeSuggestions(
             disagreeSubjects + pendingSubjects,
