@@ -1,5 +1,7 @@
 package com.songladder.android.data.local
 
+import com.songladder.android.domain.model.AlbumMatchStatus
+import com.songladder.android.domain.model.AlbumMetadataProviderType
 import com.songladder.android.domain.model.MatchupOutcome
 import com.songladder.android.domain.model.MusicSourceType
 import com.songladder.android.domain.model.RankingPresentation
@@ -20,3 +22,11 @@ internal fun String.toMatchupOutcome(): MatchupOutcome =
 internal fun String.toRankingPresentation(): RankingPresentation =
     runCatching { RankingPresentation.valueOf(trim().uppercase()) }
         .getOrDefault(RankingPresentation.GRID)
+
+internal fun String.toAlbumMatchStatus(): AlbumMatchStatus =
+    runCatching { AlbumMatchStatus.valueOf(trim().uppercase()) }
+        .getOrDefault(AlbumMatchStatus.PENDING)
+
+internal fun String.toAlbumMetadataProviderType(): AlbumMetadataProviderType =
+    runCatching { AlbumMetadataProviderType.valueOf(trim().uppercase()) }
+        .getOrDefault(AlbumMetadataProviderType.ITUNES)

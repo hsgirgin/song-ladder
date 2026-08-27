@@ -14,7 +14,9 @@ data class ExportEntities(
     val subjects: List<RankingSubjectEntity>,
     val events: List<MatchupEventEntity>,
     val settings: RankingSettingsEntity,
-    val appStats: AppStatsEntity
+    val appStats: AppStatsEntity,
+    val albums: List<AlbumEntity> = emptyList(),
+    val albumTrackExclusions: List<AlbumTrackExclusionEntity> = emptyList()
 )
 
 data class RecomputedExportEntities(
@@ -93,17 +95,20 @@ fun ExportPayload.toEntities(): ExportEntities {
         settings = RankingSettingsEntity(
             autoPlayMatchupPreviews = rankingSettings.autoPlayMatchupPreviews,
             showTips = rankingSettings.showTips,
-            presentation = rankingSettings.presentation.toRankingPresentation().name
+            presentation = rankingSettings.presentation.toRankingPresentation().name,
+            metadataRetrievalEnabled = rankingSettings.metadataRetrievalEnabled
         ),
         appStats = AppStatsEntity(
             matchCount = appStats.matchCount,
             skipCount = appStats.skipCount
-        )
+        ),
+        albums = albums.map { it.toEntity() },
+        albumTrackExclusions = albumTrackExclusions.map { it.toEntity() }
     )
 }
 
 fun ExportPayload.validateForImport() {
-    require(schemaVersion == 1) { "Unsupported backup schema version: $schemaVersion" }
+    require(schemaVersion in 1..2) { "Unsupported backup schema version: $schemaVersion" }
 
     val songIds = songs.map { song ->
         require(song.id.isNotBlank()) { "Song IDs must not be blank." }
@@ -214,6 +219,29 @@ fun ExportPayload.validateForImport() {
         "Backup contains duplicate matchup event sequence IDs."
     }
 
+    val albumIds = albums.map { album ->
+        require(album.id.isNotBlank()) { "Album IDs must not be blank." }
+        album.id
+    }
+    require(albumIds.size == albumIds.toSet().size) { "Backup contains duplicate album IDs." }
+    val knownAlbumIds = albumIds.toSet()
+    val knownSongIds = songIds.toSet()
+
+    val exclusionSongIds = albumTrackExclusions.map { exclusion ->
+        require(exclusion.songId.isNotBlank()) { "Album track exclusion song IDs must not be blank." }
+        require(exclusion.albumId.isNotBlank()) { "Album track exclusion album IDs must not be blank." }
+        require(exclusion.songId in knownSongIds) {
+            "Album track exclusion references a missing song."
+        }
+        require(exclusion.albumId in knownAlbumIds) {
+            "Album track exclusion references a missing album."
+        }
+        exclusion.songId
+    }
+    require(exclusionSongIds.size == exclusionSongIds.toSet().size) {
+        "Each song may only be excluded from one album."
+    }
+
     require(appStats.matchCount >= 0 && appStats.skipCount >= 0) {
         "App counters must not be negative."
     }
@@ -253,11 +281,14 @@ fun ExportEntities.toPayload(): ExportPayload {
         rankingSettings = RankingSettingsExport(
             autoPlayMatchupPreviews = settings.autoPlayMatchupPreviews,
             showTips = settings.showTips,
-            presentation = settings.presentation
+            presentation = settings.presentation,
+            metadataRetrievalEnabled = settings.metadataRetrievalEnabled
         ),
         appStats = AppStatsExport(
             matchCount = appStats.matchCount,
             skipCount = appStats.skipCount
-        )
+        ),
+        albums = albums.map { it.toExport() },
+        albumTrackExclusions = albumTrackExclusions.map { it.toExport() }
     )
 }

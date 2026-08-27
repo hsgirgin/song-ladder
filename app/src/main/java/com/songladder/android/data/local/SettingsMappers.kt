@@ -19,13 +19,15 @@ fun SuggestionDismissal.toEntity(): SuggestionDismissalEntity = SuggestionDismis
 fun RankingSettingsEntity.toDomain(): RankingSettings = RankingSettings(
     autoPlayMatchupPreviews = autoPlayMatchupPreviews,
     showTips = showTips,
-    presentation = presentation.toRankingPresentation()
+    presentation = presentation.toRankingPresentation(),
+    metadataRetrievalEnabled = metadataRetrievalEnabled
 )
 
 fun RankingSettings.toEntity(): RankingSettingsEntity = RankingSettingsEntity(
     autoPlayMatchupPreviews = autoPlayMatchupPreviews,
     showTips = showTips,
-    presentation = presentation.name
+    presentation = presentation.name,
+    metadataRetrievalEnabled = metadataRetrievalEnabled
 )
 
 fun AppStatsEntity?.toDomain(): AppStats = AppStats(

@@ -84,7 +84,8 @@ data class RankingSettingsEntity(
     @PrimaryKey val id: Int = 0,
     val autoPlayMatchupPreviews: Boolean = true,
     val showTips: Boolean = true,
-    val presentation: String = "GRID"
+    val presentation: String = "GRID",
+    val metadataRetrievalEnabled: Boolean = true
 )
 
 @Entity(tableName = "import_batches")
@@ -106,4 +107,38 @@ data class SongWithStatsEntity(
     @Embedded val song: SongEntity,
     @Relation(parentColumn = "rankingSubjectId", entityColumn = "id")
     val stats: RankingSubjectEntity
+)
+
+@Entity(tableName = "albums", indices = [Index(value = ["matchStatus"])])
+data class AlbumEntity(
+    @PrimaryKey val id: String,
+    val title: String,
+    val artist: String,
+    val artworkUrl: String? = null,
+    val normalizedTitle: String = "",
+    val normalizedArtist: String = "",
+    val providerSourceType: String = "ITUNES",
+    val providerCollectionId: String? = null,
+    val providerTrackCount: Int? = null,
+    val matchStatus: String = "PENDING",
+    val matchConfidence: Double? = null,
+    val createdAt: Long,
+    val lastMatchAttemptAt: Long? = null,
+    val lastMatchedAt: Long? = null
+)
+
+@Entity(tableName = "album_track_exclusions", indices = [Index(value = ["albumId"])])
+data class AlbumTrackExclusionEntity(
+    @PrimaryKey val songId: String,
+    val albumId: String,
+    val excludedAt: Long
+)
+
+@Entity(tableName = "album_missing_tracks", primaryKeys = ["albumId", "providerTrackId"])
+data class AlbumMissingTrackEntity(
+    val albumId: String,
+    val providerTrackId: String,
+    val title: String,
+    val trackNumber: Int? = null,
+    val artworkUrl: String? = null
 )
