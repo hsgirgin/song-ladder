@@ -3,6 +3,7 @@ package com.songladder.android.data.local
 import com.songladder.android.domain.model.Album
 import com.songladder.android.domain.model.AlbumExport
 import com.songladder.android.domain.model.AlbumMatchStatus
+import com.songladder.android.domain.model.AlbumMetadataProviderType
 import com.songladder.android.domain.model.AlbumMissingTrack
 import com.songladder.android.domain.model.AlbumTrackExclusion
 import com.songladder.android.domain.model.AlbumTrackExclusionExport
@@ -52,7 +53,7 @@ fun AlbumExport.toEntity(): AlbumEntity = AlbumEntity(
     artworkUrl = artworkUrl,
     normalizedTitle = normalizedTitle,
     normalizedArtist = normalizedArtist,
-    providerSourceType = confirmedProviderSourceType ?: "ITUNES",
+    providerSourceType = confirmedProviderSourceType ?: AlbumMetadataProviderType.ITUNES.name,
     providerCollectionId = confirmedProviderCollectionId,
     providerTrackCount = null,
     matchStatus = if (confirmedProviderCollectionId != null) {

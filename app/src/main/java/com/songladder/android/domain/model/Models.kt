@@ -8,6 +8,7 @@ const val K_FACTOR = 32
 const val BASE_ELO = 1200.0
 const val MIN_SCORE_TENTHS = 10
 const val MAX_SCORE_TENTHS = 100
+const val CURRENT_EXPORT_SCHEMA_VERSION = 2
 
 fun seedEloForScore(scoreTenths: Int?, fallbackTenths: Int = 55): Double =
     BASE_ELO + 80.0 * ((scoreTenths ?: fallbackTenths) / 10.0 - 5.5)
@@ -346,7 +347,7 @@ data class AlbumTrackExclusionExport(
 
 @Serializable
 data class ExportPayload(
-    val schemaVersion: Int = 2,
+    val schemaVersion: Int = CURRENT_EXPORT_SCHEMA_VERSION,
     val songs: List<SongExport> = emptyList(),
     val rankingSubjects: List<RankingSubjectExport> = emptyList(),
     val matchupEvents: List<MatchupEventExport> = emptyList(),

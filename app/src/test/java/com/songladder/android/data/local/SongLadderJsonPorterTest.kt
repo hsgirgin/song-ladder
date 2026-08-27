@@ -574,6 +574,28 @@ class SongLadderJsonPorterTest {
     }
 
     @Test
+    fun `rejects an album with a confirmed collection id but no confirmed source type`() {
+        val payload = ExportPayload(
+            albums = listOf(
+                AlbumExport(
+                    id = "album-1",
+                    title = "Blonde",
+                    artist = "Frank Ocean",
+                    confirmedProviderSourceType = null,
+                    confirmedProviderCollectionId = "collection-1"
+                )
+            )
+        )
+
+        try {
+            payload.validateForImport()
+            fail("Expected a partially-confirmed album to be rejected")
+        } catch (error: IllegalArgumentException) {
+            assertTrue(error.message.orEmpty().contains("set together"))
+        }
+    }
+
+    @Test
     fun `rejects an album track exclusion that references a missing album`() {
         val payload = ExportPayload(
             songs = listOf(

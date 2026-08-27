@@ -6,6 +6,8 @@ import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.PrimaryKey
 import androidx.room.Relation
+import com.songladder.android.domain.model.AlbumMatchStatus
+import com.songladder.android.domain.model.AlbumMetadataProviderType
 import com.songladder.android.domain.model.BASE_ELO
 
 @Entity(
@@ -109,6 +111,10 @@ data class SongWithStatsEntity(
     val stats: RankingSubjectEntity
 )
 
+// No @ForeignKey to songs/albums here (unlike SongEntity -> RankingSubjectEntity):
+// SongDao.deleteSong performs a hard delete, and there's no cleanup path for
+// orphaned exclusion/album rows yet. Enforcing FKs now would make song deletion
+// throw. Slice 2's AlbumRepository is expected to add that cleanup and can revisit.
 @Entity(tableName = "albums", indices = [Index(value = ["matchStatus"])])
 data class AlbumEntity(
     @PrimaryKey val id: String,
@@ -117,10 +123,10 @@ data class AlbumEntity(
     val artworkUrl: String? = null,
     val normalizedTitle: String = "",
     val normalizedArtist: String = "",
-    val providerSourceType: String = "ITUNES",
+    val providerSourceType: String = AlbumMetadataProviderType.ITUNES.name,
     val providerCollectionId: String? = null,
     val providerTrackCount: Int? = null,
-    val matchStatus: String = "PENDING",
+    val matchStatus: String = AlbumMatchStatus.PENDING.name,
     val matchConfidence: Double? = null,
     val createdAt: Long,
     val lastMatchAttemptAt: Long? = null,

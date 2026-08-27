@@ -2,6 +2,7 @@ package com.songladder.android.data.local
 
 import com.songladder.android.domain.engine.EloMatchupEngine
 import com.songladder.android.domain.model.AppStatsExport
+import com.songladder.android.domain.model.CURRENT_EXPORT_SCHEMA_VERSION
 import com.songladder.android.domain.model.ExportPayload
 import com.songladder.android.domain.model.MatchupEventExport
 import com.songladder.android.domain.model.MatchupOutcome
@@ -108,7 +109,9 @@ fun ExportPayload.toEntities(): ExportEntities {
 }
 
 fun ExportPayload.validateForImport() {
-    require(schemaVersion in 1..2) { "Unsupported backup schema version: $schemaVersion" }
+    require(schemaVersion in 1..CURRENT_EXPORT_SCHEMA_VERSION) {
+        "Unsupported backup schema version: $schemaVersion"
+    }
 
     val songIds = songs.map { song ->
         require(song.id.isNotBlank()) { "Song IDs must not be blank." }
@@ -221,6 +224,9 @@ fun ExportPayload.validateForImport() {
 
     val albumIds = albums.map { album ->
         require(album.id.isNotBlank()) { "Album IDs must not be blank." }
+        require(
+            (album.confirmedProviderSourceType == null) == (album.confirmedProviderCollectionId == null)
+        ) { "Album confirmed provider fields must be set together." }
         album.id
     }
     require(albumIds.size == albumIds.toSet().size) { "Backup contains duplicate album IDs." }

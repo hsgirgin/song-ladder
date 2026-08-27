@@ -53,4 +53,16 @@ class AlbumModelsTest {
     fun `average rounds to nearest tenth using standard rounding`() {
         assertEquals(83, computeAlbumScoreTenths(listOf(80, 85), providerTrackCount = 2))
     }
+
+    @Test
+    fun `zero or negative provider track count is unranked rather than crashing`() {
+        assertNull(computeAlbumScoreTenths(emptyList(), providerTrackCount = 0))
+        assertNull(computeAlbumScoreTenths(listOf(80), providerTrackCount = 0))
+        assertNull(computeAlbumScoreTenths(emptyList(), providerTrackCount = -1))
+    }
+
+    @Test
+    fun `no rated tracks is unranked rather than dividing by zero`() {
+        assertNull(computeAlbumScoreTenths(emptyList(), providerTrackCount = 5))
+    }
 }

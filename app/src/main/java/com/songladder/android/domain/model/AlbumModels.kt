@@ -78,7 +78,8 @@ fun normalizedAlbumId(normalizedArtist: String, normalizedAlbumTitle: String): S
 // null (unranked) until the release is matched (providerTrackCount known) and enough of
 // its included tracks are rated.
 fun computeAlbumScoreTenths(includedRatedScoreTenths: List<Int>, providerTrackCount: Int?): Int? {
-    if (providerTrackCount == null) return null
+    if (providerTrackCount == null || providerTrackCount <= 0) return null
+    if (includedRatedScoreTenths.isEmpty()) return null
     val threshold = ceil(providerTrackCount / 2.0).toInt()
     if (includedRatedScoreTenths.size < threshold) return null
     return (includedRatedScoreTenths.sum().toDouble() / includedRatedScoreTenths.size).roundToInt()
