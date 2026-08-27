@@ -188,8 +188,17 @@ class SuggestionEngineTest {
     @Test
     fun `disagreement suggestions sort ahead of pending unrated suggestions`() {
         val (disagreeSubjects, disagreeEvents) = disagreementScenario(heroId = "hero-a", sequenceOffset = 0)
-        val pendingSubjects = listOf(subject("hero-b", null)) + (1..5).map { subject("hero-b-opp$it", 50) }
-        val pendingEvents = (1..5).map { winEvent(100L + it, "hero-b", "hero-b-opp$it", 0.0) }
+        // hero-b is unrated, so it seeds at the shared library anchor - which, blended with
+        // hero-a's low-scored group above, comes out to 43, not simply hero-b-opp's own 50.
+        // Left pinned there (K=0 throughout), hero-b's suggestion would sit closer to a
+        // hero-a subject it never played than to hero-b-opp, and get suppressed by the
+        // nearest-neighbor gate. A K=200 win against a same-anchor "zero" opponent (expected
+        // exactly 0.5, mirroring disagreementScenario's own technique) moves it solidly
+        // toward hero-b-opp's own 50 before five K=0 wins pin it there.
+        val pendingSubjects = listOf(subject("hero-b", null), subject("hero-b-zero", 43)) +
+            (1..5).map { subject("hero-b-opp$it", 50) }
+        val pendingEvents = listOf(winEvent(100L, "hero-b", "hero-b-zero", winnerK = 200.0, loserK = 0.0)) +
+            (1..5).map { winEvent(100L + it, "hero-b", "hero-b-opp$it", 0.0) }
 
         val suggestions = engine.computeSuggestions(
             disagreeSubjects + pendingSubjects,
