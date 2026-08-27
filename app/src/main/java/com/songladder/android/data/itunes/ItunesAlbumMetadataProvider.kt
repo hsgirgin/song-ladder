@@ -79,9 +79,15 @@ class ItunesAlbumMetadataProvider(
     // Plain kotlin.runCatching also catches CancellationException, which would turn
     // structured-concurrency cancellation into an ordinary Result.failure instead of
     // letting it propagate - rethrow it before it can be mistaken for a provider
-    // failure.
+    // failure. TimeoutCancellationException is itself a CancellationException
+    // subtype, so it must be caught *first* and routed to recoverProviderFailure's
+    // existing timeout branch below rather than being rethrown as real cancellation -
+    // this codebase already wraps sibling network calls in withTimeout
+    // (ItunesMusicSourceClient, YoutubeMusicPlaylistClient), so this isn't hypothetical.
     private inline fun <T> runCatchingCancellable(block: () -> T): Result<T> = try {
         Result.success(block())
+    } catch (e: TimeoutCancellationException) {
+        Result.failure(e)
     } catch (e: CancellationException) {
         throw e
     } catch (e: Throwable) {
