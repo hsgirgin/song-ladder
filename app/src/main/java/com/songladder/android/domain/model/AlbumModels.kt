@@ -108,6 +108,16 @@ data class AlbumMatchOutcome(
 fun normalizedAlbumId(normalizedArtist: String, normalizedAlbumTitle: String): String =
     "$normalizedArtist::$normalizedAlbumTitle"
 
+// No elo/lastRankedAt tie-break to mirror: an album's score is a derived average, not
+// an independently-earned rating, so ties fall back to a stable alphabetical order.
+fun albumScoreFirstComparator(): Comparator<RankedAlbum> = compareByDescending<RankedAlbum> {
+    it.scoreTenths ?: Int.MIN_VALUE
+}.thenBy {
+    it.album.title.trim().lowercase()
+}.thenBy {
+    it.album.id
+}
+
 // Threshold scales with release size (ceil(providerTrackCount / 2)) rather than a flat
 // count, so a two-track EP isn't held to the same bar as a twelve-track album. Returns
 // null (unranked) until the release is matched (providerTrackCount known) and enough of

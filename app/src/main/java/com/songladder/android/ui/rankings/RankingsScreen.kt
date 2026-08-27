@@ -62,6 +62,7 @@ fun RankingsScreen(
         onSearchQueryChanged = viewModel::updateSearchQuery,
         onPresentationChanged = viewModel::setPresentation,
         onToggleUnrated = viewModel::toggleUnratedExpanded,
+        onToggleIncompleteAlbums = viewModel::toggleIncompleteAlbumsExpanded,
         onToggleStats = viewModel::toggleStats,
         onTogglePreview = viewModel::togglePreview,
         onShowDetails = viewModel::showDetails,
@@ -89,6 +90,7 @@ internal fun RankingsScreenContent(
     onSearchQueryChanged: (String) -> Unit,
     onPresentationChanged: (RankingPresentation) -> Unit,
     onToggleUnrated: () -> Unit,
+    onToggleIncompleteAlbums: () -> Unit,
     onToggleStats: (String) -> Unit,
     onTogglePreview: (String) -> Unit,
     onShowDetails: (String) -> Unit,
@@ -212,7 +214,11 @@ internal fun RankingsScreenContent(
                 onAcceptSelectedSuggestions = onAcceptSelectedSuggestions,
                 modifier = Modifier.weight(1f)
             )
-            RankingsTab.ALBUMS,
+            RankingsTab.ALBUMS -> RankingsAlbumsContent(
+                uiState = uiState,
+                onToggleIncompleteAlbums = onToggleIncompleteAlbums,
+                modifier = Modifier.weight(1f)
+            )
             RankingsTab.ARTISTS -> ComingSoonContent(modifier = Modifier.weight(1f))
         }
     }

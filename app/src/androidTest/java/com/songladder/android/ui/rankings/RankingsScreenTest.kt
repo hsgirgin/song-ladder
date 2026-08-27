@@ -1,6 +1,10 @@
 package com.songladder.android.ui.rankings
 
 import androidx.compose.foundation.layout.width
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
@@ -10,6 +14,9 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.dp
+import com.songladder.android.domain.model.Album
+import com.songladder.android.domain.model.AlbumMatchStatus
+import com.songladder.android.domain.model.RankedAlbum
 import com.songladder.android.domain.model.RankingPresentation
 import com.songladder.android.domain.model.RankingSettings
 import com.songladder.android.domain.model.Song
@@ -78,6 +85,7 @@ class RankingsScreenTest {
                     onSearchQueryChanged = {},
                     onPresentationChanged = {},
                     onToggleUnrated = {},
+                    onToggleIncompleteAlbums = {},
                     onToggleStats = {},
                     onTogglePreview = { previewTaps += 1 },
                     onShowDetails = {},
@@ -126,6 +134,7 @@ class RankingsScreenTest {
                     onSearchQueryChanged = {},
                     onPresentationChanged = {},
                     onToggleUnrated = {},
+                    onToggleIncompleteAlbums = {},
                     onToggleStats = {},
                     onTogglePreview = {},
                     onShowDetails = {},
@@ -179,6 +188,7 @@ class RankingsScreenTest {
                     onSearchQueryChanged = {},
                     onPresentationChanged = {},
                     onToggleUnrated = {},
+                    onToggleIncompleteAlbums = {},
                     onToggleStats = {},
                     onTogglePreview = {},
                     onShowDetails = {},
@@ -237,6 +247,7 @@ class RankingsScreenTest {
                     onSearchQueryChanged = {},
                     onPresentationChanged = {},
                     onToggleUnrated = {},
+                    onToggleIncompleteAlbums = {},
                     onToggleStats = {},
                     onTogglePreview = {},
                     onShowDetails = {},
@@ -278,6 +289,7 @@ class RankingsScreenTest {
                     onSearchQueryChanged = {},
                     onPresentationChanged = {},
                     onToggleUnrated = {},
+                    onToggleIncompleteAlbums = {},
                     onToggleStats = {},
                     onTogglePreview = {},
                     onShowDetails = {},
@@ -326,6 +338,7 @@ class RankingsScreenTest {
                     onSearchQueryChanged = {},
                     onPresentationChanged = {},
                     onToggleUnrated = {},
+                    onToggleIncompleteAlbums = {},
                     onToggleStats = {},
                     onTogglePreview = {},
                     onShowDetails = {},
@@ -355,7 +368,7 @@ class RankingsScreenTest {
                 RankingsScreenContent(
                     uiState = RankingsUiState(
                         rankedSongs = listOf(RankedSong(1, rankingsSong(title = "A song"))),
-                        selectedTab = RankingsTab.ALBUMS,
+                        selectedTab = RankingsTab.ARTISTS,
                         searchActive = true,
                         searchQuery = "needle",
                         settings = RankingSettings(showTips = false),
@@ -366,6 +379,7 @@ class RankingsScreenTest {
                     onSearchQueryChanged = {},
                     onPresentationChanged = {},
                     onToggleUnrated = {},
+                    onToggleIncompleteAlbums = {},
                     onToggleStats = {},
                     onTogglePreview = {},
                     onShowDetails = {},
@@ -413,6 +427,122 @@ class RankingsScreenTest {
             assertEquals(true, saved)
         }
     }
+
+    @Test
+    fun albumsTab_showsRankedAlbumsWithoutComingSoonBanner() {
+        composeRule.setContent {
+            SongLadderTheme {
+                RankingsScreenContent(
+                    uiState = RankingsUiState(
+                        selectedTab = RankingsTab.ALBUMS,
+                        presentation = RankingPresentation.GRID,
+                        rankedAlbums = listOf(rankedAlbum(id = "album-1", title = "Blonde", scoreTenths = 80))
+                    ),
+                    onTabSelected = {},
+                    onSearchActiveChanged = {},
+                    onSearchQueryChanged = {},
+                    onPresentationChanged = {},
+                    onToggleUnrated = {},
+                    onToggleIncompleteAlbums = {},
+                    onToggleStats = {},
+                    onTogglePreview = {},
+                    onShowDetails = {},
+                    onHideDetails = {},
+                    onSaveScore = { _, _ -> },
+                    onDismissTip = {},
+                    onDeleteSong = {},
+                    onUndoDelete = {},
+                    onAcceptSuggestion = { _, _ -> },
+                    onDismissSuggestion = {},
+                    onToggleSuggestionSelection = {},
+                    onClearSuggestionSelection = {},
+                    onAcceptSelectedSuggestions = {},
+                    onOpenSettings = {},
+                    onAddSongs = {}
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("Blonde").assertIsDisplayed()
+        composeRule.onNodeWithText("#1").assertIsDisplayed()
+        composeRule.onNodeWithText("Coming soon").assertDoesNotExist()
+    }
+
+    @Test
+    fun albumsGrid_incompleteAlbumShowsUnrankedBadgeAndCollapsesBehindAHeaderWhenRankedAlbumsExist() {
+        composeRule.setContent {
+            SongLadderTheme {
+                AlbumsGridCard(
+                    rankedAlbum = rankedAlbum(id = "album-1", title = "In Progress", scoreTenths = null)
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("Unranked").assertIsDisplayed()
+    }
+
+    @Test
+    fun albumsGrid_needsReviewAlbumShowsCheckReleaseLabel() {
+        composeRule.setContent {
+            SongLadderTheme {
+                AlbumsGridCard(
+                    rankedAlbum = rankedAlbum(
+                        id = "album-1",
+                        title = "Ambiguous",
+                        scoreTenths = null,
+                        matchStatus = AlbumMatchStatus.NEEDS_REVIEW
+                    )
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("Check release").assertIsDisplayed()
+    }
+
+    @Test
+    fun albumsContent_incompleteHeaderCollapsesAndExpandsIncompleteAlbums() {
+        composeRule.setContent {
+            SongLadderTheme {
+                var expanded by remember { mutableStateOf(false) }
+                RankingsAlbumsContent(
+                    uiState = RankingsUiState(
+                        presentation = RankingPresentation.GRID,
+                        rankedAlbums = listOf(rankedAlbum(id = "complete", title = "Complete", scoreTenths = 80)),
+                        incompleteAlbums = listOf(rankedAlbum(id = "incomplete", title = "In Progress", scoreTenths = null)),
+                        incompleteAlbumsExpanded = expanded
+                    ),
+                    onToggleIncompleteAlbums = { expanded = !expanded }
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("In Progress").assertDoesNotExist()
+        composeRule.onNodeWithText("1 incomplete album").performClick()
+        composeRule.onNodeWithText("In Progress").assertIsDisplayed()
+    }
+}
+
+private fun rankedAlbum(
+    id: String,
+    title: String = "Album $id",
+    artist: String = "Artist $id",
+    scoreTenths: Int?,
+    matchStatus: AlbumMatchStatus = AlbumMatchStatus.AUTO_MATCHED,
+    includedRatedTrackCount: Int = 0,
+    totalOwnedTrackCount: Int = 0
+): RankedAlbum {
+    return RankedAlbum(
+        rank = if (scoreTenths != null) 1 else null,
+        album = Album(
+            id = id,
+            title = title,
+            artist = artist,
+            matchStatus = matchStatus
+        ),
+        scoreTenths = scoreTenths,
+        includedRatedTrackCount = includedRatedTrackCount,
+        totalOwnedTrackCount = totalOwnedTrackCount
+    )
 }
 
 private fun rankingsSong(
