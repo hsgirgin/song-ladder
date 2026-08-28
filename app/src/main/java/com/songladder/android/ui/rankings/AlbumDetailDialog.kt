@@ -24,14 +24,12 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -110,10 +108,14 @@ internal fun AlbumDetailDialog(
                     }
 
                     if (detail.album.matchStatus == AlbumMatchStatus.NEEDS_REVIEW) {
-                        AlbumMatchCandidatesPicker(state = matchCandidates, onChoose = onChooseRelease)
+                        AlbumMatchCandidatesPicker(
+                            state = matchCandidates,
+                            ownedTrackCount = detail.tracks.size,
+                            onChoose = onChooseRelease
+                        )
                     }
 
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text(
                             text = stringResource(R.string.rankings_album_tracks_title),
                             style = MaterialTheme.typography.titleMedium,
@@ -128,10 +130,19 @@ internal fun AlbumDetailDialog(
                     }
 
                     if (detail.missingTracks.isNotEmpty()) {
-                        MissingTracksSection(
-                            missingTracks = detail.missingTracks,
-                            onAddSelected = onAddMissingTracks
-                        )
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text(
+                                text = stringResource(R.string.rankings_album_missing_tracks_title),
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            detail.missingTracks.forEach { track ->
+                                MissingTrackListItem(
+                                    track = track,
+                                    onAdd = { onAddMissingTracks(listOf(track.providerTrackId)) }
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -142,6 +153,7 @@ internal fun AlbumDetailDialog(
 @Composable
 private fun AlbumMatchCandidatesPicker(
     state: AlbumMatchCandidatesState?,
+    ownedTrackCount: Int,
     onChoose: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -151,6 +163,22 @@ private fun AlbumMatchCandidatesPicker(
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.SemiBold
         )
+        Text(
+            text = stringResource(R.string.rankings_album_candidates_body),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        if (ownedTrackCount > 0) {
+            Text(
+                text = pluralStringResource(
+                    R.plurals.rankings_album_candidates_owned_count,
+                    ownedTrackCount,
+                    ownedTrackCount
+                ),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
         when {
             state == null || state.isLoading -> Text(
                 text = stringResource(R.string.rankings_album_candidates_loading),
@@ -165,13 +193,20 @@ private fun AlbumMatchCandidatesPicker(
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             else -> state.candidates.forEach { candidate ->
+                val trackCountLabel = candidate.trackCount?.let { count ->
+                    val countText = pluralStringResource(R.plurals.rankings_album_track_count, count, count)
+                    if (ownedTrackCount > 0 && count == ownedTrackCount) {
+                        stringResource(R.string.rankings_album_candidate_track_count_match, countText)
+                    } else {
+                        countText
+                    }
+                }
                 MatchCandidateRow(
                     title = candidate.collectionName,
                     subtitle = candidate.artistName,
                     artworkUrl = candidate.artworkUrl,
-                    trailingLabel = candidate.trackCount?.let { count ->
-                        pluralStringResource(R.plurals.rankings_album_track_count, count, count)
-                    },
+                    trailingLabel = trackCountLabel,
+                    actionLabel = stringResource(R.string.rankings_album_candidates_choose_action),
                     onChoose = { onChoose(candidate.collectionId) }
                 )
             }
@@ -185,85 +220,50 @@ private fun AlbumTrackListItem(
     onToggleExcluded: (Boolean) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val includedDescription = stringResource(R.string.rankings_album_track_included)
+    val excludedDescription = stringResource(R.string.rankings_album_track_excluded)
     Row(
         modifier = modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(
-                text = track.song.title,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Checkbox(
-                    checked = !track.excludedFromAverage,
-                    onCheckedChange = { included -> onToggleExcluded(!included) }
-                )
-                Text(
-                    text = stringResource(R.string.rankings_album_track_included),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+        Text(
+            text = track.song.title,
+            modifier = Modifier.weight(1f),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        Checkbox(
+            checked = !track.excludedFromAverage,
+            onCheckedChange = { included -> onToggleExcluded(!included) },
+            modifier = Modifier.semantics {
+                contentDescription = if (track.excludedFromAverage) excludedDescription else includedDescription
             }
-        }
+        )
         ScoreBadge(scoreTenths = track.song.scoreTenths, size = 32.dp)
     }
 }
 
 @Composable
-private fun MissingTracksSection(
-    missingTracks: List<AlbumMissingTrack>,
-    onAddSelected: (List<String>) -> Unit,
+private fun MissingTrackListItem(
+    track: AlbumMissingTrack,
+    onAdd: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var selectedIds by rememberSaveable(missingTracks.map { it.providerTrackId }) {
-        mutableStateOf(emptySet<String>())
-    }
-    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
         Text(
-            text = stringResource(R.string.rankings_album_missing_tracks_title),
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold
+            text = track.title,
+            modifier = Modifier.weight(1f),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
         )
-        missingTracks.forEach { track ->
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Checkbox(
-                    checked = track.providerTrackId in selectedIds,
-                    onCheckedChange = { checked ->
-                        selectedIds = if (checked) selectedIds + track.providerTrackId else selectedIds - track.providerTrackId
-                    }
-                )
-                Text(
-                    text = track.title,
-                    modifier = Modifier.weight(1f),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-        }
-        Button(
-            onClick = {
-                onAddSelected(selectedIds.toList())
-                selectedIds = emptySet()
-            },
-            enabled = selectedIds.isNotEmpty()
-        ) {
-            Text(
-                pluralStringResource(
-                    R.plurals.rankings_album_add_missing_tracks,
-                    selectedIds.size,
-                    selectedIds.size
-                )
-            )
+        Button(onClick = onAdd) {
+            Text(stringResource(R.string.rankings_album_add_track_action))
         }
     }
 }

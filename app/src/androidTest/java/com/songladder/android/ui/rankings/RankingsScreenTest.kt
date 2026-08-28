@@ -639,7 +639,7 @@ class RankingsScreenTest {
             }
         }
 
-        composeRule.onNodeWithText("Included in average").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Included in average").assertIsDisplayed()
         composeRule.onNodeWithText("Nikes").assertIsDisplayed()
         composeRule.onNode(isToggleable()).performClick()
 
@@ -649,7 +649,7 @@ class RankingsScreenTest {
     }
 
     @Test
-    fun albumDetailDialog_missingTracksBulkAddInvokesCallbackWithSelectedIds() {
+    fun albumDetailDialog_missingTrackAddButtonInvokesCallbackWithThatTrackId() {
         var added: List<String>? = null
         composeRule.setContent {
             SongLadderTheme {
@@ -671,8 +671,7 @@ class RankingsScreenTest {
         }
 
         composeRule.onNodeWithText("Ivy").assertIsDisplayed()
-        composeRule.onNode(isToggleable()).performClick()
-        composeRule.onNodeWithText("Add 1 track").performClick()
+        composeRule.onNodeWithText("Add").performClick()
 
         composeRule.runOnIdle {
             assertEquals(listOf("track-1"), added)
@@ -699,7 +698,54 @@ class RankingsScreenTest {
         }
 
         composeRule.onNodeWithText("Choose the correct release").assertIsDisplayed()
-        composeRule.onNodeWithText("Choose").assertIsDisplayed()
+        composeRule.onNodeWithText("Use this release").assertIsDisplayed()
+    }
+
+    @Test
+    fun albumDetailDialog_candidatePickerFlagsTheReleaseWhoseTrackCountMatchesYourLibrary() {
+        val matchingCandidate = AlbumReleaseCandidate(
+            collectionId = "match",
+            collectionName = "Blonde",
+            artistName = "Frank Ocean",
+            trackCount = 2
+        )
+        val otherCandidate = AlbumReleaseCandidate(
+            collectionId = "other",
+            collectionName = "Blonde (Deluxe)",
+            artistName = "Frank Ocean",
+            trackCount = 20
+        )
+
+        composeRule.setContent {
+            SongLadderTheme {
+                AlbumDetailDialog(
+                    detail = albumDetail(
+                        id = "album-1",
+                        scoreTenths = null,
+                        matchStatus = AlbumMatchStatus.NEEDS_REVIEW,
+                        tracks = listOf(
+                            albumTrackRow(songId = "song-1", title = "Nikes", excluded = false),
+                            albumTrackRow(songId = "song-2", title = "Ivy", excluded = false)
+                        )
+                    ),
+                    rank = null,
+                    matchCandidates = AlbumMatchCandidatesState(
+                        albumId = "album-1",
+                        isLoading = false,
+                        candidates = listOf(matchingCandidate, otherCandidate)
+                    ),
+                    onDismiss = {},
+                    onToggleTrackExcluded = { _, _ -> },
+                    onAddMissingTracks = {},
+                    onChooseRelease = {},
+                    onRefreshMetadata = {}
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("You have 2 tracks for this album").assertIsDisplayed()
+        composeRule.onNodeWithText("2 tracks · matches your library").assertExists()
+        composeRule.onNodeWithText("20 tracks").assertExists()
     }
 
     @Test
