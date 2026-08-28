@@ -8,12 +8,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.hasScrollAction
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isToggleable
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.unit.dp
 import com.songladder.android.domain.model.Album
 import com.songladder.android.domain.model.AlbumDetail
@@ -744,7 +747,9 @@ class RankingsScreenTest {
         }
 
         composeRule.onNodeWithText("You have 2 tracks for this album").assertIsDisplayed()
+        composeRule.onNode(hasScrollAction()).performScrollToNode(hasText("2 tracks · matches your library"))
         composeRule.onNodeWithText("2 tracks · matches your library").assertIsDisplayed()
+        composeRule.onNode(hasScrollAction()).performScrollToNode(hasText("20 tracks"))
         composeRule.onNodeWithText("20 tracks").assertIsDisplayed()
     }
 
