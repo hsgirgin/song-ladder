@@ -18,7 +18,7 @@ import androidx.compose.ui.unit.dp
 import com.songladder.android.domain.model.Album
 import com.songladder.android.domain.model.AlbumDetail
 import com.songladder.android.domain.model.AlbumMatchStatus
-import com.songladder.android.domain.model.AlbumMissingTrack
+import com.songladder.android.domain.model.AlbumReleaseTrack
 import com.songladder.android.domain.model.AlbumReleaseCandidate
 import com.songladder.android.domain.model.AlbumTrackRow
 import com.songladder.android.domain.model.RankedAlbum
@@ -713,7 +713,7 @@ class RankingsScreenTest {
                 AlbumDetailDialog(
                     detail = albumDetail(id = "album-1", scoreTenths = null).copy(
                         missingTracks = listOf(
-                            AlbumMissingTrack(albumId = "album-1", providerTrackId = "track-1", title = "Ivy")
+                            AlbumReleaseTrack(trackId = "track-1", title = "Ivy")
                         )
                     ),
                     rank = null,

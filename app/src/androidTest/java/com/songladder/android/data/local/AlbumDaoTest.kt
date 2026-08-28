@@ -111,38 +111,39 @@ class AlbumDaoTest {
     }
 
     @Test
-    fun missingTrackCrudScopesByAlbumAndSupportsRebuild() = runBlocking {
-        val missingTrackDao = database.albumMissingTrackDao()
-        val trackOne = AlbumMissingTrackEntity(
+    fun releaseTrackCrudScopesByAlbumAndSupportsRebuild() = runBlocking {
+        val releaseTrackDao = database.albumReleaseTrackDao()
+        val trackOne = AlbumReleaseTrackEntity(
             albumId = "album-1",
             providerTrackId = "track-1",
             title = "Ivy",
             trackNumber = 3
         )
-        val trackTwo = AlbumMissingTrackEntity(
+        val trackTwo = AlbumReleaseTrackEntity(
             albumId = "album-1",
             providerTrackId = "track-2",
             title = "Pink + White",
             trackNumber = 4
         )
 
-        missingTrackDao.insertAll(listOf(trackOne, trackTwo))
-        assertEquals(listOf(trackOne, trackTwo), missingTrackDao.getForAlbum("album-1"))
-        assertEquals(listOf(trackOne, trackTwo), missingTrackDao.observeForAlbum("album-1").first())
+        releaseTrackDao.insertAll(listOf(trackOne, trackTwo))
+        assertEquals(listOf(trackOne, trackTwo), releaseTrackDao.getForAlbum("album-1"))
+        assertEquals(listOf(trackOne, trackTwo), releaseTrackDao.observeForAlbum("album-1").first())
+        assertEquals(listOf(trackOne, trackTwo), releaseTrackDao.observeAll().first())
 
         // Simulate a re-match rebuild: clear this album's rows and insert a fresh set,
-        // without disturbing another album's missing tracks.
-        val otherAlbumTrack = AlbumMissingTrackEntity(
+        // without disturbing another album's release tracks.
+        val otherAlbumTrack = AlbumReleaseTrackEntity(
             albumId = "album-2",
             providerTrackId = "track-3",
             title = "Thinkin Bout You"
         )
-        missingTrackDao.insertAll(listOf(otherAlbumTrack))
+        releaseTrackDao.insertAll(listOf(otherAlbumTrack))
 
-        missingTrackDao.clearForAlbum("album-1")
-        missingTrackDao.insertAll(listOf(trackOne))
+        releaseTrackDao.clearForAlbum("album-1")
+        releaseTrackDao.insertAll(listOf(trackOne))
 
-        assertEquals(listOf(trackOne), missingTrackDao.getForAlbum("album-1"))
-        assertEquals(listOf(otherAlbumTrack), missingTrackDao.getForAlbum("album-2"))
+        assertEquals(listOf(trackOne), releaseTrackDao.getForAlbum("album-1"))
+        assertEquals(listOf(otherAlbumTrack), releaseTrackDao.getForAlbum("album-2"))
     }
 }

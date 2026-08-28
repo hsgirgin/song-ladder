@@ -92,6 +92,59 @@ private abstract class SongLadderDatabaseV2 : RoomDatabase() {
     abstract fun rankingSettingsDao(): RankingSettingsDaoV2
 }
 
+/**
+ * Frozen pre-Slice-4 shape of the table that [SongLadderDatabase.MIGRATION_3_4] renames
+ * from `album_missing_tracks` to `album_release_tracks` - needed because the live
+ * [AlbumReleaseTrackEntity] now targets the new table name, so it can't stand in for the
+ * "before" snapshot the way [RankingSettingsEntityV2] does above.
+ */
+@Entity(tableName = "album_missing_tracks", primaryKeys = ["albumId", "providerTrackId"])
+private data class AlbumMissingTrackEntityV3(
+    val albumId: String,
+    val providerTrackId: String,
+    val title: String,
+    val trackNumber: Int? = null,
+    val artworkUrl: String? = null
+)
+
+@Dao
+private interface AlbumMissingTrackDaoV3 {
+    @Query("SELECT * FROM album_missing_tracks WHERE albumId = :albumId")
+    suspend fun getForAlbum(albumId: String): List<AlbumMissingTrackEntityV3>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(tracks: List<AlbumMissingTrackEntityV3>)
+}
+
+/**
+ * Version 3 snapshot (post [SongLadderDatabase.MIGRATION_2_3]) used to verify
+ * [SongLadderDatabase.MIGRATION_3_4] in isolation, the same way [SongLadderDatabaseV1]
+ * and [SongLadderDatabaseV2] verify their respective migrations. The live
+ * [SongLadderDatabase] moved on to version 4, so it can no longer stand in for "v3" the
+ * way it used to.
+ */
+@Database(
+    entities = [
+        SongEntity::class,
+        RankingSubjectEntity::class,
+        MatchupEventEntity::class,
+        RankingSettingsEntity::class,
+        AppStatsEntity::class,
+        ImportBatchEntity::class,
+        SuggestionDismissalEntity::class,
+        AlbumEntity::class,
+        AlbumTrackExclusionEntity::class,
+        AlbumMissingTrackEntityV3::class
+    ],
+    version = 3,
+    exportSchema = false
+)
+private abstract class SongLadderDatabaseV3 : RoomDatabase() {
+    abstract fun songDao(): SongDao
+    abstract fun albumDao(): AlbumDao
+    abstract fun albumMissingTrackDaoV3(): AlbumMissingTrackDaoV3
+}
+
 @RunWith(AndroidJUnit4::class)
 class SongLadderMigrationTest {
     @Test
@@ -119,7 +172,11 @@ class SongLadderMigrationTest {
         v1.close()
 
         val v2 = Room.databaseBuilder(context, SongLadderDatabase::class.java, dbFile.absolutePath)
-            .addMigrations(SongLadderDatabase.MIGRATION_1_2, SongLadderDatabase.MIGRATION_2_3)
+            .addMigrations(
+                SongLadderDatabase.MIGRATION_1_2,
+                SongLadderDatabase.MIGRATION_2_3,
+                SongLadderDatabase.MIGRATION_3_4
+            )
             .allowMainThreadQueries()
             .build()
         try {
@@ -169,7 +226,11 @@ class SongLadderMigrationTest {
         v2.close()
 
         val v3 = Room.databaseBuilder(context, SongLadderDatabase::class.java, dbFile.absolutePath)
-            .addMigrations(SongLadderDatabase.MIGRATION_1_2, SongLadderDatabase.MIGRATION_2_3)
+            .addMigrations(
+                SongLadderDatabase.MIGRATION_1_2,
+                SongLadderDatabase.MIGRATION_2_3,
+                SongLadderDatabase.MIGRATION_3_4
+            )
             .allowMainThreadQueries()
             .build()
         try {
@@ -200,15 +261,71 @@ class SongLadderMigrationTest {
             v3.albumTrackExclusionDao().insert(exclusion)
             assertEquals(exclusion, v3.albumTrackExclusionDao().get("song-1"))
 
-            val missingTrack = AlbumMissingTrackEntity(
+            val missingTrack = AlbumReleaseTrackEntity(
                 albumId = "frank ocean::blonde",
                 providerTrackId = "track-1",
                 title = "Ivy"
             )
-            v3.albumMissingTrackDao().insertAll(listOf(missingTrack))
-            assertEquals(listOf(missingTrack), v3.albumMissingTrackDao().getForAlbum("frank ocean::blonde"))
+            v3.albumReleaseTrackDao().insertAll(listOf(missingTrack))
+            assertEquals(listOf(missingTrack), v3.albumReleaseTrackDao().getForAlbum("frank ocean::blonde"))
         } finally {
             v3.close()
+            dbFile.delete()
+            File(dbFile.path + "-wal").delete()
+            File(dbFile.path + "-shm").delete()
+        }
+    }
+
+    @Test
+    fun migrationFromV3RenamesMissingTracksTableAndPreservesRows() = runBlocking {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val dbFile = context.getDatabasePath("migration-v3-v4-test.db")
+        dbFile.delete()
+        File(dbFile.path + "-wal").delete()
+        File(dbFile.path + "-shm").delete()
+
+        // Build a real v3 database via the historical migration path (1->2->3),
+        // seeding a row through the table's old name/shape, then reopen it at v4 and
+        // verify the row survived the rename under the new dao/entity.
+        val v3 = Room.databaseBuilder(context, SongLadderDatabaseV3::class.java, dbFile.absolutePath)
+            .addMigrations(SongLadderDatabase.MIGRATION_1_2, SongLadderDatabase.MIGRATION_2_3)
+            .allowMainThreadQueries()
+            .build()
+        v3.albumDao().insert(
+            AlbumEntity(
+                id = "frank ocean::blonde",
+                title = "Blonde",
+                artist = "Frank Ocean",
+                normalizedTitle = "blonde",
+                normalizedArtist = "frank ocean",
+                createdAt = 1234L
+            )
+        )
+        v3.albumMissingTrackDaoV3().insertAll(
+            listOf(
+                AlbumMissingTrackEntityV3(
+                    albumId = "frank ocean::blonde",
+                    providerTrackId = "track-1",
+                    title = "Ivy"
+                )
+            )
+        )
+        v3.close()
+
+        val v4 = Room.databaseBuilder(context, SongLadderDatabase::class.java, dbFile.absolutePath)
+            .addMigrations(
+                SongLadderDatabase.MIGRATION_1_2,
+                SongLadderDatabase.MIGRATION_2_3,
+                SongLadderDatabase.MIGRATION_3_4
+            )
+            .allowMainThreadQueries()
+            .build()
+        try {
+            val tracks = v4.albumReleaseTrackDao().getForAlbum("frank ocean::blonde")
+            assertEquals(1, tracks.size)
+            assertEquals("Ivy", tracks.single().title)
+        } finally {
+            v4.close()
             dbFile.delete()
             File(dbFile.path + "-wal").delete()
             File(dbFile.path + "-shm").delete()

@@ -38,14 +38,6 @@ data class AlbumTrackExclusion(
     val excludedAt: Long
 )
 
-data class AlbumMissingTrack(
-    val albumId: String,
-    val providerTrackId: String,
-    val title: String,
-    val trackNumber: Int? = null,
-    val artworkUrl: String? = null
-)
-
 data class AlbumTrackRow(
     val song: Song,
     val excludedFromAverage: Boolean,
@@ -66,7 +58,11 @@ data class RankedAlbum(
 data class AlbumDetail(
     val album: Album,
     val tracks: List<AlbumTrackRow>,
-    val missingTracks: List<AlbumMissingTrack>,
+    // Release tracks with no owned-song title match anywhere in the artist's library -
+    // see AlbumMatchingEngine.missingTracks. Reuses AlbumReleaseTrack (the same shape a
+    // provider lookup returns) rather than a dedicated type, since this is just that
+    // list filtered down, not independently persisted.
+    val missingTracks: List<AlbumReleaseTrack>,
     val scoreTenths: Int?,
     val includedRatedTrackCount: Int
 )

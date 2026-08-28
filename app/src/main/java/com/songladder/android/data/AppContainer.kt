@@ -81,7 +81,7 @@ class AppContainer(context: Context) {
         appStatsDao = database.appStatsDao(),
         albumDao = database.albumDao(),
         albumTrackExclusionDao = database.albumTrackExclusionDao(),
-        albumMissingTrackDao = database.albumMissingTrackDao(),
+        albumReleaseTrackDao = database.albumReleaseTrackDao(),
         suggestionDismissalDao = database.suggestionDismissalDao(),
         jsonPorter = jsonPorter,
         matchupEngine = matchupEngine
@@ -95,7 +95,7 @@ class AppContainer(context: Context) {
         songDao = database.songDao(),
         albumDao = database.albumDao(),
         albumTrackExclusionDao = database.albumTrackExclusionDao(),
-        albumMissingTrackDao = database.albumMissingTrackDao(),
+        albumReleaseTrackDao = database.albumReleaseTrackDao(),
         albumMetadataProvider = albumMetadataProvider,
         settingsRepository = settingsRepository
     )

@@ -17,9 +17,9 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         SuggestionDismissalEntity::class,
         AlbumEntity::class,
         AlbumTrackExclusionEntity::class,
-        AlbumMissingTrackEntity::class
+        AlbumReleaseTrackEntity::class
     ],
-    version = 3,
+    version = 4,
     exportSchema = true
 )
 abstract class SongLadderDatabase : RoomDatabase() {
@@ -32,7 +32,7 @@ abstract class SongLadderDatabase : RoomDatabase() {
     abstract fun suggestionDismissalDao(): SuggestionDismissalDao
     abstract fun albumDao(): AlbumDao
     abstract fun albumTrackExclusionDao(): AlbumTrackExclusionDao
-    abstract fun albumMissingTrackDao(): AlbumMissingTrackDao
+    abstract fun albumReleaseTrackDao(): AlbumReleaseTrackDao
 
     companion object {
         val MIGRATION_1_2 = object : androidx.room.migration.Migration(1, 2) {
@@ -109,6 +109,16 @@ abstract class SongLadderDatabase : RoomDatabase() {
             }
         }
 
+        // Same rows, same primary key, same columns - only what the table represents
+        // changes (was "tracks missing from this album", now "every track on this
+        // album's matched release"), so a plain rename preserves existing missing-track
+        // rows as-is rather than needing a rebuild.
+        val MIGRATION_3_4 = object : androidx.room.migration.Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `album_missing_tracks` RENAME TO `album_release_tracks`")
+            }
+        }
+
         @Volatile
         private var instance: SongLadderDatabase? = null
 
@@ -118,7 +128,7 @@ abstract class SongLadderDatabase : RoomDatabase() {
                     context,
                     SongLadderDatabase::class.java,
                     "song_ladder.db"
-                ).addMigrations(MIGRATION_1_2, MIGRATION_2_3).build().also { instance = it }
+                ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4).build().also { instance = it }
             }
         }
     }

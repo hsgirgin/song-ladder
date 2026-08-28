@@ -38,7 +38,7 @@ import androidx.compose.ui.window.DialogProperties
 import com.songladder.android.R
 import com.songladder.android.domain.model.AlbumDetail
 import com.songladder.android.domain.model.AlbumMatchStatus
-import com.songladder.android.domain.model.AlbumMissingTrack
+import com.songladder.android.domain.model.AlbumReleaseTrack
 import com.songladder.android.domain.model.AlbumTrackRow
 import com.songladder.android.ui.components.MatchCandidateRow
 import com.songladder.android.ui.components.ScoreBadge
@@ -139,7 +139,7 @@ internal fun AlbumDetailDialog(
                             detail.missingTracks.forEach { track ->
                                 MissingTrackListItem(
                                     track = track,
-                                    onAdd = { onAddMissingTracks(listOf(track.providerTrackId)) }
+                                    onAdd = { onAddMissingTracks(listOf(track.trackId)) }
                                 )
                             }
                         }
@@ -246,7 +246,7 @@ private fun AlbumTrackListItem(
 
 @Composable
 private fun MissingTrackListItem(
-    track: AlbumMissingTrack,
+    track: AlbumReleaseTrack,
     onAdd: () -> Unit,
     modifier: Modifier = Modifier
 ) {

@@ -206,7 +206,7 @@ class DefaultImportRepositoryTest {
         appStatsDao = database.appStatsDao(),
         albumDao = database.albumDao(),
         albumTrackExclusionDao = database.albumTrackExclusionDao(),
-        albumMissingTrackDao = database.albumMissingTrackDao(),
+        albumReleaseTrackDao = database.albumReleaseTrackDao(),
         suggestionDismissalDao = database.suggestionDismissalDao(),
         jsonPorter = SongLadderJsonPorter()
     )

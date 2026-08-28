@@ -140,8 +140,13 @@ data class AlbumTrackExclusionEntity(
     val excludedAt: Long
 )
 
-@Entity(tableName = "album_missing_tracks", primaryKeys = ["albumId", "providerTrackId"])
-data class AlbumMissingTrackEntity(
+// Holds every track on the matched release, not just the ones the user doesn't own -
+// "missing" is now a query-time filter (tracks with no owned-song title match anywhere
+// in the artist's library) rather than a separately persisted diff. Persisting the full
+// tracklist is what lets a single owned/ranked song count toward more than one Album's
+// average (e.g. standard vs. deluxe editions) by title match, without a replica Song row.
+@Entity(tableName = "album_release_tracks", primaryKeys = ["albumId", "providerTrackId"])
+data class AlbumReleaseTrackEntity(
     val albumId: String,
     val providerTrackId: String,
     val title: String,
