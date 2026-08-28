@@ -53,6 +53,27 @@ class AlbumMatchingEngine {
         return release.tracks.filter { track -> normalize(track.title) !in owned }
     }
 
+    /**
+     * Orders [candidates] by the same scoring [classifyMatch] uses to pick a best
+     * match, best first - for the manual release picker, which otherwise shows
+     * candidates in whatever order the metadata provider happened to fetch them in
+     * (term search results first, then an artist's full discography appended), with
+     * no relation to how well any of them actually fit this album. Unlike
+     * [classifyMatch], nothing is dropped: a candidate [scoreCandidate] filters out
+     * (artist overlap too low to score) still needs to be pickable by hand, so it
+     * sorts to the bottom rather than disappearing.
+     */
+    fun rankCandidates(
+        localTitle: String,
+        localArtist: String,
+        ownedTrackTitles: List<String>,
+        candidates: List<AlbumReleaseCandidate>
+    ): List<AlbumReleaseCandidate> =
+        candidates
+            .map { candidate -> candidate to (scoreCandidate(localTitle, localArtist, ownedTrackTitles, candidate) ?: -1.0) }
+            .sortedByDescending { it.second }
+            .map { it.first }
+
     private fun scoreCandidate(
         localTitle: String,
         localArtist: String,

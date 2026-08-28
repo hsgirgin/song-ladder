@@ -112,6 +112,47 @@ class AlbumMatchingEngineTest {
     }
 
     @Test
+    fun `rank candidates puts the best-scoring release first regardless of fetch order`() {
+        // Fetch order mirrors what ItunesAlbumMetadataProvider actually returns for an
+        // artist with a large discography - unrelated releases from the term search,
+        // then a big alphabetically/catalog-ordered discography dump with the real
+        // match buried partway through.
+        val ranked = engine.rankCandidates(
+            localTitle = "Humbug",
+            localArtist = "Arctic Monkeys",
+            ownedTrackTitles = List(10) { "Track ${it + 1}" },
+            candidates = listOf(
+                AlbumReleaseCandidate(collectionId = "the-car", collectionName = "The Car", artistName = "Arctic Monkeys", trackCount = 10),
+                AlbumReleaseCandidate(collectionId = "am", collectionName = "AM", artistName = "Arctic Monkeys", trackCount = 12),
+                AlbumReleaseCandidate(
+                    collectionId = "humbug-bonus",
+                    collectionName = "Humbug (Bonus Track Version)",
+                    artistName = "Arctic Monkeys",
+                    trackCount = 11
+                ),
+                AlbumReleaseCandidate(collectionId = "suck-it-and-see", collectionName = "Suck It and See", artistName = "Arctic Monkeys", trackCount = 12)
+            )
+        )
+
+        assertEquals("humbug-bonus", ranked.first().collectionId)
+    }
+
+    @Test
+    fun `rank candidates keeps a low artist-overlap release pickable rather than dropping it`() {
+        val ranked = engine.rankCandidates(
+            localTitle = "Blonde",
+            localArtist = "Frank Ocean",
+            ownedTrackTitles = List(17) { "Track ${it + 1}" },
+            candidates = listOf(
+                AlbumReleaseCandidate(collectionId = "unrelated", collectionName = "Random Access Memories", artistName = "Daft Punk", trackCount = 13),
+                AlbumReleaseCandidate(collectionId = "collection-1", collectionName = "Blonde", artistName = "Frank Ocean", trackCount = 17)
+            )
+        )
+
+        assertEquals(listOf("collection-1", "unrelated"), ranked.map { it.collectionId })
+    }
+
+    @Test
     fun `missing tracks excludes titles the user already owns`() {
         val lookup = AlbumReleaseLookup(
             collectionId = "collection-1",

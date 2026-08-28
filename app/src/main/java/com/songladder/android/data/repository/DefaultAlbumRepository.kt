@@ -242,7 +242,8 @@ class DefaultAlbumRepository(
 
     override suspend fun searchReleaseCandidates(albumId: String): Result<List<AlbumReleaseCandidate>> = runCatching {
         val album = albumDao.get(albumId) ?: error("Album not found.")
-        albumMetadataProvider.searchReleases(album.artist, album.title).getOrThrow()
+        val candidates = albumMetadataProvider.searchReleases(album.artist, album.title).getOrThrow()
+        matchingEngine.rankCandidates(album.title, album.artist, ownedTrackTitles(album), candidates)
     }
 
     private suspend fun discoverAndMatch(groupings: List<DiscoveredGrouping>) {
