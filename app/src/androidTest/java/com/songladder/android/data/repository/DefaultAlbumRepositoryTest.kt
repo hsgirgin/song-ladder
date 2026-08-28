@@ -270,6 +270,50 @@ class DefaultAlbumRepositoryTest {
     }
 
     @Test
+    fun refreshAllMetadataForceRefreshesEveryMatchedAlbum() = runBlocking {
+        val provider = FakeAlbumMetadataProvider(
+            lookupResults = mutableMapOf(
+                "collection-1" to Result.success(
+                    AlbumReleaseLookup(
+                        collectionId = "collection-1",
+                        collectionName = "Blonde",
+                        artistName = "Frank Ocean",
+                        trackCount = 2,
+                        tracks = listOf(
+                            AlbumReleaseTrack(trackId = "t1", title = "Nikes", trackNumber = 1),
+                            AlbumReleaseTrack(trackId = "t2", title = "Ivy", trackNumber = 2)
+                        )
+                    )
+                ),
+                "collection-2" to Result.success(
+                    AlbumReleaseLookup(
+                        collectionId = "collection-2",
+                        collectionName = "Random Access Memories",
+                        artistName = "Daft Punk",
+                        trackCount = 1,
+                        tracks = listOf(AlbumReleaseTrack(trackId = "t3", title = "Get Lucky", trackNumber = 1))
+                    )
+                )
+            )
+        )
+        val repository = repository(provider)
+        insertSong(id = "song-1", title = "Nikes", artist = "Frank Ocean", album = "Blonde")
+        insertSong(id = "song-2", title = "Get Lucky", artist = "Daft Punk", album = "Random Access Memories")
+        val albumOneId = waitForAlbum { it.title == "Blonde" }.id
+        val albumTwoId = waitForAlbum { it.title == "Random Access Memories" }.id
+        confirmAlbum(albumOneId, collectionId = "collection-1", trackCount = 1)
+        confirmAlbum(albumTwoId, collectionId = "collection-2", trackCount = 0)
+
+        // Two already-matched albums - proves refreshAllMetadata actually reaches both
+        // (not just the first) using the shorter single-request spacing rather than the
+        // 12s auto-match one, which would make this test itself take 12s+ to pass.
+        repository.refreshAllMetadata().getOrThrow()
+
+        assertEquals(2, database.albumDao().get(albumOneId)?.providerTrackCount)
+        assertEquals(1, database.albumDao().get(albumTwoId)?.providerTrackCount)
+    }
+
+    @Test
     fun retryPendingMatchesOnlyRunsWhenMetadataRetrievalIsEnabled() = runBlocking {
         val provider = FakeAlbumMetadataProvider(searchResult = Result.success(emptyList()))
         val repository = repository(provider)

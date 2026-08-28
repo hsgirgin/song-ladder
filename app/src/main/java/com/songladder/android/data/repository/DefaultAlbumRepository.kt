@@ -260,14 +260,21 @@ class DefaultAlbumRepository(
     override suspend fun refreshAllMetadata(): Result<Unit> = runCatching {
         if (!settingsRepository.observeSettings().first().metadataRetrievalEnabled) return@runCatching
         val albums = albumDao.getAll()
-        // Spaced out the same way matchPendingAlbums is - a bulk refresh across a whole
-        // library is exactly the burst-of-requests case the iTunes rate limit comment
-        // there warns about, just triggered by a button instead of a sync. One album's
-        // network failure (unlike attemptMatch's own search step, this can throw - see
-        // the getOrThrow() below) is logged and skipped rather than aborting the rest
-        // of the batch, the same as the auto-discovery collector's per-pass failures.
+        // A bulk refresh across a whole library is the burst-of-requests case the
+        // iTunes rate limit comment on matchAttemptSpacingMillis warns about, just
+        // triggered by a button instead of a sync - but most albums here are already
+        // matched, and refreshMetadataForAlbum's matched branch costs exactly one
+        // request (lookupRelease), not attemptMatch's worst-case four. Reusing the
+        // 12s auto-match spacing for that made refreshing an already-matched library
+        // take albums.size * 12s for no reason - indistinguishable from a hang to
+        // whoever's watching the spinner. REFRESH_SPACING_MILLIS (3s = 60s / iTunes'
+        // ~20 req/min budget) covers the common one-request case at full throughput;
+        // unmatched albums still fall back to attemptMatch's own wider spacing since
+        // that path can burn up to four requests in one go.
         albums.forEachIndexed { index, album ->
-            if (index > 0) delay(matchAttemptSpacingMillis)
+            if (index > 0) {
+                delay(if (album.providerCollectionId != null) REFRESH_SPACING_MILLIS else matchAttemptSpacingMillis)
+            }
             try {
                 refreshMetadataForAlbum(album)
             } catch (e: CancellationException) {
@@ -464,5 +471,10 @@ class DefaultAlbumRepository(
         // safely under iTunes' informal ~20 req/min/IP limit even if every album in
         // the batch auto-matches.
         const val MATCH_ATTEMPT_SPACING_MILLIS = 12_000L
+
+        // A single-request refresh (already-matched album, just lookupRelease) can be
+        // spaced far tighter than the auto-match worst case above - 3s keeps a whole
+        // library of one-request refreshes right at iTunes' ~20 req/min/IP budget.
+        const val REFRESH_SPACING_MILLIS = 3_000L
     }
 }
