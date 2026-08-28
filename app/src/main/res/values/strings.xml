@@ -70,6 +70,17 @@
     <string name="rankings_album_track_progress">%1$d/%2$d rated</string>
     <string name="rankings_album_empty_title">No albums yet</string>
     <string name="rankings_album_empty_message">Albums appear automatically once you add songs that share an artist and album.</string>
+    <string name="rankings_open_album_details">Open album details</string>
+    <string name="rankings_album_refresh_metadata">Refresh metadata</string>
+    <string name="rankings_album_tracks_title">Tracks</string>
+    <string name="rankings_album_missing_tracks_title">Missing tracks</string>
+    <string name="rankings_album_track_included">Included in average</string>
+    <string name="rankings_album_candidates_title">Choose the correct release</string>
+    <string name="rankings_album_candidates_loading">Looking for releases…</string>
+    <string name="rankings_album_candidates_empty">No release options found.</string>
+    <string name="rankings_album_candidates_error">Could not load release options. Try again.</string>
+    <string name="rankings_album_choose_action">Choose</string>
+    <string name="rankings_album_review_title">Albums to review</string>
     <string name="settings_title">Settings</string>
     <string name="settings_autoplay_previews">Auto-play matchup previews</string>
     <string name="settings_show_tips_again">Show tips again</string>
@@ -123,6 +134,14 @@
     <plurals name="rankings_incomplete_albums_count">
         <item quantity="one">%1$d incomplete album</item>
         <item quantity="other">%1$d incomplete albums</item>
+    </plurals>
+    <plurals name="rankings_album_add_missing_tracks">
+        <item quantity="one">Add %1$d track</item>
+        <item quantity="other">Add %1$d tracks</item>
+    </plurals>
+    <plurals name="rankings_album_track_count">
+        <item quantity="one">%1$d track</item>
+        <item quantity="other">%1$d tracks</item>
     </plurals>
     <plurals name="rankings_accept_selected_suggestions_action">
         <item quantity="one">Accept %1$d suggestion</item>

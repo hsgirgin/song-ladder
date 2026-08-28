@@ -76,6 +76,12 @@ fun RankingsScreen(
         onToggleSuggestionSelection = viewModel::toggleSuggestionSelection,
         onClearSuggestionSelection = viewModel::clearSuggestionSelection,
         onAcceptSelectedSuggestions = viewModel::acceptSelectedSuggestions,
+        onShowAlbumDetails = viewModel::showAlbumDetails,
+        onHideAlbumDetails = viewModel::hideAlbumDetails,
+        onToggleAlbumTrackExcluded = viewModel::setAlbumTrackExcluded,
+        onAddAlbumMissingTracks = viewModel::addAlbumMissingTracks,
+        onChooseAlbumRelease = viewModel::chooseAlbumRelease,
+        onRefreshAlbumMetadata = viewModel::refreshAlbumMetadata,
         onOpenSettings = onOpenSettings,
         onAddSongs = onAddSongs
     )
@@ -104,6 +110,12 @@ internal fun RankingsScreenContent(
     onToggleSuggestionSelection: (String) -> Unit,
     onClearSuggestionSelection: () -> Unit,
     onAcceptSelectedSuggestions: () -> Unit,
+    onShowAlbumDetails: (String) -> Unit,
+    onHideAlbumDetails: () -> Unit,
+    onToggleAlbumTrackExcluded: (String, String, Boolean) -> Unit,
+    onAddAlbumMissingTracks: (String, List<String>) -> Unit,
+    onChooseAlbumRelease: (String, String) -> Unit,
+    onRefreshAlbumMetadata: (String) -> Unit,
     onOpenSettings: () -> Unit,
     onAddSongs: () -> Unit,
     modifier: Modifier = Modifier
@@ -217,6 +229,7 @@ internal fun RankingsScreenContent(
             RankingsTab.ALBUMS -> RankingsAlbumsContent(
                 uiState = uiState,
                 onToggleIncompleteAlbums = onToggleIncompleteAlbums,
+                onShowAlbumDetails = onShowAlbumDetails,
                 modifier = Modifier.weight(1f)
             )
             RankingsTab.ARTISTS -> ComingSoonContent(modifier = Modifier.weight(1f))
@@ -232,6 +245,20 @@ internal fun RankingsScreenContent(
             onDismiss = onHideDetails,
             onSaveScore = { scoreTenths -> onSaveScore(song.id, scoreTenths) },
             onDeleteSong = { onDeleteSong(song) }
+        )
+    }
+
+    uiState.albumDetail?.let { detail ->
+        val rank = uiState.rankedAlbums.firstOrNull { it.album.id == detail.album.id }?.rank
+        AlbumDetailDialog(
+            detail = detail,
+            rank = rank,
+            matchCandidates = uiState.albumMatchCandidates,
+            onDismiss = onHideAlbumDetails,
+            onToggleTrackExcluded = { songId, excluded -> onToggleAlbumTrackExcluded(detail.album.id, songId, excluded) },
+            onAddMissingTracks = { providerTrackIds -> onAddAlbumMissingTracks(detail.album.id, providerTrackIds) },
+            onChooseRelease = { collectionId -> onChooseAlbumRelease(detail.album.id, collectionId) },
+            onRefreshMetadata = { onRefreshAlbumMetadata(detail.album.id) }
         )
     }
 }

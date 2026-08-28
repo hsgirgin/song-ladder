@@ -17,6 +17,7 @@ import com.songladder.android.data.local.toDomain
 import com.songladder.android.domain.engine.AlbumMatchingEngine
 import com.songladder.android.domain.model.AlbumDetail
 import com.songladder.android.domain.model.AlbumMatchStatus
+import com.songladder.android.domain.model.AlbumReleaseCandidate
 import com.songladder.android.domain.model.AlbumTrackRow
 import com.songladder.android.domain.model.AlbumReleaseLookup
 import com.songladder.android.domain.model.MusicSourceType
@@ -237,6 +238,11 @@ class DefaultAlbumRepository(
     override suspend fun retryPendingMatches(): Result<Unit> = runCatching {
         if (!settingsRepository.observeSettings().first().metadataRetrievalEnabled) return@runCatching
         matchPendingAlbums(albumDao.getByMatchStatus(AlbumMatchStatus.PENDING.name))
+    }
+
+    override suspend fun searchReleaseCandidates(albumId: String): Result<List<AlbumReleaseCandidate>> = runCatching {
+        val album = albumDao.get(albumId) ?: error("Album not found.")
+        albumMetadataProvider.searchReleases(album.artist, album.title).getOrThrow()
     }
 
     private suspend fun discoverAndMatch(groupings: List<DiscoveredGrouping>) {

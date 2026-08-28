@@ -8,6 +8,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.isToggleable
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -15,7 +16,11 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.dp
 import com.songladder.android.domain.model.Album
+import com.songladder.android.domain.model.AlbumDetail
 import com.songladder.android.domain.model.AlbumMatchStatus
+import com.songladder.android.domain.model.AlbumMissingTrack
+import com.songladder.android.domain.model.AlbumReleaseCandidate
+import com.songladder.android.domain.model.AlbumTrackRow
 import com.songladder.android.domain.model.RankedAlbum
 import com.songladder.android.domain.model.RankingPresentation
 import com.songladder.android.domain.model.RankingSettings
@@ -99,6 +104,12 @@ class RankingsScreenTest {
                     onToggleSuggestionSelection = {},
                     onClearSuggestionSelection = {},
                     onAcceptSelectedSuggestions = {},
+                    onShowAlbumDetails = {},
+                    onHideAlbumDetails = {},
+                    onToggleAlbumTrackExcluded = { _, _, _ -> },
+                    onAddAlbumMissingTracks = { _, _ -> },
+                    onChooseAlbumRelease = { _, _ -> },
+                    onRefreshAlbumMetadata = {},
                     onOpenSettings = {},
                     onAddSongs = {}
                 )
@@ -148,6 +159,12 @@ class RankingsScreenTest {
                     onToggleSuggestionSelection = {},
                     onClearSuggestionSelection = {},
                     onAcceptSelectedSuggestions = {},
+                    onShowAlbumDetails = {},
+                    onHideAlbumDetails = {},
+                    onToggleAlbumTrackExcluded = { _, _, _ -> },
+                    onAddAlbumMissingTracks = { _, _ -> },
+                    onChooseAlbumRelease = { _, _ -> },
+                    onRefreshAlbumMetadata = {},
                     onOpenSettings = {},
                     onAddSongs = {}
                 )
@@ -202,6 +219,12 @@ class RankingsScreenTest {
                     onToggleSuggestionSelection = {},
                     onClearSuggestionSelection = {},
                     onAcceptSelectedSuggestions = {},
+                    onShowAlbumDetails = {},
+                    onHideAlbumDetails = {},
+                    onToggleAlbumTrackExcluded = { _, _, _ -> },
+                    onAddAlbumMissingTracks = { _, _ -> },
+                    onChooseAlbumRelease = { _, _ -> },
+                    onRefreshAlbumMetadata = {},
                     onOpenSettings = {},
                     onAddSongs = {}
                 )
@@ -261,6 +284,12 @@ class RankingsScreenTest {
                     onToggleSuggestionSelection = {},
                     onClearSuggestionSelection = {},
                     onAcceptSelectedSuggestions = {},
+                    onShowAlbumDetails = {},
+                    onHideAlbumDetails = {},
+                    onToggleAlbumTrackExcluded = { _, _, _ -> },
+                    onAddAlbumMissingTracks = { _, _ -> },
+                    onChooseAlbumRelease = { _, _ -> },
+                    onRefreshAlbumMetadata = {},
                     onOpenSettings = {},
                     onAddSongs = {}
                 )
@@ -303,6 +332,12 @@ class RankingsScreenTest {
                     onToggleSuggestionSelection = {},
                     onClearSuggestionSelection = {},
                     onAcceptSelectedSuggestions = {},
+                    onShowAlbumDetails = {},
+                    onHideAlbumDetails = {},
+                    onToggleAlbumTrackExcluded = { _, _, _ -> },
+                    onAddAlbumMissingTracks = { _, _ -> },
+                    onChooseAlbumRelease = { _, _ -> },
+                    onRefreshAlbumMetadata = {},
                     onOpenSettings = { openedSettings = true },
                     onAddSongs = {}
                 )
@@ -352,6 +387,12 @@ class RankingsScreenTest {
                     onToggleSuggestionSelection = {},
                     onClearSuggestionSelection = {},
                     onAcceptSelectedSuggestions = {},
+                    onShowAlbumDetails = {},
+                    onHideAlbumDetails = {},
+                    onToggleAlbumTrackExcluded = { _, _, _ -> },
+                    onAddAlbumMissingTracks = { _, _ -> },
+                    onChooseAlbumRelease = { _, _ -> },
+                    onRefreshAlbumMetadata = {},
                     onOpenSettings = {},
                     onAddSongs = {}
                 )
@@ -393,6 +434,12 @@ class RankingsScreenTest {
                     onToggleSuggestionSelection = {},
                     onClearSuggestionSelection = {},
                     onAcceptSelectedSuggestions = {},
+                    onShowAlbumDetails = {},
+                    onHideAlbumDetails = {},
+                    onToggleAlbumTrackExcluded = { _, _, _ -> },
+                    onAddAlbumMissingTracks = { _, _ -> },
+                    onChooseAlbumRelease = { _, _ -> },
+                    onRefreshAlbumMetadata = {},
                     onOpenSettings = {},
                     onAddSongs = {}
                 )
@@ -457,6 +504,12 @@ class RankingsScreenTest {
                     onToggleSuggestionSelection = {},
                     onClearSuggestionSelection = {},
                     onAcceptSelectedSuggestions = {},
+                    onShowAlbumDetails = {},
+                    onHideAlbumDetails = {},
+                    onToggleAlbumTrackExcluded = { _, _, _ -> },
+                    onAddAlbumMissingTracks = { _, _ -> },
+                    onChooseAlbumRelease = { _, _ -> },
+                    onRefreshAlbumMetadata = {},
                     onOpenSettings = {},
                     onAddSongs = {}
                 )
@@ -511,7 +564,8 @@ class RankingsScreenTest {
                         incompleteAlbums = listOf(rankedAlbum(id = "incomplete", title = "In Progress", scoreTenths = null)),
                         incompleteAlbumsExpanded = expanded
                     ),
-                    onToggleIncompleteAlbums = { expanded = !expanded }
+                    onToggleIncompleteAlbums = { expanded = !expanded },
+                    onShowAlbumDetails = {}
                 )
             }
         }
@@ -519,6 +573,212 @@ class RankingsScreenTest {
         composeRule.onNodeWithText("In Progress").assertDoesNotExist()
         composeRule.onNodeWithText("1 incomplete album").performClick()
         composeRule.onNodeWithText("In Progress").assertIsDisplayed()
+    }
+
+    @Test
+    fun albumDetailDialog_showsArtistRankAndScoreForARankedAlbum() {
+        composeRule.setContent {
+            SongLadderTheme {
+                AlbumDetailDialog(
+                    detail = albumDetail(id = "album-1", title = "Blonde", artist = "Frank Ocean", scoreTenths = 80),
+                    rank = 1,
+                    matchCandidates = null,
+                    onDismiss = {},
+                    onToggleTrackExcluded = { _, _ -> },
+                    onAddMissingTracks = {},
+                    onChooseRelease = {},
+                    onRefreshMetadata = {}
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("Frank Ocean").assertIsDisplayed()
+        composeRule.onNodeWithText("#1").assertIsDisplayed()
+        composeRule.onNodeWithText("8.0").assertIsDisplayed()
+    }
+
+    @Test
+    fun albumDetailDialog_showsUnrankedBadgeWhenTheAlbumHasNoScoreYet() {
+        composeRule.setContent {
+            SongLadderTheme {
+                AlbumDetailDialog(
+                    detail = albumDetail(id = "album-1", scoreTenths = null),
+                    rank = null,
+                    matchCandidates = null,
+                    onDismiss = {},
+                    onToggleTrackExcluded = { _, _ -> },
+                    onAddMissingTracks = {},
+                    onChooseRelease = {},
+                    onRefreshMetadata = {}
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("Unranked").assertIsDisplayed()
+    }
+
+    @Test
+    fun albumDetailDialog_exclusionCheckboxTogglesTheTappedTrack() {
+        var toggled: Pair<String, Boolean>? = null
+        composeRule.setContent {
+            SongLadderTheme {
+                AlbumDetailDialog(
+                    detail = albumDetail(
+                        id = "album-1",
+                        scoreTenths = null,
+                        tracks = listOf(albumTrackRow(songId = "song-1", title = "Nikes", excluded = false))
+                    ),
+                    rank = null,
+                    matchCandidates = null,
+                    onDismiss = {},
+                    onToggleTrackExcluded = { songId, excluded -> toggled = songId to excluded },
+                    onAddMissingTracks = {},
+                    onChooseRelease = {},
+                    onRefreshMetadata = {}
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("Included in average").assertIsDisplayed()
+        composeRule.onNodeWithText("Nikes").assertIsDisplayed()
+        composeRule.onNode(isToggleable()).performClick()
+
+        composeRule.runOnIdle {
+            assertEquals("song-1" to true, toggled)
+        }
+    }
+
+    @Test
+    fun albumDetailDialog_missingTracksBulkAddInvokesCallbackWithSelectedIds() {
+        var added: List<String>? = null
+        composeRule.setContent {
+            SongLadderTheme {
+                AlbumDetailDialog(
+                    detail = albumDetail(id = "album-1", scoreTenths = null).copy(
+                        missingTracks = listOf(
+                            AlbumMissingTrack(albumId = "album-1", providerTrackId = "track-1", title = "Ivy")
+                        )
+                    ),
+                    rank = null,
+                    matchCandidates = null,
+                    onDismiss = {},
+                    onToggleTrackExcluded = { _, _ -> },
+                    onAddMissingTracks = { ids -> added = ids },
+                    onChooseRelease = {},
+                    onRefreshMetadata = {}
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("Ivy").assertIsDisplayed()
+        composeRule.onNode(isToggleable()).performClick()
+        composeRule.onNodeWithText("Add 1 track").performClick()
+
+        composeRule.runOnIdle {
+            assertEquals(listOf("track-1"), added)
+        }
+    }
+
+    @Test
+    fun albumDetailDialog_showsCandidatePickerOnlyWhenNeedsReview() {
+        val candidate = AlbumReleaseCandidate(collectionId = "collection-1", collectionName = "Blonde", artistName = "Frank Ocean", trackCount = 17)
+
+        composeRule.setContent {
+            SongLadderTheme {
+                AlbumDetailDialog(
+                    detail = albumDetail(id = "album-1", scoreTenths = null, matchStatus = AlbumMatchStatus.NEEDS_REVIEW),
+                    rank = null,
+                    matchCandidates = AlbumMatchCandidatesState(albumId = "album-1", isLoading = false, candidates = listOf(candidate)),
+                    onDismiss = {},
+                    onToggleTrackExcluded = { _, _ -> },
+                    onAddMissingTracks = {},
+                    onChooseRelease = {},
+                    onRefreshMetadata = {}
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("Choose the correct release").assertIsDisplayed()
+        composeRule.onNodeWithText("Choose").assertIsDisplayed()
+    }
+
+    @Test
+    fun albumDetailDialog_hidesCandidatePickerWhenAlreadyMatched() {
+        composeRule.setContent {
+            SongLadderTheme {
+                AlbumDetailDialog(
+                    detail = albumDetail(id = "album-1", scoreTenths = 80, matchStatus = AlbumMatchStatus.AUTO_MATCHED),
+                    rank = 1,
+                    matchCandidates = null,
+                    onDismiss = {},
+                    onToggleTrackExcluded = { _, _ -> },
+                    onAddMissingTracks = {},
+                    onChooseRelease = {},
+                    onRefreshMetadata = {}
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("Choose the correct release").assertDoesNotExist()
+    }
+
+    @Test
+    fun albumDetailDialog_refreshMetadataButtonInvokesCallback() {
+        var refreshed = false
+        composeRule.setContent {
+            SongLadderTheme {
+                AlbumDetailDialog(
+                    detail = albumDetail(id = "album-1", scoreTenths = null),
+                    rank = null,
+                    matchCandidates = null,
+                    onDismiss = {},
+                    onToggleTrackExcluded = { _, _ -> },
+                    onAddMissingTracks = {},
+                    onChooseRelease = {},
+                    onRefreshMetadata = { refreshed = true }
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("Refresh metadata").performClick()
+
+        composeRule.runOnIdle {
+            assertEquals(true, refreshed)
+        }
+    }
+
+    @Test
+    fun albumMatchReviewSection_chooseOpensDetailForThatAlbum() {
+        var chosenAlbumId: String? = null
+        composeRule.setContent {
+            SongLadderTheme {
+                AlbumMatchReviewSection(
+                    albums = listOf(
+                        rankedAlbum(id = "album-1", title = "Ambiguous", scoreTenths = null, matchStatus = AlbumMatchStatus.NEEDS_REVIEW)
+                    ),
+                    onChoose = { chosenAlbumId = it }
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("Albums to review").assertIsDisplayed()
+        composeRule.onNodeWithText("Ambiguous").assertIsDisplayed()
+        composeRule.onNodeWithText("Choose").performClick()
+
+        composeRule.runOnIdle {
+            assertEquals("album-1", chosenAlbumId)
+        }
+    }
+
+    @Test
+    fun albumMatchReviewSection_rendersNothingWhenNoAlbumsNeedReview() {
+        composeRule.setContent {
+            SongLadderTheme {
+                AlbumMatchReviewSection(albums = emptyList(), onChoose = {})
+            }
+        }
+
+        composeRule.onNodeWithText("Albums to review").assertDoesNotExist()
     }
 }
 
@@ -542,6 +802,30 @@ private fun rankedAlbum(
         scoreTenths = scoreTenths,
         includedRatedTrackCount = includedRatedTrackCount,
         totalOwnedTrackCount = totalOwnedTrackCount
+    )
+}
+
+private fun albumDetail(
+    id: String,
+    title: String = "Album $id",
+    artist: String = "Artist $id",
+    scoreTenths: Int?,
+    matchStatus: AlbumMatchStatus = AlbumMatchStatus.AUTO_MATCHED,
+    tracks: List<AlbumTrackRow> = emptyList()
+): AlbumDetail {
+    return AlbumDetail(
+        album = Album(id = id, title = title, artist = artist, matchStatus = matchStatus),
+        tracks = tracks,
+        missingTracks = emptyList(),
+        scoreTenths = scoreTenths,
+        includedRatedTrackCount = 0
+    )
+}
+
+private fun albumTrackRow(songId: String, title: String, excluded: Boolean): AlbumTrackRow {
+    return AlbumTrackRow(
+        song = rankingsSong(id = songId, title = title),
+        excludedFromAverage = excluded
     )
 }
 

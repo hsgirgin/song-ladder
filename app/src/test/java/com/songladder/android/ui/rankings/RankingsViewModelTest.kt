@@ -3,6 +3,8 @@ package com.songladder.android.ui.rankings
 import com.songladder.android.domain.model.Album
 import com.songladder.android.domain.model.AlbumDetail
 import com.songladder.android.domain.model.AlbumMatchStatus
+import com.songladder.android.domain.model.AlbumReleaseCandidate
+import com.songladder.android.domain.model.AlbumTrackRow
 import com.songladder.android.domain.model.AppStats
 import com.songladder.android.domain.model.DeletedRankingHistory
 import com.songladder.android.domain.model.MatchupEvent
@@ -27,6 +29,8 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.onCompletion
+import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -323,6 +327,126 @@ class RankingsViewModelTest {
     }
 
     @Test
+    fun `showing album details subscribes to the detail flow and hiding cancels it`() = runTest {
+        val albumRepository = FakeAlbumRepository(detail = albumDetail(id = "album-1"))
+        val viewModel = viewModel(albumRepository = albumRepository)
+        backgroundScope.launch(dispatcher) { viewModel.uiState.collect {} }
+        advanceUntilIdle()
+        assertEquals(0, albumRepository.detailSubscriptionCount)
+
+        viewModel.showAlbumDetails("album-1")
+        advanceUntilIdle()
+
+        assertEquals(1, albumRepository.detailSubscriptionCount)
+        assertEquals("album-1", viewModel.uiState.value.albumDetail?.album?.id)
+
+        viewModel.hideAlbumDetails()
+        advanceUntilIdle()
+
+        assertEquals(1, albumRepository.detailCancellationCount)
+        assertEquals(null, viewModel.uiState.value.albumDetail)
+    }
+
+    @Test
+    fun `toggling a track exclusion delegates to the album repository`() = runTest {
+        val albumRepository = FakeAlbumRepository(detail = albumDetail(id = "album-1"))
+        val viewModel = viewModel(albumRepository = albumRepository)
+        backgroundScope.launch(dispatcher) { viewModel.uiState.collect {} }
+        viewModel.showAlbumDetails("album-1")
+        advanceUntilIdle()
+
+        viewModel.setAlbumTrackExcluded("album-1", "song-1", excluded = true)
+        advanceUntilIdle()
+
+        assertEquals(listOf(Triple("album-1", "song-1", true)), albumRepository.excludedCalls)
+    }
+
+    @Test
+    fun `adding missing tracks delegates the selected ids to the album repository`() = runTest {
+        val albumRepository = FakeAlbumRepository()
+        val viewModel = viewModel(albumRepository = albumRepository)
+        backgroundScope.launch(dispatcher) { viewModel.uiState.collect {} }
+        advanceUntilIdle()
+
+        viewModel.addAlbumMissingTracks("album-1", listOf("track-1", "track-2"))
+        advanceUntilIdle()
+
+        assertEquals(listOf("album-1" to listOf("track-1", "track-2")), albumRepository.addMissingTracksCalls)
+    }
+
+    @Test
+    fun `adding missing tracks with no selection does not call the repository`() = runTest {
+        val albumRepository = FakeAlbumRepository()
+        val viewModel = viewModel(albumRepository = albumRepository)
+        backgroundScope.launch(dispatcher) { viewModel.uiState.collect {} }
+        advanceUntilIdle()
+
+        viewModel.addAlbumMissingTracks("album-1", emptyList())
+        advanceUntilIdle()
+
+        assertEquals(emptyList<Pair<String, List<String>>>(), albumRepository.addMissingTracksCalls)
+    }
+
+    @Test
+    fun `choosing an album release delegates to the album repository`() = runTest {
+        val albumRepository = FakeAlbumRepository()
+        val viewModel = viewModel(albumRepository = albumRepository)
+        backgroundScope.launch(dispatcher) { viewModel.uiState.collect {} }
+        advanceUntilIdle()
+
+        viewModel.chooseAlbumRelease("album-1", "collection-1")
+        advanceUntilIdle()
+
+        assertEquals(listOf("album-1" to "collection-1"), albumRepository.chooseReleaseCalls)
+    }
+
+    @Test
+    fun `opening a needs-review album loads match candidates exactly once`() = runTest {
+        val candidate = AlbumReleaseCandidate(collectionId = "collection-1", collectionName = "Blonde", artistName = "Frank Ocean")
+        val albumRepository = FakeAlbumRepository(
+            detail = albumDetail(id = "album-1", matchStatus = AlbumMatchStatus.NEEDS_REVIEW),
+            candidatesResult = Result.success(listOf(candidate))
+        )
+        val viewModel = viewModel(albumRepository = albumRepository)
+        backgroundScope.launch(dispatcher) { viewModel.uiState.collect {} }
+
+        viewModel.showAlbumDetails("album-1")
+        advanceUntilIdle()
+
+        assertEquals(listOf("album-1"), albumRepository.searchReleaseCandidatesCalls)
+        assertEquals(listOf(candidate), viewModel.uiState.value.albumMatchCandidates?.candidates)
+        assertEquals(false, viewModel.uiState.value.albumMatchCandidates?.isLoading)
+    }
+
+    @Test
+    fun `opening an already-matched album does not load match candidates`() = runTest {
+        val albumRepository = FakeAlbumRepository(
+            detail = albumDetail(id = "album-1", matchStatus = AlbumMatchStatus.AUTO_MATCHED)
+        )
+        val viewModel = viewModel(albumRepository = albumRepository)
+        backgroundScope.launch(dispatcher) { viewModel.uiState.collect {} }
+
+        viewModel.showAlbumDetails("album-1")
+        advanceUntilIdle()
+
+        assertEquals(emptyList<String>(), albumRepository.searchReleaseCandidatesCalls)
+        assertEquals(null, viewModel.uiState.value.albumMatchCandidates)
+    }
+
+    @Test
+    fun `refreshing album metadata delegates to the repository`() = runTest {
+        val albumRepository = FakeAlbumRepository()
+        val viewModel = viewModel(albumRepository = albumRepository)
+        backgroundScope.launch(dispatcher) { viewModel.uiState.collect {} }
+        advanceUntilIdle()
+
+        viewModel.refreshAlbumMetadata("album-1")
+        advanceUntilIdle()
+
+        assertEquals(listOf("album-1"), albumRepository.refreshMetadataCalls)
+    }
+
+    @Test
     fun `presentation changes persist while preserving other settings`() = runTest {
         val settingsRepository = FakeSettingsRepository(
             RankingSettings(
@@ -524,26 +648,61 @@ private class FakeRankingRepository(
 }
 
 private class FakeAlbumRepository(
-    albums: List<RankedAlbum> = emptyList()
+    albums: List<RankedAlbum> = emptyList(),
+    detail: AlbumDetail? = null,
+    private val candidatesResult: Result<List<AlbumReleaseCandidate>> = Result.success(emptyList())
 ) : AlbumRepository {
     private val albumsFlow = MutableStateFlow(albums)
+    private val detailFlow = MutableStateFlow(detail)
+    var detailSubscriptionCount = 0
+        private set
+    var detailCancellationCount = 0
+        private set
+    val excludedCalls = mutableListOf<Triple<String, String, Boolean>>()
+    val chooseReleaseCalls = mutableListOf<Pair<String, String>>()
+    val addMissingTracksCalls = mutableListOf<Pair<String, List<String>>>()
+    val refreshMetadataCalls = mutableListOf<String>()
+    val searchReleaseCandidatesCalls = mutableListOf<String>()
 
     override fun observeAlbums(): Flow<List<RankedAlbum>> = albumsFlow
 
-    override fun observeAlbumDetail(albumId: String): Flow<AlbumDetail?> = flowOf(null)
+    override fun observeAlbumDetail(albumId: String): Flow<AlbumDetail?> = detailFlow
+        .onStart { detailSubscriptionCount++ }
+        .onCompletion { detailCancellationCount++ }
 
-    override suspend fun setTrackExcluded(albumId: String, songId: String, excluded: Boolean): Result<Unit> =
-        Result.success(Unit)
+    override suspend fun setTrackExcluded(albumId: String, songId: String, excluded: Boolean): Result<Unit> {
+        excludedCalls += Triple(albumId, songId, excluded)
+        detailFlow.update { current ->
+            current?.copy(
+                tracks = current.tracks.map { track ->
+                    if (track.song.id == songId) track.copy(excludedFromAverage = excluded) else track
+                }
+            )
+        }
+        return Result.success(Unit)
+    }
 
-    override suspend fun chooseRelease(albumId: String, providerCollectionId: String): Result<Unit> =
-        Result.success(Unit)
+    override suspend fun chooseRelease(albumId: String, providerCollectionId: String): Result<Unit> {
+        chooseReleaseCalls += albumId to providerCollectionId
+        return Result.success(Unit)
+    }
 
-    override suspend fun addMissingTracks(albumId: String, providerTrackIds: List<String>): Result<Int> =
-        Result.success(0)
+    override suspend fun addMissingTracks(albumId: String, providerTrackIds: List<String>): Result<Int> {
+        addMissingTracksCalls += albumId to providerTrackIds
+        return Result.success(providerTrackIds.size)
+    }
 
-    override suspend fun refreshMetadata(albumId: String): Result<Unit> = Result.success(Unit)
+    override suspend fun refreshMetadata(albumId: String): Result<Unit> {
+        refreshMetadataCalls += albumId
+        return Result.success(Unit)
+    }
 
     override suspend fun retryPendingMatches(): Result<Unit> = Result.success(Unit)
+
+    override suspend fun searchReleaseCandidates(albumId: String): Result<List<AlbumReleaseCandidate>> {
+        searchReleaseCandidatesCalls += albumId
+        return candidatesResult
+    }
 }
 
 private class FakeSettingsRepository(
@@ -614,5 +773,21 @@ private fun rankedAlbum(
         scoreTenths = scoreTenths,
         includedRatedTrackCount = includedRatedTrackCount,
         totalOwnedTrackCount = totalOwnedTrackCount
+    )
+}
+
+private fun albumDetail(
+    id: String,
+    title: String = "Album $id",
+    artist: String = "Artist $id",
+    matchStatus: AlbumMatchStatus = AlbumMatchStatus.AUTO_MATCHED,
+    tracks: List<AlbumTrackRow> = emptyList()
+): AlbumDetail {
+    return AlbumDetail(
+        album = Album(id = id, title = title, artist = artist, matchStatus = matchStatus),
+        tracks = tracks,
+        missingTracks = emptyList(),
+        scoreTenths = null,
+        includedRatedTrackCount = 0
     )
 }

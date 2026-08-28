@@ -256,6 +256,27 @@ class DefaultAlbumRepositoryTest {
         assertNotNull(attempted.lastMatchAttemptAt)
     }
 
+    @Test
+    fun searchReleaseCandidatesDelegatesToTheProviderForTheAlbumsArtistAndTitle() = runBlocking {
+        val provider = FakeAlbumMetadataProvider(
+            searchResult = Result.success(
+                listOf(
+                    AlbumReleaseCandidate(collectionId = "collection-1", collectionName = "Blonde", artistName = "Frank Ocean", trackCount = 2),
+                    AlbumReleaseCandidate(collectionId = "collection-2", collectionName = "Blond", artistName = "Frank Ocean", trackCount = 1)
+                )
+            )
+        )
+        val repository = repository(provider)
+        insertSong(id = "song-1", title = "Nikes", artist = "Frank Ocean", album = "Blonde")
+        val album = waitForAlbum { true }
+        provider.searchCalls.clear()
+
+        val candidates = repository.searchReleaseCandidates(album.id).getOrThrow()
+
+        assertEquals(listOf("Frank Ocean" to "Blonde"), provider.searchCalls)
+        assertEquals(listOf("collection-1", "collection-2"), candidates.map { it.collectionId })
+    }
+
     private fun repository(provider: AlbumMetadataProvider) = DefaultAlbumRepository(
         database = database,
         songDao = database.songDao(),
