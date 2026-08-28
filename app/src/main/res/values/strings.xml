@@ -75,10 +75,15 @@
     <string name="rankings_album_tracks_title">Tracks</string>
     <string name="rankings_album_missing_tracks_title">Missing tracks</string>
     <string name="rankings_album_track_included">Included in average</string>
+    <string name="rankings_album_track_excluded">Excluded from average</string>
+    <string name="rankings_album_add_track_action">Add</string>
     <string name="rankings_album_candidates_title">Choose the correct release</string>
+    <string name="rankings_album_candidates_body">We found more than one possible match online. Pick the release that matches your copy:</string>
     <string name="rankings_album_candidates_loading">Looking for releases…</string>
     <string name="rankings_album_candidates_empty">No release options found.</string>
     <string name="rankings_album_candidates_error">Could not load release options. Try again.</string>
+    <string name="rankings_album_candidates_choose_action">Use this release</string>
+    <string name="rankings_album_candidate_track_count_match">%1$s · matches your library</string>
     <string name="rankings_album_choose_action">Choose</string>
     <string name="rankings_album_review_title">Albums to review</string>
     <string name="settings_title">Settings</string>
@@ -141,13 +146,13 @@
         <item quantity="one">%1$d incomplete album</item>
         <item quantity="other">%1$d incomplete albums</item>
     </plurals>
-    <plurals name="rankings_album_add_missing_tracks">
-        <item quantity="one">Add %1$d track</item>
-        <item quantity="other">Add %1$d tracks</item>
-    </plurals>
     <plurals name="rankings_album_track_count">
         <item quantity="one">%1$d track</item>
         <item quantity="other">%1$d tracks</item>
+    </plurals>
+    <plurals name="rankings_album_candidates_owned_count">
+        <item quantity="one">You have %1$d track for this album</item>
+        <item quantity="other">You have %1$d tracks for this album</item>
     </plurals>
     <plurals name="rankings_accept_selected_suggestions_action">
         <item quantity="one">Accept %1$d suggestion</item>
