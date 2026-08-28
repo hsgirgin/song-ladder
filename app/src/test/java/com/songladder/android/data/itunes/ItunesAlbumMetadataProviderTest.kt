@@ -16,6 +16,9 @@ class ItunesAlbumMetadataProviderTest {
     fun `search releases maps a collection result into a candidate`() = runTest {
         val server = MockWebServer()
         server.enqueue(MockResponse().setBody(albumSearchResponse()))
+        // The artist-id search that follows the term search finds no match here -
+        // no discography lookup should be attempted off the back of it.
+        server.enqueue(MockResponse().setBody("""{"resultCount":0,"results":[]}"""))
         server.start()
 
         try {
@@ -34,6 +37,7 @@ class ItunesAlbumMetadataProviderTest {
             assertEquals(17, candidate.trackCount)
             assertTrue(candidate.artworkUrl.orEmpty().contains("600x600"))
             assertTrue(server.takeRequest().path.orEmpty().startsWith("/search?"))
+            assertEquals(2, server.requestCount)
         } finally {
             server.shutdown()
         }
@@ -53,19 +57,25 @@ class ItunesAlbumMetadataProviderTest {
                   "resultCount": 2,
                   "results": [
                     {"collectionId": 1, "collectionName": "Toxicity (Instrumental) - Single", "artistName": "Karaoke Band"},
-                    {"collectionId": 2, "collectionName": "Protect The Land - Single", "artistName": "System Of A Down", "artistId": 462715, "trackCount": 1}
+                    {"collectionId": 2, "collectionName": "Protect The Land - Single", "artistName": "System Of A Down", "trackCount": 1}
                   ]
                 }
                 """.trimIndent()
             )
         )
+        // The dedicated artist-id search resolves the artist correctly.
+        server.enqueue(
+            MockResponse().setBody(
+                """{"resultCount": 1, "results": [{"wrapperType": "artist", "artistId": 462715, "artistName": "System Of A Down"}]}"""
+            )
+        )
+        // Its discography lookup includes the real album.
         server.enqueue(
             MockResponse().setBody(
                 """
                 {
-                  "resultCount": 2,
+                  "resultCount": 1,
                   "results": [
-                    {"wrapperType": "artist", "artistId": 462715, "artistName": "System Of A Down"},
                     {"collectionId": 3, "collectionName": "Toxicity", "artistName": "System Of A Down", "trackCount": 15}
                   ]
                 }
@@ -87,7 +97,63 @@ class ItunesAlbumMetadataProviderTest {
             val realAlbum = candidates.single { it.collectionId == "3" }
             assertEquals("Toxicity", realAlbum.collectionName)
             assertEquals(15, realAlbum.trackCount)
-            assertEquals(2, server.requestCount)
+            assertEquals(3, server.requestCount)
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    @Test
+    fun `search releases resolves the artist even when search's own results never surface it`() = runTest {
+        val server = MockWebServer()
+        // Reproduces "Muse Drones": every term-search result is a decoy artist whose
+        // name merely contains "Muse", so none of them is a name match to fall back
+        // from - the real band never appears in these results at all.
+        server.enqueue(
+            MockResponse().setBody(
+                """
+                {
+                  "resultCount": 2,
+                  "results": [
+                    {"collectionId": 1, "collectionName": "Rain and Drones for Meditation", "artistName": "Mindful Muse", "trackCount": 14},
+                    {"collectionId": 2, "collectionName": "I See Drones At Night - Single", "artistName": "Moon Muse", "trackCount": 1}
+                  ]
+                }
+                """.trimIndent()
+            )
+        )
+        server.enqueue(
+            MockResponse().setBody(
+                """{"resultCount": 1, "results": [{"wrapperType": "artist", "artistId": 1093360, "artistName": "Muse"}]}"""
+            )
+        )
+        server.enqueue(
+            MockResponse().setBody(
+                """
+                {
+                  "resultCount": 1,
+                  "results": [
+                    {"collectionId": 3, "collectionName": "Drones", "artistName": "Muse", "trackCount": 13}
+                  ]
+                }
+                """.trimIndent()
+            )
+        )
+        server.start()
+
+        try {
+            val provider = ItunesAlbumMetadataProvider(
+                httpClient = OkHttpClient(),
+                searchBaseUrl = server.url("/search"),
+                lookupBaseUrl = server.url("/lookup")
+            )
+
+            val candidates = provider.searchReleases("Muse", "Drones").getOrThrow()
+
+            val realAlbum = candidates.singleOrNull { it.collectionId == "3" }
+            assertEquals("Drones", realAlbum?.collectionName)
+            assertEquals("Muse", realAlbum?.artistName)
+            assertEquals(13, realAlbum?.trackCount)
         } finally {
             server.shutdown()
         }
@@ -109,6 +175,7 @@ class ItunesAlbumMetadataProviderTest {
                 """.trimIndent()
             )
         )
+        server.enqueue(MockResponse().setBody("""{"resultCount":0,"results":[]}"""))
         server.start()
 
         try {

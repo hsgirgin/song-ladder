@@ -26,9 +26,11 @@ import kotlin.coroutines.resume
  * The metadata provider for Phase 3 album matching. Reuses the same iTunes Lookup
  * endpoint [ItunesSongPreviewResolver] already calls for collection previews
  * (`entity=song` on a collection id returns the collection header plus every track on
- * it in one request), and the Search endpoint with `entity=album` for candidate
- * discovery. Kept as a sibling of [ItunesMusicSourceClient]/[ItunesSongPreviewResolver]
- * (transport in `data.itunes`) with scoring logic left to
+ * it in one request), the Search endpoint with `entity=album` for candidate discovery,
+ * `entity=musicArtist` to resolve an artist id reliably, and Lookup with `entity=album`
+ * on that id for the artist's full discography (see [searchReleases]). Kept as a
+ * sibling of [ItunesMusicSourceClient]/[ItunesSongPreviewResolver] (transport in
+ * `data.itunes`) with scoring logic left to
  * [com.songladder.android.domain.engine.AlbumMatchingEngine] (pure `domain.engine`),
  * matching this codebase's existing transport/domain split.
  */
@@ -55,8 +57,7 @@ class ItunesAlbumMetadataProvider(
                 .addQueryParameter("entity", "album")
                 .addQueryParameter("limit", "10")
                 .build()
-            val termResults = parseSearchResults(executeRequest(url))
-            val termCandidates = candidatesFrom(termResults)
+            val termCandidates = candidatesFrom(parseSearchResults(executeRequest(url)))
 
             // The Search endpoint's relevance ranking routinely omits an artist's own
             // studio album from its top results entirely - e.g. searching "System of a
@@ -64,24 +65,36 @@ class ItunesAlbumMetadataProvider(
             // compilations, and unrelated singles, but never the real album, even though
             // it exists in the catalog under that artist. No amount of scoring in
             // AlbumMatchingEngine can recommend a candidate that was never fetched, so
-            // once an artist is identified from the term search, their full discography
-            // is pulled via Lookup (which returns everything credited to an artist id
-            // rather than a relevance-ranked subset) and merged in as additional
-            // candidates.
-            val artistId = termResults.firstOrNull { result ->
-                result.artistName?.trim()?.equals(artist.trim(), ignoreCase = true) == true
-            }?.artistId
-            val discographyCandidates = artistId?.let { id ->
-                val discographyUrl = lookupBaseUrl.newBuilder()
-                    .addQueryParameter("id", id.toString())
-                    .addQueryParameter("entity", "album")
-                    .addQueryParameter("limit", "200")
-                    .build()
-                candidatesFrom(parseSearchResults(executeRequest(discographyUrl)))
-            }.orEmpty()
+            // the artist's full discography is pulled via Lookup (which returns
+            // everything credited to an artist id rather than a relevance-ranked
+            // subset) and merged in as additional candidates. The artist id for that
+            // lookup comes from a dedicated artist search rather than from scanning
+            // termCandidates for a name match: a short or generic artist name (e.g.
+            // "Muse") can be outranked in the album search entirely by decoy artists
+            // whose name merely contains it (e.g. "Mindful Muse"), so termCandidates
+            // may not include the right artist at all to fall back from.
+            val discographyCandidates = artist.takeIf { it.isNotBlank() }
+                ?.let { resolveArtistId(it) }
+                ?.let { artistId ->
+                    val discographyUrl = lookupBaseUrl.newBuilder()
+                        .addQueryParameter("id", artistId.toString())
+                        .addQueryParameter("entity", "album")
+                        .addQueryParameter("limit", "200")
+                        .build()
+                    candidatesFrom(parseSearchResults(executeRequest(discographyUrl)))
+                }.orEmpty()
 
             (termCandidates + discographyCandidates).distinctBy { it.collectionId }
         }.recoverProviderFailure()
+
+    private suspend fun resolveArtistId(artist: String): Long? {
+        val url = searchBaseUrl.newBuilder()
+            .addQueryParameter("term", artist)
+            .addQueryParameter("entity", "musicArtist")
+            .addQueryParameter("limit", "1")
+            .build()
+        return parseSearchResults(executeRequest(url)).firstOrNull()?.artistId
+    }
 
     override suspend fun lookupRelease(collectionId: String, forceRefresh: Boolean): Result<AlbumReleaseLookup> =
         runCatchingCancellable {
