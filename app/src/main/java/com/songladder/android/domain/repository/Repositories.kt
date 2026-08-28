@@ -129,6 +129,14 @@ interface AlbumRepository {
     suspend fun chooseRelease(albumId: String, providerCollectionId: String): Result<Unit>
     suspend fun addMissingTracks(albumId: String, providerTrackIds: List<String>): Result<Int>
     suspend fun refreshMetadata(albumId: String): Result<Unit>
+
+    /**
+     * [refreshMetadata] for every album, one at a time - unlike [retryPendingMatches]
+     * (which only advances PENDING albums), this force-refreshes already-matched
+     * albums too, the same way a single [refreshMetadata] call bypasses the provider's
+     * TTL cache.
+     */
+    suspend fun refreshAllMetadata(): Result<Unit>
     suspend fun retryPendingMatches(): Result<Unit>
 
     /**

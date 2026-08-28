@@ -254,6 +254,31 @@ class DefaultAlbumRepository(
 
     override suspend fun refreshMetadata(albumId: String): Result<Unit> = runCatching {
         val album = albumDao.get(albumId) ?: error("Album not found.")
+        refreshMetadataForAlbum(album)
+    }
+
+    override suspend fun refreshAllMetadata(): Result<Unit> = runCatching {
+        if (!settingsRepository.observeSettings().first().metadataRetrievalEnabled) return@runCatching
+        val albums = albumDao.getAll()
+        // Spaced out the same way matchPendingAlbums is - a bulk refresh across a whole
+        // library is exactly the burst-of-requests case the iTunes rate limit comment
+        // there warns about, just triggered by a button instead of a sync. One album's
+        // network failure (unlike attemptMatch's own search step, this can throw - see
+        // the getOrThrow() below) is logged and skipped rather than aborting the rest
+        // of the batch, the same as the auto-discovery collector's per-pass failures.
+        albums.forEachIndexed { index, album ->
+            if (index > 0) delay(matchAttemptSpacingMillis)
+            try {
+                refreshMetadataForAlbum(album)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.e(TAG, "Refresh-all metadata failed for album ${album.id}; continuing with the rest.", e)
+            }
+        }
+    }
+
+    private suspend fun refreshMetadataForAlbum(album: AlbumEntity) {
         val collectionId = album.providerCollectionId
         if (collectionId != null) {
             // forceRefresh = true: this is the one action that must actually bypass

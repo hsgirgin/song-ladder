@@ -72,6 +72,7 @@
     <string name="rankings_album_empty_message">Albums appear automatically once you add songs that share an artist and album.</string>
     <string name="rankings_open_album_details">Open album details</string>
     <string name="rankings_album_refresh_metadata">Refresh metadata</string>
+    <string name="rankings_album_refresh_all">Refresh all album metadata</string>
     <string name="rankings_album_tracks_title">Tracks</string>
     <string name="rankings_album_missing_tracks_title">Missing tracks</string>
     <string name="rankings_album_track_included">Included in average</string>

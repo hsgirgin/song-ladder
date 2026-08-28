@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.LazyListState
@@ -14,8 +15,10 @@ import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.GridView
 import androidx.compose.material.icons.rounded.List
+import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -35,6 +38,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.songladder.android.R
 import com.songladder.android.domain.model.RankingPresentation
@@ -82,6 +86,7 @@ fun RankingsScreen(
         onAddAlbumMissingTracks = viewModel::addAlbumMissingTracks,
         onChooseAlbumRelease = viewModel::chooseAlbumRelease,
         onRefreshAlbumMetadata = viewModel::refreshAlbumMetadata,
+        onRefreshAllAlbums = viewModel::refreshAllAlbumMetadata,
         onOpenSettings = onOpenSettings,
         onAddSongs = onAddSongs
     )
@@ -116,6 +121,7 @@ internal fun RankingsScreenContent(
     onAddAlbumMissingTracks: (String, List<String>) -> Unit,
     onChooseAlbumRelease: (String, String) -> Unit,
     onRefreshAlbumMetadata: (String) -> Unit,
+    onRefreshAllAlbums: () -> Unit,
     onOpenSettings: () -> Unit,
     onAddSongs: () -> Unit,
     modifier: Modifier = Modifier
@@ -174,6 +180,18 @@ internal fun RankingsScreenContent(
                                 }
                             )
                         )
+                    }
+                }
+                if (uiState.selectedTab == RankingsTab.ALBUMS) {
+                    IconButton(onClick = onRefreshAllAlbums, enabled = !uiState.isRefreshingAllAlbums) {
+                        if (uiState.isRefreshingAllAlbums) {
+                            CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                        } else {
+                            Icon(
+                                imageVector = Icons.Rounded.Refresh,
+                                contentDescription = stringResource(R.string.rankings_album_refresh_all)
+                            )
+                        }
                     }
                 }
                 IconButton(onClick = onAddSongs) {
