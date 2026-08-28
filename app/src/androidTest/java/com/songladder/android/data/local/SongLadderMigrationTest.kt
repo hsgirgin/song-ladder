@@ -172,7 +172,11 @@ class SongLadderMigrationTest {
         v1.close()
 
         val v2 = Room.databaseBuilder(context, SongLadderDatabase::class.java, dbFile.absolutePath)
-            .addMigrations(SongLadderDatabase.MIGRATION_1_2, SongLadderDatabase.MIGRATION_2_3)
+            .addMigrations(
+                SongLadderDatabase.MIGRATION_1_2,
+                SongLadderDatabase.MIGRATION_2_3,
+                SongLadderDatabase.MIGRATION_3_4
+            )
             .allowMainThreadQueries()
             .build()
         try {
