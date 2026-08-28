@@ -33,6 +33,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.songladder.android.domain.model.TombstoneImportAction
 import com.songladder.android.domain.model.TombstoneImportResolution
+import com.songladder.android.ui.components.MatchCandidateRow
 import com.songladder.android.ui.library.AddSongSheet
 import com.songladder.android.ui.library.ImportRatingQueueScreen
 import com.songladder.android.ui.library.LibraryViewModel
@@ -205,6 +206,44 @@ internal fun SongLadderAppContent(
                         TextButton(onClick = libraryViewModel::cancelTombstoneConflict) {
                             Text(stringResource(com.songladder.android.R.string.library_cancel_import_action))
                         }
+                    }
+                }
+            )
+        }
+
+        libraryUiState.ambiguousMatch?.let { match ->
+            AlertDialog(
+                onDismissRequest = libraryViewModel::cancelAmbiguousMatch,
+                title = { Text(stringResource(com.songladder.android.R.string.library_ambiguous_match_title)) },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(
+                            stringResource(
+                                com.songladder.android.R.string.library_ambiguous_match_message,
+                                match.candidate.title,
+                                match.candidate.artist
+                            )
+                        )
+                        match.matches.forEach { song ->
+                            MatchCandidateRow(
+                                title = song.title,
+                                subtitle = song.artist,
+                                artworkUrl = song.artworkUrl,
+                                trailingLabel = song.album.takeIf { it.isNotBlank() },
+                                actionLabel = stringResource(com.songladder.android.R.string.library_ambiguous_match_same_track_action),
+                                onChoose = libraryViewModel::confirmAmbiguousMatchIsSameSong
+                            )
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = libraryViewModel::addAmbiguousMatchAsNew) {
+                        Text(stringResource(com.songladder.android.R.string.library_ambiguous_match_add_as_new_action))
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = libraryViewModel::cancelAmbiguousMatch) {
+                        Text(stringResource(com.songladder.android.R.string.library_cancel_import_action))
                     }
                 }
             )

@@ -54,6 +54,21 @@ class SettingsViewModelTest {
     }
 
     @Test
+    fun `metadata retrieval toggle persists settings`() = runTest {
+        val settingsRepository = FakeSettingsRepository()
+        val viewModel = SettingsViewModel(
+            settingsRepository = settingsRepository,
+            rankingRepository = FakeRankingRepository()
+        )
+        backgroundScope.launch(dispatcher) { viewModel.uiState.collect {} }
+
+        viewModel.setMetadataRetrievalEnabled(false)
+        advanceUntilIdle()
+
+        assertEquals(false, settingsRepository.settings.value.metadataRetrievalEnabled)
+    }
+
+    @Test
     fun `deleting selected histories delegates once per selected subject and clears selection`() = runTest {
         val rankingRepository = FakeRankingRepository(
             histories = listOf(

@@ -165,7 +165,15 @@ private fun AlbumMatchCandidatesPicker(
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             else -> state.candidates.forEach { candidate ->
-                MatchCandidateRow(candidate = candidate, onChoose = { onChoose(candidate.collectionId) })
+                MatchCandidateRow(
+                    title = candidate.collectionName,
+                    subtitle = candidate.artistName,
+                    artworkUrl = candidate.artworkUrl,
+                    trailingLabel = candidate.trackCount?.let { count ->
+                        pluralStringResource(R.plurals.rankings_album_track_count, count, count)
+                    },
+                    onChoose = { onChoose(candidate.collectionId) }
+                )
             }
         }
     }

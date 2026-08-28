@@ -10,6 +10,7 @@ import com.songladder.android.data.local.SongLadderDatabase
 import com.songladder.android.data.local.SuggestionDismissalDao
 import com.songladder.android.data.local.toDomain
 import com.songladder.android.data.local.toSongAndRankingSubjectEntities
+import com.songladder.android.domain.model.MusicTrackCandidate
 import com.songladder.android.domain.model.Song
 import com.songladder.android.domain.model.SongInput
 import com.songladder.android.domain.model.TimeSource
@@ -18,6 +19,8 @@ import com.songladder.android.domain.model.seedEloForScore
 import com.songladder.android.domain.repository.SongRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import java.text.Normalizer
+import java.util.Locale
 
 class DefaultSongRepository(
     private val database: SongLadderDatabase,
@@ -118,5 +121,45 @@ class DefaultSongRepository(
             suggestionDismissalDao?.clearAll()
             appStatsDao?.upsert(AppStatsEntity())
         }
+    }
+
+    override suspend fun findAmbiguousMatches(candidate: MusicTrackCandidate): Result<List<Song>> = runCatching {
+        val exactKey = songKey(candidate.title, candidate.artist)
+        songDao.getSongsWithStats()
+            .map { it.toDomain() }
+            .filter { song -> songKey(song.title, song.artist) != exactKey && isFuzzyMatch(candidate, song) }
+    }
+
+    private fun isFuzzyMatch(candidate: MusicTrackCandidate, song: Song): Boolean =
+        tokenOverlap(candidate.title, song.title) >= TITLE_OVERLAP_THRESHOLD &&
+            tokenOverlap(candidate.artist, song.artist) >= ARTIST_OVERLAP_THRESHOLD
+
+    private fun songKey(title: String, artist: String): String =
+        "${title.trim().lowercase()}::${artist.trim().lowercase()}"
+
+    private fun tokenOverlap(a: String, b: String): Double {
+        val tokensA = tokens(a)
+        val tokensB = tokens(b)
+        if (tokensA.isEmpty() || tokensB.isEmpty()) return 0.0
+        val common = tokensA.count { it in tokensB }
+        return common.toDouble() / maxOf(tokensA.size, tokensB.size)
+    }
+
+    private fun tokens(value: String): Set<String> =
+        normalize(value).split(" ").filterTo(mutableSetOf()) { it.length > 1 }
+
+    private fun normalize(value: String): String {
+        val ascii = Normalizer.normalize(value, Normalizer.Form.NFD).replace(Regex("\\p{Mn}+"), "")
+        return ascii
+            .lowercase(Locale.ROOT)
+            .replace("&", " and ")
+            .replace(Regex("[^a-z0-9]+"), " ")
+            .trim()
+            .replace(Regex("\\s+"), " ")
+    }
+
+    private companion object {
+        const val TITLE_OVERLAP_THRESHOLD = 0.5
+        const val ARTIST_OVERLAP_THRESHOLD = 0.6
     }
 }

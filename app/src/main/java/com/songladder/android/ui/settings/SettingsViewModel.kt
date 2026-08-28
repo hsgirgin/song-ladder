@@ -51,6 +51,10 @@ class SettingsViewModel(
         saveSettings(uiState.value.settings.copy(autoPlayMatchupPreviews = enabled))
     }
 
+    fun setMetadataRetrievalEnabled(enabled: Boolean) {
+        saveSettings(uiState.value.settings.copy(metadataRetrievalEnabled = enabled))
+    }
+
     fun showTipsAgain() {
         saveSettings(uiState.value.settings.copy(showTips = true))
     }
