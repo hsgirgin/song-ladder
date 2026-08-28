@@ -39,6 +39,7 @@ class SongLadderViewModelFactory(
                 RankingsViewModel(
                     songRepository = container.songRepository,
                     rankingRepository = container.rankingRepository,
+                    albumRepository = container.albumRepository,
                     settingsRepository = container.settingsRepository,
                     songPreviewResolver = container.songPreviewResolver,
                     songPreviewPlayer = container.songPreviewPlayer

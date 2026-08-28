@@ -65,6 +65,11 @@
     <string name="rankings_undo_delete_failed">Could not restore song. Try again.</string>
     <string name="rankings_song_deleted">%1$s deleted.</string>
     <string name="rankings_undo_delete">Undo</string>
+    <string name="rankings_album_unranked_badge">Unranked</string>
+    <string name="rankings_album_check_release">Check release</string>
+    <string name="rankings_album_track_progress">%1$d/%2$d rated</string>
+    <string name="rankings_album_empty_title">No albums yet</string>
+    <string name="rankings_album_empty_message">Albums appear automatically once you add songs that share an artist and album.</string>
     <string name="settings_title">Settings</string>
     <string name="settings_autoplay_previews">Auto-play matchup previews</string>
     <string name="settings_show_tips_again">Show tips again</string>
@@ -114,6 +119,10 @@
     <plurals name="rankings_unrated_count">
         <item quantity="one">%1$d unrated song</item>
         <item quantity="other">%1$d unrated songs</item>
+    </plurals>
+    <plurals name="rankings_incomplete_albums_count">
+        <item quantity="one">%1$d incomplete album</item>
+        <item quantity="other">%1$d incomplete albums</item>
     </plurals>
     <plurals name="rankings_accept_selected_suggestions_action">
         <item quantity="one">Accept %1$d suggestion</item>

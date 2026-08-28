@@ -1,8 +1,12 @@
 package com.songladder.android.ui.rankings
 
+import com.songladder.android.domain.model.Album
+import com.songladder.android.domain.model.AlbumDetail
+import com.songladder.android.domain.model.AlbumMatchStatus
 import com.songladder.android.domain.model.AppStats
 import com.songladder.android.domain.model.DeletedRankingHistory
 import com.songladder.android.domain.model.MatchupEvent
+import com.songladder.android.domain.model.RankedAlbum
 import com.songladder.android.domain.model.RankingHistoryDeletionResult
 import com.songladder.android.domain.model.RankingPresentation
 import com.songladder.android.domain.model.RankingSettings
@@ -10,6 +14,7 @@ import com.songladder.android.domain.model.ScoreSaveResult
 import com.songladder.android.domain.model.Song
 import com.songladder.android.domain.model.SongInput
 import com.songladder.android.domain.model.Suggestion
+import com.songladder.android.domain.repository.AlbumRepository
 import com.songladder.android.domain.repository.RankingRepository
 import com.songladder.android.domain.repository.SettingsRepository
 import com.songladder.android.domain.repository.SongPreviewPlaybackEvent
@@ -211,12 +216,37 @@ class RankingsViewModelTest {
     }
 
     @Test
-    fun `selecting future tabs closes songs search and reports coming soon`() = runTest {
+    fun `selecting the artists tab closes songs search and reports coming soon`() = runTest {
         val viewModel = viewModel(
             songs = listOf(
                 rankingsSong(id = "one", title = "Needle"),
                 rankingsSong(id = "two", title = "Other")
             )
+        )
+        backgroundScope.launch(dispatcher) { viewModel.uiState.collect {} }
+
+        viewModel.setSearchActive(true)
+        viewModel.updateSearchQuery("needle")
+        advanceUntilIdle()
+
+        viewModel.selectTab(RankingsTab.ARTISTS)
+        advanceUntilIdle()
+
+        assertEquals(false, viewModel.uiState.value.searchActive)
+        assertEquals("", viewModel.uiState.value.searchQuery)
+        assertEquals(RankingsTab.ARTISTS, viewModel.uiState.value.selectedTab)
+        assertEquals(RankingsStatus.ComingSoon, viewModel.uiState.value.status)
+
+        viewModel.selectTab(RankingsTab.SONGS)
+        advanceUntilIdle()
+
+        assertEquals(2, viewModel.uiState.value.rankedSongs.size)
+    }
+
+    @Test
+    fun `selecting the albums tab closes songs search without reporting coming soon`() = runTest {
+        val viewModel = viewModel(
+            songs = listOf(rankingsSong(id = "one", title = "Needle"))
         )
         backgroundScope.launch(dispatcher) { viewModel.uiState.collect {} }
 
@@ -230,12 +260,66 @@ class RankingsViewModelTest {
         assertEquals(false, viewModel.uiState.value.searchActive)
         assertEquals("", viewModel.uiState.value.searchQuery)
         assertEquals(RankingsTab.ALBUMS, viewModel.uiState.value.selectedTab)
-        assertEquals(RankingsStatus.ComingSoon, viewModel.uiState.value.status)
+        assertEquals(RankingsStatus.None, viewModel.uiState.value.status)
+    }
 
-        viewModel.selectTab(RankingsTab.SONGS)
+    @Test
+    fun `albums split into ranked and incomplete based on whether they have a computed score`() = runTest {
+        val albumRepository = FakeAlbumRepository(
+            albums = listOf(
+                rankedAlbum(id = "complete-low", scoreTenths = 60),
+                rankedAlbum(id = "complete-high", scoreTenths = 90),
+                rankedAlbum(id = "incomplete-new", scoreTenths = null, createdAt = 5L),
+                rankedAlbum(id = "incomplete-old", scoreTenths = null, createdAt = 1L)
+            )
+        )
+        val viewModel = viewModel(albumRepository = albumRepository)
+        backgroundScope.launch(dispatcher) { viewModel.uiState.collect {} }
+
         advanceUntilIdle()
 
-        assertEquals(2, viewModel.uiState.value.rankedSongs.size)
+        assertEquals(
+            listOf("complete-high", "complete-low"),
+            viewModel.uiState.value.rankedAlbums.map { it.album.id }
+        )
+        assertEquals(listOf(1, 2), viewModel.uiState.value.rankedAlbums.map { it.rank })
+        assertEquals(
+            listOf("incomplete-new", "incomplete-old"),
+            viewModel.uiState.value.incompleteAlbums.map { it.album.id }
+        )
+        assertEquals(false, viewModel.uiState.value.incompleteAlbumsExpanded)
+    }
+
+    @Test
+    fun `incomplete albums start expanded when there are no ranked albums`() = runTest {
+        val albumRepository = FakeAlbumRepository(
+            albums = listOf(rankedAlbum(id = "incomplete-only", scoreTenths = null))
+        )
+        val viewModel = viewModel(albumRepository = albumRepository)
+        backgroundScope.launch(dispatcher) { viewModel.uiState.collect {} }
+
+        advanceUntilIdle()
+
+        assertEquals(true, viewModel.uiState.value.incompleteAlbumsExpanded)
+    }
+
+    @Test
+    fun `toggling incomplete albums flips the expanded flag`() = runTest {
+        val albumRepository = FakeAlbumRepository(
+            albums = listOf(
+                rankedAlbum(id = "complete", scoreTenths = 60),
+                rankedAlbum(id = "incomplete", scoreTenths = null)
+            )
+        )
+        val viewModel = viewModel(albumRepository = albumRepository)
+        backgroundScope.launch(dispatcher) { viewModel.uiState.collect {} }
+        advanceUntilIdle()
+        assertEquals(false, viewModel.uiState.value.incompleteAlbumsExpanded)
+
+        viewModel.toggleIncompleteAlbumsExpanded()
+        advanceUntilIdle()
+
+        assertEquals(true, viewModel.uiState.value.incompleteAlbumsExpanded)
     }
 
     @Test
@@ -326,6 +410,7 @@ class RankingsViewModelTest {
         val viewModel = RankingsViewModel(
             songRepository = songRepository,
             rankingRepository = FakeRankingRepository(),
+            albumRepository = FakeAlbumRepository(),
             settingsRepository = FakeSettingsRepository(),
             songPreviewResolver = object : SongPreviewResolver {
                 override suspend fun resolve(song: Song): String? = null
@@ -352,6 +437,7 @@ class RankingsViewModelTest {
 private fun viewModel(
     songs: List<Song> = listOf(rankingsSong(id = "song-1")),
     rankingRepository: FakeRankingRepository = FakeRankingRepository(),
+    albumRepository: FakeAlbumRepository = FakeAlbumRepository(),
     settingsRepository: FakeSettingsRepository = FakeSettingsRepository(),
     previewResolver: SongPreviewResolver = object : SongPreviewResolver {
         override suspend fun resolve(song: Song): String? = "https://example.test/${song.id}.mp3"
@@ -361,6 +447,7 @@ private fun viewModel(
     return RankingsViewModel(
         songRepository = FakeRankingsSongRepository(songs),
         rankingRepository = rankingRepository,
+        albumRepository = albumRepository,
         settingsRepository = settingsRepository,
         songPreviewResolver = previewResolver,
         songPreviewPlayer = previewPlayer
@@ -436,6 +523,29 @@ private class FakeRankingRepository(
     }
 }
 
+private class FakeAlbumRepository(
+    albums: List<RankedAlbum> = emptyList()
+) : AlbumRepository {
+    private val albumsFlow = MutableStateFlow(albums)
+
+    override fun observeAlbums(): Flow<List<RankedAlbum>> = albumsFlow
+
+    override fun observeAlbumDetail(albumId: String): Flow<AlbumDetail?> = flowOf(null)
+
+    override suspend fun setTrackExcluded(albumId: String, songId: String, excluded: Boolean): Result<Unit> =
+        Result.success(Unit)
+
+    override suspend fun chooseRelease(albumId: String, providerCollectionId: String): Result<Unit> =
+        Result.success(Unit)
+
+    override suspend fun addMissingTracks(albumId: String, providerTrackIds: List<String>): Result<Int> =
+        Result.success(0)
+
+    override suspend fun refreshMetadata(albumId: String): Result<Unit> = Result.success(Unit)
+
+    override suspend fun retryPendingMatches(): Result<Unit> = Result.success(Unit)
+}
+
 private class FakeSettingsRepository(
     initialSettings: RankingSettings = RankingSettings()
 ) : SettingsRepository {
@@ -479,5 +589,30 @@ private fun rankingsSong(
         wins = wins,
         losses = losses,
         skips = skips
+    )
+}
+
+private fun rankedAlbum(
+    id: String,
+    title: String = "Album $id",
+    artist: String = "Artist $id",
+    scoreTenths: Int?,
+    createdAt: Long = 1L,
+    matchStatus: AlbumMatchStatus = AlbumMatchStatus.AUTO_MATCHED,
+    includedRatedTrackCount: Int = 0,
+    totalOwnedTrackCount: Int = 0
+): RankedAlbum {
+    return RankedAlbum(
+        rank = null,
+        album = Album(
+            id = id,
+            title = title,
+            artist = artist,
+            createdAt = createdAt,
+            matchStatus = matchStatus
+        ),
+        scoreTenths = scoreTenths,
+        includedRatedTrackCount = includedRatedTrackCount,
+        totalOwnedTrackCount = totalOwnedTrackCount
     )
 }

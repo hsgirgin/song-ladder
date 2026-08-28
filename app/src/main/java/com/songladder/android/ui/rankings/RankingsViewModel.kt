@@ -2,13 +2,16 @@ package com.songladder.android.ui.rankings
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.songladder.android.domain.model.RankedAlbum
 import com.songladder.android.domain.model.RankingPresentation
 import com.songladder.android.domain.model.RankingSettings
 import com.songladder.android.domain.model.ScoreSaveResult
 import com.songladder.android.domain.model.Song
 import com.songladder.android.domain.model.SongInput
 import com.songladder.android.domain.model.Suggestion
+import com.songladder.android.domain.model.albumScoreFirstComparator
 import com.songladder.android.domain.model.scoreFirstComparator
+import com.songladder.android.domain.repository.AlbumRepository
 import com.songladder.android.domain.repository.RankingRepository
 import com.songladder.android.domain.repository.SettingsRepository
 import com.songladder.android.domain.repository.SongPreviewPlaybackEvent
@@ -73,6 +76,9 @@ data class RankingsUiState(
     val presentation: RankingPresentation = RankingPresentation.GRID,
     val unratedExpanded: Boolean = true,
     val expandedSongIds: Set<String> = emptySet(),
+    val rankedAlbums: List<RankedAlbum> = emptyList(),
+    val incompleteAlbums: List<RankedAlbum> = emptyList(),
+    val incompleteAlbumsExpanded: Boolean = true,
     val detailSongId: String? = null,
     val previews: Map<String, RankingsPreviewState> = emptyMap(),
     val isSavingScore: Boolean = false,
@@ -89,6 +95,7 @@ private data class RankingsLocalState(
     val searchQuery: String = "",
     val unratedExpanded: Boolean = false,
     val expandedSongIds: Set<String> = emptySet(),
+    val incompleteAlbumsExpanded: Boolean = false,
     val selectedSuggestionIds: Set<String> = emptySet(),
     val detailSongId: String? = null,
     val isSavingScore: Boolean = false,
@@ -105,6 +112,7 @@ data class PendingDeletedSong(
 class RankingsViewModel(
     private val songRepository: SongRepository,
     private val rankingRepository: RankingRepository,
+    private val albumRepository: AlbumRepository,
     private val settingsRepository: SettingsRepository,
     private val songPreviewResolver: SongPreviewResolver = UnavailablePreviewResolver,
     private val songPreviewPlayer: SongPreviewPlayer = NoOpPreviewPlayer
@@ -132,8 +140,9 @@ class RankingsViewModel(
     private val rankingState = combine(
         songsAndSuggestionRows,
         settingsRepository.observeSettings(),
-        localState
-    ) { (songs, suggestionRows), settings, local ->
+        localState,
+        albumRepository.observeAlbums()
+    ) { (songs, suggestionRows), settings, local, albums ->
         val filtered = songs.filterByQuery(local.searchQuery)
         val ranked = filtered
             .filter { it.scoreTenths != null }
@@ -142,6 +151,13 @@ class RankingsViewModel(
         val unrated = filtered
             .filter { it.scoreTenths == null }
             .sortedByDescending { it.createdAt }
+        val rankedAlbums = albums
+            .filter { it.scoreTenths != null }
+            .sortedWith(albumScoreFirstComparator())
+            .mapIndexed { index, rankedAlbum -> rankedAlbum.copy(rank = index + 1) }
+        val incompleteAlbums = albums
+            .filter { it.scoreTenths == null }
+            .sortedByDescending { it.album.createdAt }
         RankingsUiState(
             allSongs = songs,
             rankedSongs = ranked,
@@ -157,6 +173,9 @@ class RankingsViewModel(
             presentation = settings.presentation,
             unratedExpanded = if (ranked.isEmpty()) true else local.unratedExpanded,
             expandedSongIds = local.expandedSongIds.intersect(songs.mapTo(mutableSetOf()) { it.id }),
+            rankedAlbums = rankedAlbums,
+            incompleteAlbums = incompleteAlbums,
+            incompleteAlbumsExpanded = if (rankedAlbums.isEmpty()) true else local.incompleteAlbumsExpanded,
             detailSongId = local.detailSongId?.takeIf { id -> songs.any { it.id == id } },
             isSavingScore = local.isSavingScore,
             pendingDeletedSong = local.pendingDeletedSong,
@@ -184,7 +203,7 @@ class RankingsViewModel(
                 selectedTab = tab,
                 searchActive = if (tab == RankingsTab.SONGS) it.searchActive else false,
                 searchQuery = if (tab == RankingsTab.SONGS) it.searchQuery else "",
-                status = if (tab == RankingsTab.SONGS) RankingsStatus.None else RankingsStatus.ComingSoon
+                status = if (tab == RankingsTab.ARTISTS) RankingsStatus.ComingSoon else RankingsStatus.None
             )
         }
     }
@@ -227,6 +246,10 @@ class RankingsViewModel(
 
     fun toggleUnratedExpanded() {
         localState.update { it.copy(unratedExpanded = !uiState.value.unratedExpanded) }
+    }
+
+    fun toggleIncompleteAlbumsExpanded() {
+        localState.update { it.copy(incompleteAlbumsExpanded = !uiState.value.incompleteAlbumsExpanded) }
     }
 
     fun toggleStats(songId: String) {

@@ -296,7 +296,7 @@ private fun RankingsGridHint(onDismiss: () -> Unit) {
 }
 
 @Composable
-private fun RankBadge(rank: Int, modifier: Modifier = Modifier) {
+internal fun RankBadge(rank: Int, modifier: Modifier = Modifier) {
     if (rank <= 0) return
     Text(
         text = stringResource(R.string.rankings_rank_badge, rank),
