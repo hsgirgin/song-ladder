@@ -2,6 +2,9 @@ package com.songladder.android.ui.rankings
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.songladder.android.domain.model.AlbumDetail
+import com.songladder.android.domain.model.AlbumMatchStatus
+import com.songladder.android.domain.model.AlbumReleaseCandidate
 import com.songladder.android.domain.model.RankedAlbum
 import com.songladder.android.domain.model.RankingPresentation
 import com.songladder.android.domain.model.RankingSettings
@@ -20,12 +23,17 @@ import com.songladder.android.domain.repository.SongPreviewResolver
 import com.songladder.android.domain.repository.SongRepository
 import com.songladder.android.ui.NoOpPreviewPlayer
 import com.songladder.android.ui.UnavailablePreviewResolver
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -63,6 +71,13 @@ data class SuggestionRow(
     val song: Song
 )
 
+data class AlbumMatchCandidatesState(
+    val albumId: String,
+    val isLoading: Boolean,
+    val candidates: List<AlbumReleaseCandidate> = emptyList(),
+    val error: Boolean = false
+)
+
 data class RankingsUiState(
     val allSongs: List<Song> = emptyList(),
     val rankedSongs: List<RankedSong> = emptyList(),
@@ -80,6 +95,9 @@ data class RankingsUiState(
     val incompleteAlbums: List<RankedAlbum> = emptyList(),
     val incompleteAlbumsExpanded: Boolean = true,
     val detailSongId: String? = null,
+    val detailAlbumId: String? = null,
+    val albumDetail: AlbumDetail? = null,
+    val albumMatchCandidates: AlbumMatchCandidatesState? = null,
     val previews: Map<String, RankingsPreviewState> = emptyMap(),
     val isSavingScore: Boolean = false,
     val pendingDeletedSong: PendingDeletedSong? = null,
@@ -87,6 +105,9 @@ data class RankingsUiState(
 ) {
     val detailSong: Song?
         get() = allSongs.firstOrNull { it.id == detailSongId }
+
+    val albumsNeedingReview: List<RankedAlbum>
+        get() = (rankedAlbums + incompleteAlbums).filter { it.album.matchStatus == AlbumMatchStatus.NEEDS_REVIEW }
 }
 
 private data class RankingsLocalState(
@@ -98,6 +119,7 @@ private data class RankingsLocalState(
     val incompleteAlbumsExpanded: Boolean = false,
     val selectedSuggestionIds: Set<String> = emptySet(),
     val detailSongId: String? = null,
+    val detailAlbumId: String? = null,
     val isSavingScore: Boolean = false,
     val dismissingSuggestionIds: Set<String> = emptySet(),
     val pendingDeletedSong: PendingDeletedSong? = null,
@@ -109,6 +131,7 @@ data class PendingDeletedSong(
     val input: SongInput
 )
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class RankingsViewModel(
     private val songRepository: SongRepository,
     private val rankingRepository: RankingRepository,
@@ -120,8 +143,22 @@ class RankingsViewModel(
     private val localState = MutableStateFlow(RankingsLocalState())
     private val previewStates = MutableStateFlow<Map<String, RankingsPreviewState>>(emptyMap())
     private val previewUrls = mutableMapOf<String, String>()
+    private val albumCandidatesState = MutableStateFlow<AlbumMatchCandidatesState?>(null)
     private var previewJob: Job? = null
     private var undoDeleteJob: Job? = null
+
+    // Only observed (a richer per-album query than the list-level RankedAlbum flow
+    // carries) while the detail dialog is actually open, and switches cleanly to a
+    // new album's flow - or back to null - the moment detailAlbumId changes. Shared
+    // as a StateFlow (not a plain cold Flow) because it has two independent
+    // collectors below - the uiState combine and the match-candidates side effect in
+    // init{} - and a cold flow would re-run flatMapLatest, and so re-subscribe to
+    // albumRepository.observeAlbumDetail, once per collector.
+    private val albumDetailFlow: StateFlow<AlbumDetail?> = localState
+        .map { it.detailAlbumId }
+        .distinctUntilChanged()
+        .flatMapLatest { albumId -> if (albumId == null) flowOf(null) else albumRepository.observeAlbumDetail(albumId) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     // Kept separate from `localState` below so that a UI-local change (e.g. a search
     // keystroke) doesn't force songsBySubjectId/suggestionRows to be rebuilt - this
@@ -177,14 +214,20 @@ class RankingsViewModel(
             incompleteAlbums = incompleteAlbums,
             incompleteAlbumsExpanded = if (rankedAlbums.isEmpty()) true else local.incompleteAlbumsExpanded,
             detailSongId = local.detailSongId?.takeIf { id -> songs.any { it.id == id } },
+            detailAlbumId = local.detailAlbumId,
             isSavingScore = local.isSavingScore,
             pendingDeletedSong = local.pendingDeletedSong,
             status = local.status
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), RankingsUiState())
 
-    val uiState: StateFlow<RankingsUiState> = combine(rankingState, previewStates) { state, previews ->
-        state.copy(previews = previews)
+    val uiState: StateFlow<RankingsUiState> = combine(
+        rankingState,
+        previewStates,
+        albumDetailFlow,
+        albumCandidatesState
+    ) { state, previews, albumDetail, albumMatchCandidates ->
+        state.copy(previews = previews, albumDetail = albumDetail, albumMatchCandidates = albumMatchCandidates)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), RankingsUiState())
 
     init {
@@ -192,6 +235,15 @@ class RankingsViewModel(
             songPreviewPlayer.events.collect { event ->
                 previewStates.update { states ->
                     states + (event.songId to if (event.failed) RankingsPreviewState.Unavailable else RankingsPreviewState.Available)
+                }
+            }
+        }
+        viewModelScope.launch {
+            albumDetailFlow.collect { detail ->
+                if (detail?.album?.matchStatus == AlbumMatchStatus.NEEDS_REVIEW) {
+                    loadAlbumMatchCandidatesIfNeeded(detail.album.id)
+                } else {
+                    albumCandidatesState.value = null
                 }
             }
         }
@@ -250,6 +302,65 @@ class RankingsViewModel(
 
     fun toggleIncompleteAlbumsExpanded() {
         localState.update { it.copy(incompleteAlbumsExpanded = !uiState.value.incompleteAlbumsExpanded) }
+    }
+
+    fun showAlbumDetails(albumId: String) {
+        localState.update { it.copy(detailAlbumId = albumId, status = RankingsStatus.None) }
+    }
+
+    fun hideAlbumDetails() {
+        localState.update { it.copy(detailAlbumId = null) }
+    }
+
+    fun setAlbumTrackExcluded(albumId: String, songId: String, excluded: Boolean) {
+        viewModelScope.launch {
+            albumRepository.setTrackExcluded(albumId, songId, excluded)
+                .onFailure { localState.update { it.copy(status = RankingsStatus.SaveFailed) } }
+        }
+    }
+
+    fun addAlbumMissingTracks(albumId: String, providerTrackIds: List<String>) {
+        if (providerTrackIds.isEmpty()) return
+        viewModelScope.launch {
+            albumRepository.addMissingTracks(albumId, providerTrackIds)
+                .onFailure { localState.update { it.copy(status = RankingsStatus.SaveFailed) } }
+        }
+    }
+
+    fun chooseAlbumRelease(albumId: String, providerCollectionId: String) {
+        viewModelScope.launch {
+            albumRepository.chooseRelease(albumId, providerCollectionId)
+                .onFailure { localState.update { it.copy(status = RankingsStatus.SaveFailed) } }
+        }
+    }
+
+    fun refreshAlbumMetadata(albumId: String) {
+        viewModelScope.launch {
+            albumRepository.refreshMetadata(albumId)
+                // Cleared rather than reloaded inline: the collector in init{} re-issues
+                // a fresh search as soon as the next albumDetailFlow emission lands, which
+                // naturally picks up whatever matchStatus the refresh actually produced.
+                .onSuccess { albumCandidatesState.value = null }
+                .onFailure { localState.update { it.copy(status = RankingsStatus.SaveFailed) } }
+        }
+    }
+
+    private fun loadAlbumMatchCandidatesIfNeeded(albumId: String) {
+        if (albumCandidatesState.value?.albumId == albumId) return
+        albumCandidatesState.value = AlbumMatchCandidatesState(albumId = albumId, isLoading = true)
+        viewModelScope.launch {
+            albumRepository.searchReleaseCandidates(albumId)
+                .onSuccess { candidates ->
+                    albumCandidatesState.update { current ->
+                        if (current?.albumId == albumId) current.copy(isLoading = false, candidates = candidates) else current
+                    }
+                }
+                .onFailure {
+                    albumCandidatesState.update { current ->
+                        if (current?.albumId == albumId) current.copy(isLoading = false, error = true) else current
+                    }
+                }
+        }
     }
 
     fun toggleStats(songId: String) {

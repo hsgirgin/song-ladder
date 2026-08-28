@@ -127,4 +127,11 @@ interface AlbumRepository {
     suspend fun addMissingTracks(albumId: String, providerTrackIds: List<String>): Result<Int>
     suspend fun refreshMetadata(albumId: String): Result<Unit>
     suspend fun retryPendingMatches(): Result<Unit>
+
+    /**
+     * Fresh candidate releases for a NEEDS_REVIEW album's inline picker - a direct
+     * provider search, not the single best-candidate result [AlbumEntity] persists,
+     * since the whole point of the picker is to show the user the runner-ups too.
+     */
+    suspend fun searchReleaseCandidates(albumId: String): Result<List<AlbumReleaseCandidate>>
 }

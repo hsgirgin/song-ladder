@@ -1,6 +1,7 @@
 package com.songladder.android.ui.rankings
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -57,6 +58,7 @@ import com.songladder.android.ui.components.SongArtwork
 internal fun RankingsAlbumsContent(
     uiState: RankingsUiState,
     onToggleIncompleteAlbums: () -> Unit,
+    onShowAlbumDetails: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val gridState = rememberLazyGridState()
@@ -90,12 +92,14 @@ internal fun RankingsAlbumsContent(
         RankingPresentation.GRID -> AlbumsGrid(
             uiState = uiState,
             onToggleIncompleteAlbums = onToggleIncompleteAlbums,
+            onShowAlbumDetails = onShowAlbumDetails,
             gridState = gridState,
             modifier = modifier
         )
         RankingPresentation.LIST -> AlbumsList(
             uiState = uiState,
             onToggleIncompleteAlbums = onToggleIncompleteAlbums,
+            onShowAlbumDetails = onShowAlbumDetails,
             listState = listState,
             modifier = modifier
         )
@@ -106,6 +110,7 @@ internal fun RankingsAlbumsContent(
 internal fun AlbumsGrid(
     uiState: RankingsUiState,
     onToggleIncompleteAlbums: () -> Unit,
+    onShowAlbumDetails: (String) -> Unit,
     gridState: LazyGridState,
     modifier: Modifier = Modifier
 ) {
@@ -117,8 +122,13 @@ internal fun AlbumsGrid(
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
+        if (uiState.albumsNeedingReview.isNotEmpty()) {
+            item(key = "review-section", span = { GridItemSpan(maxLineSpan) }) {
+                AlbumMatchReviewSection(albums = uiState.albumsNeedingReview, onChoose = onShowAlbumDetails)
+            }
+        }
         items(uiState.rankedAlbums, key = { it.album.id }) { rankedAlbum ->
-            AlbumsGridCard(rankedAlbum = rankedAlbum)
+            AlbumsGridCard(rankedAlbum = rankedAlbum, onShowDetails = { onShowAlbumDetails(rankedAlbum.album.id) })
         }
         item(key = "incomplete-albums-header", span = { GridItemSpan(maxLineSpan) }) {
             IncompleteAlbumsHeader(
@@ -129,18 +139,24 @@ internal fun AlbumsGrid(
         }
         if (uiState.incompleteAlbumsExpanded) {
             items(uiState.incompleteAlbums, key = { it.album.id }) { rankedAlbum ->
-                AlbumsGridCard(rankedAlbum = rankedAlbum)
+                AlbumsGridCard(rankedAlbum = rankedAlbum, onShowDetails = { onShowAlbumDetails(rankedAlbum.album.id) })
             }
         }
     }
 }
 
 @Composable
-internal fun AlbumsGridCard(rankedAlbum: RankedAlbum, modifier: Modifier = Modifier) {
+internal fun AlbumsGridCard(
+    rankedAlbum: RankedAlbum,
+    onShowDetails: () -> Unit = {},
+    modifier: Modifier = Modifier
+) {
     val album = rankedAlbum.album
     val isComplete = rankedAlbum.scoreTenths != null
     Card(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier
+            .fillMaxWidth()
+            .clickable(onClickLabel = stringResource(R.string.rankings_open_album_details), onClick = onShowDetails),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -213,6 +229,7 @@ internal fun AlbumsGridCard(rankedAlbum: RankedAlbum, modifier: Modifier = Modif
 internal fun AlbumsList(
     uiState: RankingsUiState,
     onToggleIncompleteAlbums: () -> Unit,
+    onShowAlbumDetails: (String) -> Unit,
     listState: LazyListState,
     modifier: Modifier = Modifier
 ) {
@@ -222,8 +239,13 @@ internal fun AlbumsList(
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
+        if (uiState.albumsNeedingReview.isNotEmpty()) {
+            item(key = "review-section") {
+                AlbumMatchReviewSection(albums = uiState.albumsNeedingReview, onChoose = onShowAlbumDetails)
+            }
+        }
         items(uiState.rankedAlbums, key = { it.album.id }) { rankedAlbum ->
-            AlbumsListRow(rankedAlbum = rankedAlbum)
+            AlbumsListRow(rankedAlbum = rankedAlbum, onShowDetails = { onShowAlbumDetails(rankedAlbum.album.id) })
         }
         item(key = "incomplete-albums-header") {
             IncompleteAlbumsHeader(
@@ -234,7 +256,7 @@ internal fun AlbumsList(
         }
         if (uiState.incompleteAlbumsExpanded) {
             items(uiState.incompleteAlbums, key = { it.album.id }) { rankedAlbum ->
-                AlbumsListRow(rankedAlbum = rankedAlbum)
+                AlbumsListRow(rankedAlbum = rankedAlbum, onShowDetails = { onShowAlbumDetails(rankedAlbum.album.id) })
             }
         }
         item { Spacer(modifier = Modifier.height(8.dp)) }
@@ -242,11 +264,17 @@ internal fun AlbumsList(
 }
 
 @Composable
-internal fun AlbumsListRow(rankedAlbum: RankedAlbum, modifier: Modifier = Modifier) {
+internal fun AlbumsListRow(
+    rankedAlbum: RankedAlbum,
+    onShowDetails: () -> Unit = {},
+    modifier: Modifier = Modifier
+) {
     val album = rankedAlbum.album
     val isComplete = rankedAlbum.scoreTenths != null
     Card(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier
+            .fillMaxWidth()
+            .clickable(onClickLabel = stringResource(R.string.rankings_open_album_details), onClick = onShowDetails),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
     ) {
         Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -364,18 +392,19 @@ private fun EmptyAlbumsContent(modifier: Modifier = Modifier) {
 
 private fun LazyGridState.firstVisibleAlbumKey(): String? =
     layoutInfo.visibleItemsInfo.firstNotNullOfOrNull { item ->
-        (item.key as? String)?.takeIf { it != "incomplete-albums-header" }
+        (item.key as? String)?.takeIf { it != "incomplete-albums-header" && it != "review-section" }
     }
 
 private fun LazyListState.firstVisibleAlbumKey(): String? =
     layoutInfo.visibleItemsInfo.firstNotNullOfOrNull { item ->
-        (item.key as? String)?.takeIf { it != "incomplete-albums-header" }
+        (item.key as? String)?.takeIf { it != "incomplete-albums-header" && it != "review-section" }
     }
 
 private fun RankingsUiState.albumIndexFor(albumId: String): Int? {
+    val reviewOffset = if (albumsNeedingReview.isNotEmpty()) 1 else 0
     val rankedIndex = rankedAlbums.indexOfFirst { it.album.id == albumId }
-    if (rankedIndex >= 0) return rankedIndex
+    if (rankedIndex >= 0) return rankedIndex + reviewOffset
     val incompleteIndex = incompleteAlbums.indexOfFirst { it.album.id == albumId }
-    if (incompleteIndex >= 0 && incompleteAlbumsExpanded) return rankedAlbums.size + 1 + incompleteIndex
+    if (incompleteIndex >= 0 && incompleteAlbumsExpanded) return rankedAlbums.size + 1 + reviewOffset + incompleteIndex
     return null
 }
