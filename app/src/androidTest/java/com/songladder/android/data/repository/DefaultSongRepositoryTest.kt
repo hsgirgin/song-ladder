@@ -8,6 +8,8 @@ import com.songladder.android.data.local.MatchupEventEntity
 import com.songladder.android.data.local.RankingSubjectEntity
 import com.songladder.android.data.local.SongEntity
 import com.songladder.android.data.local.SongLadderDatabase
+import com.songladder.android.domain.model.MusicSourceType
+import com.songladder.android.domain.model.MusicTrackCandidate
 import com.songladder.android.domain.model.SongInput
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -127,6 +129,57 @@ class DefaultSongRepositoryTest {
         assertEquals(listOf(1L), database.matchupEventDao().getAll().map { it.sequenceId })
     }
 
+    @Test
+    fun findAmbiguousMatchesReturnsSongsWithSimilarTitleAndSameArtist() = runBlocking {
+        insertSong(songId = "song-1", subjectId = "subject-1", title = "Bohemian Rhapsody", artist = "Queen")
+        val repository = repository()
+
+        val matches = repository.findAmbiguousMatches(
+            MusicTrackCandidate(
+                externalId = "ext-1",
+                title = "Bohemian Rhapsody (Remastered 2011)",
+                artist = "Queen",
+                sourceType = MusicSourceType.ITUNES
+            )
+        ).getOrThrow()
+
+        assertEquals(listOf("song-1"), matches.map { it.id })
+    }
+
+    @Test
+    fun findAmbiguousMatchesIgnoresSameTitleWithAnUnrelatedArtist() = runBlocking {
+        insertSong(songId = "song-1", subjectId = "subject-1", title = "Yesterday", artist = "The Beatles")
+        val repository = repository()
+
+        val matches = repository.findAmbiguousMatches(
+            MusicTrackCandidate(
+                externalId = "ext-1",
+                title = "Yesterday",
+                artist = "Miley Cyrus",
+                sourceType = MusicSourceType.ITUNES
+            )
+        ).getOrThrow()
+
+        assertTrue(matches.isEmpty())
+    }
+
+    @Test
+    fun findAmbiguousMatchesExcludesAnExactTitleAndArtistDuplicate() = runBlocking {
+        insertSong(songId = "song-1", subjectId = "subject-1", title = "Nights", artist = "Frank Ocean")
+        val repository = repository()
+
+        val matches = repository.findAmbiguousMatches(
+            MusicTrackCandidate(
+                externalId = "ext-1",
+                title = "Nights",
+                artist = "Frank Ocean",
+                sourceType = MusicSourceType.ITUNES
+            )
+        ).getOrThrow()
+
+        assertTrue(matches.isEmpty())
+    }
+
     private fun repository(): DefaultSongRepository = DefaultSongRepository(
         database = database,
         songDao = database.songDao(),
@@ -135,20 +188,20 @@ class DefaultSongRepositoryTest {
         appStatsDao = database.appStatsDao()
     )
 
-    private suspend fun insertSong(songId: String, subjectId: String, title: String) {
+    private suspend fun insertSong(songId: String, subjectId: String, title: String, artist: String = "Artist") {
         database.songDao().insertSongWithStats(
             song = SongEntity(
                 id = songId,
                 rankingSubjectId = subjectId,
                 sourceType = "MANUAL",
                 title = title,
-                artist = "Artist",
+                artist = artist,
                 createdAt = 0L
             ),
             stats = RankingSubjectEntity(
                 id = subjectId,
                 normalizedTitle = title.lowercase(),
-                normalizedArtist = "artist"
+                normalizedArtist = artist.lowercase()
             )
         )
     }

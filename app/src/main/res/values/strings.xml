@@ -83,6 +83,8 @@
     <string name="rankings_album_review_title">Albums to review</string>
     <string name="settings_title">Settings</string>
     <string name="settings_autoplay_previews">Auto-play matchup previews</string>
+    <string name="settings_metadata_retrieval">Automatic album metadata matching</string>
+    <string name="settings_metadata_retrieval_caption">Controls only song artist, title, and album metadata retrieval for the Albums tab.</string>
     <string name="settings_show_tips_again">Show tips again</string>
     <string name="settings_deleted_histories_title">Deleted ranking histories</string>
     <string name="settings_deleted_histories_empty">No deleted ranking histories.</string>
@@ -99,6 +101,10 @@
     <string name="library_restore_history_action">Restore %1$s by %2$s</string>
     <string name="library_start_fresh_action">Start fresh</string>
     <string name="library_cancel_import_action">Cancel import</string>
+    <string name="library_ambiguous_match_title">Possible duplicate</string>
+    <string name="library_ambiguous_match_message">"%1$s by %2$s looks similar to a song you already have. Is this the same track?"</string>
+    <string name="library_ambiguous_match_same_track_action">Yes, same track</string>
+    <string name="library_ambiguous_match_add_as_new_action">No, add as new</string>
     <string name="add_song_sheet_close">Close add songs</string>
     <string name="add_song_search_clear">Clear search</string>
     <string name="add_song_search_icon">Search</string>

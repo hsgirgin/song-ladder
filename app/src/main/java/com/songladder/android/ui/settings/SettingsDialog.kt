@@ -66,6 +66,7 @@ fun SettingsDialog(
         uiState = uiState,
         onDismiss = onDismiss,
         onAutoPlayChanged = viewModel::setAutoPlayMatchupPreviews,
+        onMetadataRetrievalChanged = viewModel::setMetadataRetrievalEnabled,
         onShowTipsAgain = viewModel::showTipsAgain,
         onHistorySelectionChanged = viewModel::toggleDeletedHistorySelection,
         onClearSelection = viewModel::clearSelection,
@@ -129,6 +130,7 @@ internal fun SettingsDialogContent(
     uiState: SettingsUiState,
     onDismiss: () -> Unit,
     onAutoPlayChanged: (Boolean) -> Unit,
+    onMetadataRetrievalChanged: (Boolean) -> Unit,
     onShowTipsAgain: () -> Unit,
     onHistorySelectionChanged: (String) -> Unit,
     onClearSelection: () -> Unit,
@@ -155,6 +157,20 @@ internal fun SettingsDialogContent(
                         checked = uiState.settings.autoPlayMatchupPreviews,
                         onCheckedChange = onAutoPlayChanged
                     )
+                }
+                item {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        SettingsSwitchRow(
+                            title = stringResource(R.string.settings_metadata_retrieval),
+                            checked = uiState.settings.metadataRetrievalEnabled,
+                            onCheckedChange = onMetadataRetrievalChanged
+                        )
+                        Text(
+                            text = stringResource(R.string.settings_metadata_retrieval_caption),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
                 item {
                     OutlinedButton(onClick = onShowTipsAgain, modifier = Modifier.fillMaxWidth()) {

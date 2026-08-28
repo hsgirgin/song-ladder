@@ -30,6 +30,9 @@ interface SongRepository {
 
     suspend fun restoreSong(input: SongInput, rankingSubjectId: String): Result<Unit> =
         Result.failure(UnsupportedOperationException("Song restoration is not available yet."))
+
+    suspend fun findAmbiguousMatches(candidate: MusicTrackCandidate): Result<List<Song>> =
+        Result.success(emptyList())
 }
 
 interface RankingRepository {

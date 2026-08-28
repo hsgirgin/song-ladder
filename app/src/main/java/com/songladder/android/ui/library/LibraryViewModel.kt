@@ -98,7 +98,13 @@ data class LibraryUiState(
     val pendingImportSourceLabel: String = "",
     val tombstoneResolutions: Map<String, TombstoneImportResolution> = emptyMap(),
     val jsonImportRepairedCount: Int? = null,
-    val ratingQueue: ImportRatingQueueState? = null
+    val ratingQueue: ImportRatingQueueState? = null,
+    val ambiguousMatch: AmbiguousSongMatch? = null
+)
+
+data class AmbiguousSongMatch(
+    val candidate: MusicTrackCandidate,
+    val matches: List<Song>
 )
 
 private data class SongLookupKey(
@@ -296,9 +302,47 @@ class LibraryViewModel(
                     )
                 }
             } else {
-                importSearchCandidate(candidate, existingSongIds)
+                val ambiguousMatches = songRepository.findAmbiguousMatches(candidate).getOrElse { emptyList() }
+                if (ambiguousMatches.isNotEmpty()) {
+                    localState.update {
+                        it.copy(ambiguousMatch = AmbiguousSongMatch(candidate, ambiguousMatches))
+                    }
+                } else {
+                    importSearchCandidate(candidate, existingSongIds)
+                }
             }
 
+            scheduleSearchCueReset()
+        }
+    }
+
+    fun confirmAmbiguousMatchIsSameSong() {
+        val match = localState.value.ambiguousMatch ?: return
+        localState.update {
+            it.copy(
+                ambiguousMatch = null,
+                addingTrackIds = it.addingTrackIds - match.candidate.externalId,
+                statusMessage = "${match.candidate.title} is already in your ladder."
+            )
+        }
+    }
+
+    fun cancelAmbiguousMatch() {
+        val match = localState.value.ambiguousMatch ?: return
+        localState.update {
+            it.copy(
+                ambiguousMatch = null,
+                addingTrackIds = it.addingTrackIds - match.candidate.externalId,
+                statusMessage = "Import cancelled."
+            )
+        }
+    }
+
+    fun addAmbiguousMatchAsNew() {
+        val match = localState.value.ambiguousMatch ?: return
+        localState.update { it.copy(ambiguousMatch = null) }
+        viewModelScope.launch {
+            importSearchCandidate(match.candidate, currentSongIds())
             scheduleSearchCueReset()
         }
     }

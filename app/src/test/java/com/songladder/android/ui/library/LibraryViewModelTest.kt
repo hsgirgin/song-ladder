@@ -119,6 +119,128 @@ class LibraryViewModelTest {
     }
 
     @Test
+    fun `search result that fuzzy-matches an existing song prompts an ambiguous match instead of importing`() = runTest {
+        val existingMatch = Song(
+            id = "song-existing",
+            rankingSubjectId = "song-existing",
+            title = "Nights (Remastered)",
+            artist = "Frank Ocean",
+            createdAt = 0L
+        )
+        val songRepository = FakeSongRepository(ambiguousMatchesProvider = { Result.success(listOf(existingMatch)) })
+        val importRepository = FakeImportRepository(songRepository)
+        val viewModel = viewModel(songRepository = songRepository, importRepository = importRepository)
+        backgroundScope.launch(dispatcher) { viewModel.uiState.collect {} }
+        val candidate = MusicTrackCandidate(
+            externalId = "1",
+            title = "Nights",
+            artist = "Frank Ocean",
+            album = "Blonde",
+            sourceType = MusicSourceType.ITUNES
+        )
+
+        viewModel.addSearchResult(candidate)
+        advanceUntilIdle()
+
+        assertEquals(candidate, viewModel.uiState.value.ambiguousMatch?.candidate)
+        assertEquals(listOf(existingMatch), viewModel.uiState.value.ambiguousMatch?.matches)
+        assertTrue(importRepository.imported.isEmpty())
+    }
+
+    @Test
+    fun `confirming an ambiguous match as the same song dismisses it without importing`() = runTest {
+        val existingMatch = Song(
+            id = "song-existing",
+            rankingSubjectId = "song-existing",
+            title = "Nights (Remastered)",
+            artist = "Frank Ocean",
+            createdAt = 0L
+        )
+        val songRepository = FakeSongRepository(ambiguousMatchesProvider = { Result.success(listOf(existingMatch)) })
+        val importRepository = FakeImportRepository(songRepository)
+        val viewModel = viewModel(songRepository = songRepository, importRepository = importRepository)
+        backgroundScope.launch(dispatcher) { viewModel.uiState.collect {} }
+        val candidate = MusicTrackCandidate(
+            externalId = "1",
+            title = "Nights",
+            artist = "Frank Ocean",
+            album = "Blonde",
+            sourceType = MusicSourceType.ITUNES
+        )
+        viewModel.addSearchResult(candidate)
+        advanceUntilIdle()
+
+        viewModel.confirmAmbiguousMatchIsSameSong()
+        advanceUntilIdle()
+
+        assertNull(viewModel.uiState.value.ambiguousMatch)
+        assertTrue(importRepository.imported.isEmpty())
+        assertEquals("Nights is already in your ladder.", viewModel.uiState.value.statusMessage)
+    }
+
+    @Test
+    fun `adding an ambiguous match as new proceeds with the original import`() = runTest {
+        val existingMatch = Song(
+            id = "song-existing",
+            rankingSubjectId = "song-existing",
+            title = "Nights (Remastered)",
+            artist = "Frank Ocean",
+            createdAt = 0L
+        )
+        val songRepository = FakeSongRepository(ambiguousMatchesProvider = { Result.success(listOf(existingMatch)) })
+        val importRepository = FakeImportRepository(songRepository)
+        val viewModel = viewModel(songRepository = songRepository, importRepository = importRepository)
+        backgroundScope.launch(dispatcher) { viewModel.uiState.collect {} }
+        val candidate = MusicTrackCandidate(
+            externalId = "1",
+            title = "Nights",
+            artist = "Frank Ocean",
+            album = "Blonde",
+            sourceType = MusicSourceType.ITUNES
+        )
+        viewModel.addSearchResult(candidate)
+        advanceUntilIdle()
+
+        viewModel.addAmbiguousMatchAsNew()
+        runCurrent()
+
+        assertNull(viewModel.uiState.value.ambiguousMatch)
+        assertEquals(1, importRepository.imported.size)
+        assertTrue("1" in viewModel.uiState.value.addedTrackIds)
+    }
+
+    @Test
+    fun `cancelling an ambiguous match clears it without importing`() = runTest {
+        val existingMatch = Song(
+            id = "song-existing",
+            rankingSubjectId = "song-existing",
+            title = "Nights (Remastered)",
+            artist = "Frank Ocean",
+            createdAt = 0L
+        )
+        val songRepository = FakeSongRepository(ambiguousMatchesProvider = { Result.success(listOf(existingMatch)) })
+        val importRepository = FakeImportRepository(songRepository)
+        val viewModel = viewModel(songRepository = songRepository, importRepository = importRepository)
+        backgroundScope.launch(dispatcher) { viewModel.uiState.collect {} }
+        val candidate = MusicTrackCandidate(
+            externalId = "1",
+            title = "Nights",
+            artist = "Frank Ocean",
+            album = "Blonde",
+            sourceType = MusicSourceType.ITUNES
+        )
+        viewModel.addSearchResult(candidate)
+        advanceUntilIdle()
+
+        viewModel.cancelAmbiguousMatch()
+        advanceUntilIdle()
+
+        assertNull(viewModel.uiState.value.ambiguousMatch)
+        assertTrue(importRepository.imported.isEmpty())
+        assertEquals("Import cancelled.", viewModel.uiState.value.statusMessage)
+    }
+
+    @Test
     fun `manual add opens a single-song rating queue`() = runTest {
         val songRepository = FakeSongRepository()
         val viewModel = viewModel(songRepository = songRepository)
@@ -303,11 +425,16 @@ class LibraryViewModelTest {
     )
 }
 
-private class FakeSongRepository : SongRepository {
+private class FakeSongRepository(
+    private val ambiguousMatchesProvider: (MusicTrackCandidate) -> Result<List<Song>> = { Result.success(emptyList()) }
+) : SongRepository {
     private val songs = MutableStateFlow<List<Song>>(emptyList())
     private var nextId = 0
 
     override fun observeSongs(): Flow<List<Song>> = songs
+
+    override suspend fun findAmbiguousMatches(candidate: MusicTrackCandidate): Result<List<Song>> =
+        ambiguousMatchesProvider(candidate)
 
     override suspend fun addSong(input: SongInput): Result<Unit> {
         val id = "song-${nextId++}"

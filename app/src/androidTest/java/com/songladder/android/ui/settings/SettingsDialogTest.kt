@@ -40,6 +40,7 @@ class SettingsDialogTest {
                     ),
                     onDismiss = {},
                     onAutoPlayChanged = {},
+                    onMetadataRetrievalChanged = {},
                     onShowTipsAgain = {},
                     onHistorySelectionChanged = {},
                     onClearSelection = {},
