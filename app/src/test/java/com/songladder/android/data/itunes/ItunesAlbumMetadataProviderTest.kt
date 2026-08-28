@@ -40,6 +40,60 @@ class ItunesAlbumMetadataProviderTest {
     }
 
     @Test
+    fun `search releases merges in the artist's discography when search omits the real album`() = runTest {
+        val server = MockWebServer()
+        // The term search only returns a decoy - a karaoke cover by a different
+        // artist, and a genuine System Of A Down single - never the "Toxicity"
+        // album itself, reproducing what iTunes' Search endpoint actually returns
+        // for this query.
+        server.enqueue(
+            MockResponse().setBody(
+                """
+                {
+                  "resultCount": 2,
+                  "results": [
+                    {"collectionId": 1, "collectionName": "Toxicity (Instrumental) - Single", "artistName": "Karaoke Band"},
+                    {"collectionId": 2, "collectionName": "Protect The Land - Single", "artistName": "System Of A Down", "artistId": 462715, "trackCount": 1}
+                  ]
+                }
+                """.trimIndent()
+            )
+        )
+        server.enqueue(
+            MockResponse().setBody(
+                """
+                {
+                  "resultCount": 2,
+                  "results": [
+                    {"wrapperType": "artist", "artistId": 462715, "artistName": "System Of A Down"},
+                    {"collectionId": 3, "collectionName": "Toxicity", "artistName": "System Of A Down", "trackCount": 15}
+                  ]
+                }
+                """.trimIndent()
+            )
+        )
+        server.start()
+
+        try {
+            val provider = ItunesAlbumMetadataProvider(
+                httpClient = OkHttpClient(),
+                searchBaseUrl = server.url("/search"),
+                lookupBaseUrl = server.url("/lookup")
+            )
+
+            val candidates = provider.searchReleases("System Of A Down", "Toxicity").getOrThrow()
+
+            assertEquals(setOf("1", "2", "3"), candidates.map { it.collectionId }.toSet())
+            val realAlbum = candidates.single { it.collectionId == "3" }
+            assertEquals("Toxicity", realAlbum.collectionName)
+            assertEquals(15, realAlbum.trackCount)
+            assertEquals(2, server.requestCount)
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    @Test
     fun `search releases drops results missing a title or artist`() = runTest {
         val server = MockWebServer()
         server.enqueue(

@@ -55,7 +55,32 @@ class ItunesAlbumMetadataProvider(
                 .addQueryParameter("entity", "album")
                 .addQueryParameter("limit", "10")
                 .build()
-            parseCandidates(executeRequest(url))
+            val termResults = parseSearchResults(executeRequest(url))
+            val termCandidates = candidatesFrom(termResults)
+
+            // The Search endpoint's relevance ranking routinely omits an artist's own
+            // studio album from its top results entirely - e.g. searching "System of a
+            // Down Toxicity" or "Tame Impala Currents" surfaces karaoke covers, tribute
+            // compilations, and unrelated singles, but never the real album, even though
+            // it exists in the catalog under that artist. No amount of scoring in
+            // AlbumMatchingEngine can recommend a candidate that was never fetched, so
+            // once an artist is identified from the term search, their full discography
+            // is pulled via Lookup (which returns everything credited to an artist id
+            // rather than a relevance-ranked subset) and merged in as additional
+            // candidates.
+            val artistId = termResults.firstOrNull { result ->
+                result.artistName?.trim()?.equals(artist.trim(), ignoreCase = true) == true
+            }?.artistId
+            val discographyCandidates = artistId?.let { id ->
+                val discographyUrl = lookupBaseUrl.newBuilder()
+                    .addQueryParameter("id", id.toString())
+                    .addQueryParameter("entity", "album")
+                    .addQueryParameter("limit", "200")
+                    .build()
+                candidatesFrom(parseSearchResults(executeRequest(discographyUrl)))
+            }.orEmpty()
+
+            (termCandidates + discographyCandidates).distinctBy { it.collectionId }
         }.recoverProviderFailure()
 
     override suspend fun lookupRelease(collectionId: String, forceRefresh: Boolean): Result<AlbumReleaseLookup> =
@@ -109,9 +134,11 @@ class ItunesAlbumMetadataProvider(
         }
     }
 
-    private fun parseCandidates(body: String): List<AlbumReleaseCandidate> {
-        val payload = json.decodeFromString(ItunesSearchResponse.serializer(), body)
-        return payload.results.mapNotNull { result ->
+    private fun parseSearchResults(body: String): List<ItunesTrackResult> =
+        json.decodeFromString(ItunesSearchResponse.serializer(), body).results
+
+    private fun candidatesFrom(results: List<ItunesTrackResult>): List<AlbumReleaseCandidate> {
+        return results.mapNotNull { result ->
             val collectionId = result.collectionId ?: return@mapNotNull null
             val collectionName = result.collectionName?.trim().orEmpty()
             val artistName = result.artistName?.trim().orEmpty()

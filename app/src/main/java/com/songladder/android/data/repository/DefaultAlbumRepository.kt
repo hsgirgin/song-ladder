@@ -394,10 +394,13 @@ class DefaultAlbumRepository(
         const val TAG = "DefaultAlbumRepository"
         const val MATCH_ATTEMPT_BACKOFF_MILLIS = 60_000L
 
-        // Worst case an eligible album costs 2 requests (search + lookup, on an
-        // auto-match). Spacing attempts this far apart caps that at ~10 albums/min,
-        // safely under iTunes' informal ~20 req/min/IP limit even if every album in
-        // the batch auto-matches.
-        const val MATCH_ATTEMPT_SPACING_MILLIS = 6_000L
+        // Worst case an eligible album costs 3 requests: the term search, the
+        // artist-discography lookup ItunesAlbumMetadataProvider falls back to when it
+        // can identify the artist (Search's relevance ranking can omit an artist's own
+        // album from its results entirely), and the release lookup on an auto-match.
+        // Spacing attempts this far apart caps that at ~6-7 albums/min, safely under
+        // iTunes' informal ~20 req/min/IP limit even if every album in the batch
+        // auto-matches.
+        const val MATCH_ATTEMPT_SPACING_MILLIS = 9_000L
     }
 }
