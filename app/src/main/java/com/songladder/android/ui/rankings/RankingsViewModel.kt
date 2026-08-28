@@ -100,6 +100,7 @@ data class RankingsUiState(
     val albumMatchCandidates: AlbumMatchCandidatesState? = null,
     val previews: Map<String, RankingsPreviewState> = emptyMap(),
     val isSavingScore: Boolean = false,
+    val isRefreshingAllAlbums: Boolean = false,
     val pendingDeletedSong: PendingDeletedSong? = null,
     val status: RankingsStatus = RankingsStatus.None
 ) {
@@ -121,6 +122,7 @@ private data class RankingsLocalState(
     val detailSongId: String? = null,
     val detailAlbumId: String? = null,
     val isSavingScore: Boolean = false,
+    val isRefreshingAllAlbums: Boolean = false,
     val dismissingSuggestionIds: Set<String> = emptySet(),
     val pendingDeletedSong: PendingDeletedSong? = null,
     val status: RankingsStatus = RankingsStatus.None
@@ -216,6 +218,7 @@ class RankingsViewModel(
             detailSongId = local.detailSongId?.takeIf { id -> songs.any { it.id == id } },
             detailAlbumId = local.detailAlbumId,
             isSavingScore = local.isSavingScore,
+            isRefreshingAllAlbums = local.isRefreshingAllAlbums,
             pendingDeletedSong = local.pendingDeletedSong,
             status = local.status
         )
@@ -342,6 +345,21 @@ class RankingsViewModel(
                 // naturally picks up whatever matchStatus the refresh actually produced.
                 .onSuccess { albumCandidatesState.value = null }
                 .onFailure { localState.update { it.copy(status = RankingsStatus.SaveFailed) } }
+        }
+    }
+
+    fun refreshAllAlbumMetadata() {
+        // Guards against localState directly (not uiState) since uiState is a step
+        // behind it - it's only recomputed once the combine chain below re-collects,
+        // so a second call issued before that happens would otherwise read a stale
+        // "not refreshing" value and slip through.
+        if (localState.value.isRefreshingAllAlbums) return
+        localState.update { it.copy(isRefreshingAllAlbums = true, status = RankingsStatus.None) }
+        viewModelScope.launch {
+            albumRepository.refreshAllMetadata()
+                .onSuccess { albumCandidatesState.value = null }
+                .onFailure { localState.update { it.copy(status = RankingsStatus.SaveFailed) } }
+            localState.update { it.copy(isRefreshingAllAlbums = false) }
         }
     }
 

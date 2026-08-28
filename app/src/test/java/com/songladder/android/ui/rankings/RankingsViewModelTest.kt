@@ -25,6 +25,7 @@ import com.songladder.android.domain.repository.SongPreviewResolver
 import com.songladder.android.domain.repository.SongRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -447,6 +448,36 @@ class RankingsViewModelTest {
     }
 
     @Test
+    fun `refreshing all album metadata delegates to the repository and toggles the loading flag`() = runTest {
+        val albumRepository = FakeAlbumRepository()
+        val viewModel = viewModel(albumRepository = albumRepository)
+        backgroundScope.launch(dispatcher) { viewModel.uiState.collect {} }
+        advanceUntilIdle()
+
+        viewModel.refreshAllAlbumMetadata()
+        runCurrent()
+        assertEquals(true, viewModel.uiState.value.isRefreshingAllAlbums)
+        advanceUntilIdle()
+
+        assertEquals(1, albumRepository.refreshAllMetadataCallCount)
+        assertEquals(false, viewModel.uiState.value.isRefreshingAllAlbums)
+    }
+
+    @Test
+    fun `refreshing all album metadata again while one is already in flight is a no-op`() = runTest {
+        val albumRepository = FakeAlbumRepository()
+        val viewModel = viewModel(albumRepository = albumRepository)
+        backgroundScope.launch(dispatcher) { viewModel.uiState.collect {} }
+        advanceUntilIdle()
+
+        viewModel.refreshAllAlbumMetadata()
+        viewModel.refreshAllAlbumMetadata()
+        advanceUntilIdle()
+
+        assertEquals(1, albumRepository.refreshAllMetadataCallCount)
+    }
+
+    @Test
     fun `presentation changes persist while preserving other settings`() = runTest {
         val settingsRepository = FakeSettingsRepository(
             RankingSettings(
@@ -662,6 +693,8 @@ private class FakeAlbumRepository(
     val chooseReleaseCalls = mutableListOf<Pair<String, String>>()
     val addMissingTracksCalls = mutableListOf<Pair<String, List<String>>>()
     val refreshMetadataCalls = mutableListOf<String>()
+    var refreshAllMetadataCallCount = 0
+        private set
     val searchReleaseCandidatesCalls = mutableListOf<String>()
 
     override fun observeAlbums(): Flow<List<RankedAlbum>> = albumsFlow
@@ -694,6 +727,15 @@ private class FakeAlbumRepository(
 
     override suspend fun refreshMetadata(albumId: String): Result<Unit> {
         refreshMetadataCalls += albumId
+        return Result.success(Unit)
+    }
+
+    override suspend fun refreshAllMetadata(): Result<Unit> {
+        refreshAllMetadataCallCount++
+        // A real suspension point (unlike the other fakes here, which return
+        // immediately) - lets tests observe isRefreshingAllAlbums mid-flight via
+        // runCurrent() rather than jumping straight past it to the settled state.
+        delay(1)
         return Result.success(Unit)
     }
 

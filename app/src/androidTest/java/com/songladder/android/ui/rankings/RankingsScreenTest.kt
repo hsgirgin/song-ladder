@@ -110,6 +110,7 @@ class RankingsScreenTest {
                     onAddAlbumMissingTracks = { _, _ -> },
                     onChooseAlbumRelease = { _, _ -> },
                     onRefreshAlbumMetadata = {},
+                    onRefreshAllAlbums = {},
                     onOpenSettings = {},
                     onAddSongs = {}
                 )
@@ -165,6 +166,7 @@ class RankingsScreenTest {
                     onAddAlbumMissingTracks = { _, _ -> },
                     onChooseAlbumRelease = { _, _ -> },
                     onRefreshAlbumMetadata = {},
+                    onRefreshAllAlbums = {},
                     onOpenSettings = {},
                     onAddSongs = {}
                 )
@@ -213,6 +215,7 @@ class RankingsScreenTest {
                     onAddAlbumMissingTracks = { _, _ -> },
                     onChooseAlbumRelease = { _, _ -> },
                     onRefreshAlbumMetadata = {},
+                    onRefreshAllAlbums = {},
                     onOpenSettings = {},
                     onAddSongs = {}
                 )
@@ -282,6 +285,7 @@ class RankingsScreenTest {
                     onAddAlbumMissingTracks = { _, _ -> },
                     onChooseAlbumRelease = { _, _ -> },
                     onRefreshAlbumMetadata = {},
+                    onRefreshAllAlbums = {},
                     onOpenSettings = {},
                     onAddSongs = {}
                 )
@@ -347,6 +351,7 @@ class RankingsScreenTest {
                     onAddAlbumMissingTracks = { _, _ -> },
                     onChooseAlbumRelease = { _, _ -> },
                     onRefreshAlbumMetadata = {},
+                    onRefreshAllAlbums = {},
                     onOpenSettings = {},
                     onAddSongs = {}
                 )
@@ -395,6 +400,7 @@ class RankingsScreenTest {
                     onAddAlbumMissingTracks = { _, _ -> },
                     onChooseAlbumRelease = { _, _ -> },
                     onRefreshAlbumMetadata = {},
+                    onRefreshAllAlbums = {},
                     onOpenSettings = { openedSettings = true },
                     onAddSongs = {}
                 )
@@ -450,6 +456,7 @@ class RankingsScreenTest {
                     onAddAlbumMissingTracks = { _, _ -> },
                     onChooseAlbumRelease = { _, _ -> },
                     onRefreshAlbumMetadata = {},
+                    onRefreshAllAlbums = {},
                     onOpenSettings = {},
                     onAddSongs = {}
                 )
@@ -497,6 +504,7 @@ class RankingsScreenTest {
                     onAddAlbumMissingTracks = { _, _ -> },
                     onChooseAlbumRelease = { _, _ -> },
                     onRefreshAlbumMetadata = {},
+                    onRefreshAllAlbums = {},
                     onOpenSettings = {},
                     onAddSongs = {}
                 )
@@ -567,6 +575,7 @@ class RankingsScreenTest {
                     onAddAlbumMissingTracks = { _, _ -> },
                     onChooseAlbumRelease = { _, _ -> },
                     onRefreshAlbumMetadata = {},
+                    onRefreshAllAlbums = {},
                     onOpenSettings = {},
                     onAddSongs = {}
                 )
@@ -576,6 +585,94 @@ class RankingsScreenTest {
         composeRule.onNodeWithText("Blonde").assertIsDisplayed()
         composeRule.onNodeWithText("#1").assertIsDisplayed()
         composeRule.onNodeWithText("Coming soon").assertDoesNotExist()
+    }
+
+    @Test
+    fun albumsTab_refreshAllButtonInvokesCallbackAndOnlyShowsOnTheAlbumsTab() {
+        var refreshed = false
+        composeRule.setContent {
+            SongLadderTheme {
+                RankingsScreenContent(
+                    uiState = RankingsUiState(
+                        selectedTab = RankingsTab.ALBUMS,
+                        presentation = RankingPresentation.GRID,
+                        rankedAlbums = listOf(rankedAlbum(id = "album-1", title = "Blonde", scoreTenths = 80))
+                    ),
+                    onTabSelected = {},
+                    onSearchActiveChanged = {},
+                    onSearchQueryChanged = {},
+                    onPresentationChanged = {},
+                    onToggleUnrated = {},
+                    onToggleIncompleteAlbums = {},
+                    onToggleStats = {},
+                    onTogglePreview = {},
+                    onShowDetails = {},
+                    onHideDetails = {},
+                    onSaveScore = { _, _ -> },
+                    onDismissTip = {},
+                    onDeleteSong = {},
+                    onUndoDelete = {},
+                    onAcceptSuggestion = { _, _ -> },
+                    onDismissSuggestion = {},
+                    onToggleSuggestionSelection = {},
+                    onClearSuggestionSelection = {},
+                    onAcceptSelectedSuggestions = {},
+                    onShowAlbumDetails = {},
+                    onHideAlbumDetails = {},
+                    onToggleAlbumTrackExcluded = { _, _, _ -> },
+                    onAddAlbumMissingTracks = { _, _ -> },
+                    onChooseAlbumRelease = { _, _ -> },
+                    onRefreshAlbumMetadata = {},
+                    onRefreshAllAlbums = { refreshed = true },
+                    onOpenSettings = {},
+                    onAddSongs = {}
+                )
+            }
+        }
+
+        composeRule.onNodeWithContentDescription("Refresh all album metadata").assertIsDisplayed().performClick()
+        assertEquals(true, refreshed)
+    }
+
+    @Test
+    fun songsTab_hasNoRefreshAllAlbumsButton() {
+        composeRule.setContent {
+            SongLadderTheme {
+                RankingsScreenContent(
+                    uiState = RankingsUiState(selectedTab = RankingsTab.SONGS),
+                    onTabSelected = {},
+                    onSearchActiveChanged = {},
+                    onSearchQueryChanged = {},
+                    onPresentationChanged = {},
+                    onToggleUnrated = {},
+                    onToggleIncompleteAlbums = {},
+                    onToggleStats = {},
+                    onTogglePreview = {},
+                    onShowDetails = {},
+                    onHideDetails = {},
+                    onSaveScore = { _, _ -> },
+                    onDismissTip = {},
+                    onDeleteSong = {},
+                    onUndoDelete = {},
+                    onAcceptSuggestion = { _, _ -> },
+                    onDismissSuggestion = {},
+                    onToggleSuggestionSelection = {},
+                    onClearSuggestionSelection = {},
+                    onAcceptSelectedSuggestions = {},
+                    onShowAlbumDetails = {},
+                    onHideAlbumDetails = {},
+                    onToggleAlbumTrackExcluded = { _, _, _ -> },
+                    onAddAlbumMissingTracks = { _, _ -> },
+                    onChooseAlbumRelease = { _, _ -> },
+                    onRefreshAlbumMetadata = {},
+                    onRefreshAllAlbums = {},
+                    onOpenSettings = {},
+                    onAddSongs = {}
+                )
+            }
+        }
+
+        composeRule.onNodeWithContentDescription("Refresh all album metadata").assertDoesNotExist()
     }
 
     @Test
