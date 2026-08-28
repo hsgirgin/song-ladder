@@ -4,7 +4,7 @@ import com.songladder.android.domain.model.Album
 import com.songladder.android.domain.model.AlbumExport
 import com.songladder.android.domain.model.AlbumMatchStatus
 import com.songladder.android.domain.model.AlbumMetadataProviderType
-import com.songladder.android.domain.model.AlbumMissingTrack
+import com.songladder.android.domain.model.AlbumReleaseTrack
 import com.songladder.android.domain.model.AlbumTrackExclusion
 import com.songladder.android.domain.model.AlbumTrackExclusionExport
 
@@ -106,17 +106,16 @@ fun AlbumTrackExclusionEntity.toExport(): AlbumTrackExclusionExport = AlbumTrack
     excludedAt = excludedAt
 )
 
-fun AlbumMissingTrackEntity.toDomain(): AlbumMissingTrack = AlbumMissingTrack(
-    albumId = albumId,
-    providerTrackId = providerTrackId,
+fun AlbumReleaseTrackEntity.toDomain(): AlbumReleaseTrack = AlbumReleaseTrack(
+    trackId = providerTrackId,
     title = title,
     trackNumber = trackNumber,
     artworkUrl = artworkUrl
 )
 
-fun AlbumMissingTrack.toEntity(): AlbumMissingTrackEntity = AlbumMissingTrackEntity(
+fun AlbumReleaseTrack.toEntity(albumId: String): AlbumReleaseTrackEntity = AlbumReleaseTrackEntity(
     albumId = albumId,
-    providerTrackId = providerTrackId,
+    providerTrackId = trackId,
     title = title,
     trackNumber = trackNumber,
     artworkUrl = artworkUrl

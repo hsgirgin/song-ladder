@@ -4,7 +4,7 @@ import android.content.ContentResolver
 import android.net.Uri
 import androidx.room.withTransaction
 import com.songladder.android.data.local.AlbumDao
-import com.songladder.android.data.local.AlbumMissingTrackDao
+import com.songladder.android.data.local.AlbumReleaseTrackDao
 import com.songladder.android.data.local.AlbumTrackExclusionDao
 import com.songladder.android.data.local.AppStatsDao
 import com.songladder.android.data.local.AppStatsEntity
@@ -48,7 +48,7 @@ class DefaultImportRepository(
     private val appStatsDao: AppStatsDao,
     private val albumDao: AlbumDao,
     private val albumTrackExclusionDao: AlbumTrackExclusionDao,
-    private val albumMissingTrackDao: AlbumMissingTrackDao,
+    private val albumReleaseTrackDao: AlbumReleaseTrackDao,
     private val suggestionDismissalDao: SuggestionDismissalDao? = null,
     private val jsonPorter: SongLadderJsonPorter,
     private val matchupEngine: EloMatchupEngine = EloMatchupEngine()
@@ -209,10 +209,10 @@ class DefaultImportRepository(
             matchupEventDao.clearAll()
             suggestionDismissalDao?.clearAll()
             // Album match state is matcher-derived, not restored verbatim (see
-            // AlbumExport) - a fresh import invalidates any prior matches/missing-track
+            // AlbumExport) - a fresh import invalidates any prior matches/release-track
             // caches the same way it invalidates cached Elo, so they're cleared here and
             // left for the matcher to re-resolve rather than left stale.
-            albumMissingTrackDao.clearAll()
+            albumReleaseTrackDao.clearAll()
             albumTrackExclusionDao.clearAll()
             albumDao.clearAll()
             rankingSubjectDao.insertAll(entities.subjects)

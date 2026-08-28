@@ -4,8 +4,8 @@ import android.util.Log
 import androidx.room.withTransaction
 import com.songladder.android.data.local.AlbumDao
 import com.songladder.android.data.local.AlbumEntity
-import com.songladder.android.data.local.AlbumMissingTrackDao
-import com.songladder.android.data.local.AlbumMissingTrackEntity
+import com.songladder.android.data.local.AlbumReleaseTrackDao
+import com.songladder.android.data.local.AlbumReleaseTrackEntity
 import com.songladder.android.data.local.AlbumTrackExclusionDao
 import com.songladder.android.data.local.AlbumTrackExclusionEntity
 import com.songladder.android.data.local.RankingSubjectEntity
@@ -14,10 +14,12 @@ import com.songladder.android.data.local.SongEntity
 import com.songladder.android.data.local.SongLadderDatabase
 import com.songladder.android.data.local.SongWithStatsEntity
 import com.songladder.android.data.local.toDomain
+import com.songladder.android.data.local.toEntity
 import com.songladder.android.domain.engine.AlbumMatchingEngine
 import com.songladder.android.domain.model.AlbumDetail
 import com.songladder.android.domain.model.AlbumMatchStatus
 import com.songladder.android.domain.model.AlbumReleaseCandidate
+import com.songladder.android.domain.model.AlbumReleaseTrack
 import com.songladder.android.domain.model.AlbumTrackRow
 import com.songladder.android.domain.model.AlbumReleaseLookup
 import com.songladder.android.domain.model.MusicSourceType
@@ -49,7 +51,7 @@ class DefaultAlbumRepository(
     private val songDao: SongDao,
     private val albumDao: AlbumDao,
     private val albumTrackExclusionDao: AlbumTrackExclusionDao,
-    private val albumMissingTrackDao: AlbumMissingTrackDao,
+    private val albumReleaseTrackDao: AlbumReleaseTrackDao,
     private val albumMetadataProvider: AlbumMetadataProvider,
     private val settingsRepository: SettingsRepository,
     private val matchingEngine: AlbumMatchingEngine = AlbumMatchingEngine(),
@@ -101,14 +103,16 @@ class DefaultAlbumRepository(
     override fun observeAlbums(): Flow<List<RankedAlbum>> = combine(
         albumDao.observeAll(),
         songDao.observeSongsWithStats(),
-        albumTrackExclusionDao.observeAll()
-    ) { albums, songRows, exclusions ->
+        albumTrackExclusionDao.observeAll(),
+        albumReleaseTrackDao.observeAll()
+    ) { albums, songRows, exclusions, releaseTracks ->
         val excludedSongIds = exclusions.map { it.songId }.toSet()
-        val songsByAlbumId = songRows
+        val taggedSongsByAlbumId = songRows
             .filter { it.song.album.isNotBlank() && it.song.artist.isNotBlank() }
             .groupBy { groupingIdFor(it) }
+        val releaseTracksByAlbumId = releaseTracks.groupBy { it.albumId }
         albums.map { album ->
-            val ownedSongs = songsByAlbumId[album.id].orEmpty()
+            val ownedSongs = ownedSongsFor(album, songRows, taggedSongsByAlbumId, releaseTracksByAlbumId[album.id])
             val includedRated = ownedSongs
                 .filter { it.song.id !in excludedSongIds && it.stats.scoreTenths != null }
                 .map { it.stats.scoreTenths!! }
@@ -126,12 +130,16 @@ class DefaultAlbumRepository(
         albumDao.observe(albumId),
         songDao.observeSongsWithStats(),
         albumTrackExclusionDao.observeAll(),
-        albumMissingTrackDao.observeForAlbum(albumId)
-    ) { album, songRows, exclusions, missingTracks ->
+        albumReleaseTrackDao.observeForAlbum(albumId)
+    ) { album, songRows, exclusions, releaseTrackEntities ->
         if (album == null) return@combine null
         val excludedSongIds = exclusions.filter { it.albumId == albumId }.map { it.songId }.toSet()
-        val tracks = songRows
-            .filter { groupingIdFor(it) == albumId }
+        val releaseTracks = releaseTrackEntities.map { it.toDomain() }
+        val taggedSongsByAlbumId = songRows
+            .filter { it.song.album.isNotBlank() && it.song.artist.isNotBlank() }
+            .groupBy { groupingIdFor(it) }
+        val ownedSongs = ownedSongsFor(album, songRows, taggedSongsByAlbumId, releaseTrackEntities)
+        val tracks = ownedSongs
             .map { row ->
                 AlbumTrackRow(
                     song = row.toDomain(),
@@ -142,13 +150,42 @@ class DefaultAlbumRepository(
         val includedRated = tracks
             .filter { !it.excludedFromAverage && it.song.scoreTenths != null }
             .map { it.song.scoreTenths!! }
+        val missing = if (releaseTracks.isEmpty()) {
+            emptyList()
+        } else {
+            val ownedTitlesByArtist = songRows
+                .filter { it.song.artist.trim().lowercase() == album.normalizedArtist }
+                .map { it.song.title }
+            matchingEngine.missingTracks(ownedTitlesByArtist, releaseTracks)
+                .sortedBy { it.trackNumber ?: Int.MAX_VALUE }
+        }
         AlbumDetail(
             album = album.toDomain(),
             tracks = tracks,
-            missingTracks = missingTracks.map { it.toDomain() }.sortedBy { it.trackNumber ?: Int.MAX_VALUE },
+            missingTracks = missing,
             scoreTenths = computeAlbumScoreTenths(includedRated, album.providerTrackCount),
             includedRatedTrackCount = includedRated.size
         )
+    }
+
+    // A matched album (one with a persisted release tracklist) counts an owned song
+    // toward its average by (artist, title) match against that tracklist - not by the
+    // song's own local album tag - so the same owned/ranked song can count toward more
+    // than one release's average (e.g. standard vs. deluxe editions) without a replica
+    // Song row. An unmatched album (PENDING/NO_MATCH, no tracklist yet) falls back to
+    // the literal tag grouping, since there's nothing else to match against.
+    private fun ownedSongsFor(
+        album: AlbumEntity,
+        allSongRows: List<SongWithStatsEntity>,
+        taggedSongsByAlbumId: Map<String, List<SongWithStatsEntity>>,
+        releaseTracksForAlbum: List<AlbumReleaseTrackEntity>?
+    ): List<SongWithStatsEntity> {
+        if (releaseTracksForAlbum.isNullOrEmpty()) return taggedSongsByAlbumId[album.id].orEmpty()
+        val titleSet = matchingEngine.normalizedTrackTitles(releaseTracksForAlbum.map { it.toDomain() })
+        return allSongRows.filter {
+            it.song.artist.trim().lowercase() == album.normalizedArtist &&
+                matchingEngine.normalizeTitle(it.song.title) in titleSet
+        }
     }
 
     override suspend fun setTrackExcluded(albumId: String, songId: String, excluded: Boolean): Result<Unit> =
@@ -176,13 +213,13 @@ class DefaultAlbumRepository(
             lastMatchAttemptAt = timeSource.now(),
             lastMatchedAt = timeSource.now()
         )
-        persistAlbumAndMissingTracks(confirmed, lookup)
+        persistAlbumAndReleaseTracks(confirmed, lookup)
     }
 
     override suspend fun addMissingTracks(albumId: String, providerTrackIds: List<String>): Result<Int> = runCatching {
         database.withTransaction {
             val album = albumDao.get(albumId) ?: error("Album not found.")
-            val toAdd = albumMissingTrackDao.getForAlbum(albumId).filter { it.providerTrackId in providerTrackIds }
+            val toAdd = albumReleaseTrackDao.getForAlbum(albumId).filter { it.providerTrackId in providerTrackIds }
             if (toAdd.isEmpty()) return@withTransaction 0
             toAdd.forEach { track ->
                 val id = UUID.randomUUID().toString()
@@ -207,7 +244,10 @@ class DefaultAlbumRepository(
                     )
                 )
             }
-            albumMissingTrackDao.delete(albumId, toAdd.map { it.providerTrackId })
+            // The release track row itself stays put (it's the full tracklist, not a
+            // per-album "still missing" diff) - other albums matched to a release that
+            // shares this track (e.g. a deluxe edition) still need it to match this
+            // song by title.
             toAdd.size
         }
     }
@@ -227,7 +267,7 @@ class DefaultAlbumRepository(
                 lastMatchAttemptAt = timeSource.now(),
                 lastMatchedAt = timeSource.now()
             )
-            persistAlbumAndMissingTracks(updated, lookup)
+            persistAlbumAndReleaseTracks(updated, lookup)
         } else {
             // No confirmed/matched release yet - an explicit refresh bypasses the
             // normal PENDING backoff rather than making the user wait for it.
@@ -291,7 +331,7 @@ class DefaultAlbumRepository(
             val outcome = matchingEngine.classifyMatch(album.title, album.artist, ownedTitles, candidates)
 
             when (outcome.status) {
-                AlbumMatchStatus.NO_MATCH -> persistAlbumAndMissingTracks(
+                AlbumMatchStatus.NO_MATCH -> persistAlbumAndReleaseTracks(
                     album.copy(
                         matchStatus = AlbumMatchStatus.NO_MATCH.name,
                         matchConfidence = outcome.confidence,
@@ -322,7 +362,7 @@ class DefaultAlbumRepository(
                         lastMatchAttemptAt = timeSource.now(),
                         lastMatchedAt = timeSource.now()
                     )
-                    persistAlbumAndMissingTracks(updated, lookup)
+                    persistAlbumAndReleaseTracks(updated, lookup)
                 }
 
                 else -> Unit
@@ -333,32 +373,21 @@ class DefaultAlbumRepository(
     }
 
     /**
-     * Writes the album row and (when [lookup] is known) its missing-track diff in a
+     * Writes the album row and (when [lookup] is known) its full release tracklist in a
      * single transaction. Both used to be two separate transactions with a real gap
      * between them - a process death in that window left an AUTO_MATCHED/CONFIRMED
-     * album with stale or absent missing-track rows and nothing to self-heal it,
-     * since only PENDING albums are ever auto-(re)matched. [lookup] is always
-     * resolved (a suspending network call) before this is called, so the transaction
-     * itself never spans a network round trip.
+     * album with a stale or absent tracklist and nothing to self-heal it, since only
+     * PENDING albums are ever auto-(re)matched. [lookup] is always resolved (a
+     * suspending network call) before this is called, so the transaction itself never
+     * spans a network round trip.
      */
-    private suspend fun persistAlbumAndMissingTracks(album: AlbumEntity, lookup: AlbumReleaseLookup?) {
+    private suspend fun persistAlbumAndReleaseTracks(album: AlbumEntity, lookup: AlbumReleaseLookup?) {
         val finalAlbum = if (lookup?.trackCount != null) album.copy(providerTrackCount = lookup.trackCount) else album
-        val missing = lookup?.let { matchingEngine.missingTracks(ownedTrackTitles(finalAlbum), it) }
         database.withTransaction {
             albumDao.insert(finalAlbum)
             if (lookup != null) {
-                albumMissingTrackDao.clearForAlbum(finalAlbum.id)
-                albumMissingTrackDao.insertAll(
-                    missing.orEmpty().map { track ->
-                        AlbumMissingTrackEntity(
-                            albumId = finalAlbum.id,
-                            providerTrackId = track.trackId,
-                            title = track.title,
-                            trackNumber = track.trackNumber,
-                            artworkUrl = track.artworkUrl
-                        )
-                    }
-                )
+                albumReleaseTrackDao.clearForAlbum(finalAlbum.id)
+                albumReleaseTrackDao.insertAll(lookup.tracks.map { it.toEntity(finalAlbum.id) })
             }
         }
     }

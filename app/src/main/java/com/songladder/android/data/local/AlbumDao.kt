@@ -61,22 +61,22 @@ interface AlbumTrackExclusionDao {
 }
 
 @Dao
-interface AlbumMissingTrackDao {
-    @Query("SELECT * FROM album_missing_tracks WHERE albumId = :albumId")
-    fun observeForAlbum(albumId: String): Flow<List<AlbumMissingTrackEntity>>
+interface AlbumReleaseTrackDao {
+    @Query("SELECT * FROM album_release_tracks")
+    fun observeAll(): Flow<List<AlbumReleaseTrackEntity>>
 
-    @Query("SELECT * FROM album_missing_tracks WHERE albumId = :albumId")
-    suspend fun getForAlbum(albumId: String): List<AlbumMissingTrackEntity>
+    @Query("SELECT * FROM album_release_tracks WHERE albumId = :albumId")
+    fun observeForAlbum(albumId: String): Flow<List<AlbumReleaseTrackEntity>>
+
+    @Query("SELECT * FROM album_release_tracks WHERE albumId = :albumId")
+    suspend fun getForAlbum(albumId: String): List<AlbumReleaseTrackEntity>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertAll(tracks: List<AlbumMissingTrackEntity>)
+    suspend fun insertAll(tracks: List<AlbumReleaseTrackEntity>)
 
-    @Query("DELETE FROM album_missing_tracks WHERE albumId = :albumId")
+    @Query("DELETE FROM album_release_tracks WHERE albumId = :albumId")
     suspend fun clearForAlbum(albumId: String)
 
-    @Query("DELETE FROM album_missing_tracks WHERE albumId = :albumId AND providerTrackId IN (:providerTrackIds)")
-    suspend fun delete(albumId: String, providerTrackIds: List<String>)
-
-    @Query("DELETE FROM album_missing_tracks")
+    @Query("DELETE FROM album_release_tracks")
     suspend fun clearAll()
 }

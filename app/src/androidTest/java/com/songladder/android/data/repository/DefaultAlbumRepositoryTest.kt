@@ -3,7 +3,6 @@ package com.songladder.android.data.repository
 import androidx.room.Room
 import androidx.test.platform.app.InstrumentationRegistry
 import com.songladder.android.data.local.AlbumEntity
-import com.songladder.android.data.local.AlbumMissingTrackEntity
 import com.songladder.android.data.local.RankingSubjectEntity
 import com.songladder.android.data.local.SongEntity
 import com.songladder.android.data.local.SongLadderDatabase
@@ -84,10 +83,10 @@ class DefaultAlbumRepositoryTest {
         assertEquals("collection-1", album.providerCollectionId)
         assertEquals(2, album.providerTrackCount)
 
-        // The missing-track write happens in a second transaction after the match
+        // The release-track write happens in a second transaction after the match
         // status commits, so wait for it rather than assuming it's already there the
         // instant matchStatus flips.
-        val missing = waitForMissingTracks(album.id) { it.isNotEmpty() }
+        val missing = waitForMissingTracks(repository, album.id) { it.isNotEmpty() }
         assertEquals(listOf("Ivy"), missing.map { it.title })
     }
 
@@ -261,8 +260,13 @@ class DefaultAlbumRepositoryTest {
 
         val refreshed = database.albumDao().get(albumId)
         assertEquals(2, refreshed?.providerTrackCount)
-        val missing = database.albumMissingTrackDao().getForAlbum(albumId)
-        assertEquals(listOf("Ivy"), missing.map { it.title })
+        // The full release tracklist is persisted now, not just what's missing - Nikes
+        // (owned) and Ivy (not) both land in the table; only observeAlbumDetail derives
+        // the missing subset.
+        val releaseTracks = database.albumReleaseTrackDao().getForAlbum(albumId)
+        assertEquals(setOf("Nikes", "Ivy"), releaseTracks.map { it.title }.toSet())
+        val detail = repository.observeAlbumDetail(albumId).first()
+        assertEquals(listOf("Ivy"), detail?.missingTracks?.map { it.title })
     }
 
     @Test
@@ -311,7 +315,7 @@ class DefaultAlbumRepositoryTest {
         songDao = database.songDao(),
         albumDao = database.albumDao(),
         albumTrackExclusionDao = database.albumTrackExclusionDao(),
-        albumMissingTrackDao = database.albumMissingTrackDao(),
+        albumReleaseTrackDao = database.albumReleaseTrackDao(),
         albumMetadataProvider = provider,
         settingsRepository = settingsRepository,
         timeSource = TimeSource { clockMillis++ },
@@ -368,13 +372,14 @@ class DefaultAlbumRepositoryTest {
     }
 
     private suspend fun waitForMissingTracks(
+        repository: DefaultAlbumRepository,
         albumId: String,
         timeoutMillis: Long = 5_000,
-        predicate: (List<AlbumMissingTrackEntity>) -> Boolean
-    ): List<AlbumMissingTrackEntity> {
+        predicate: (List<AlbumReleaseTrack>) -> Boolean
+    ): List<AlbumReleaseTrack> {
         val deadline = System.currentTimeMillis() + timeoutMillis
         while (System.currentTimeMillis() < deadline) {
-            val current = database.albumMissingTrackDao().getForAlbum(albumId)
+            val current = repository.observeAlbumDetail(albumId).first()?.missingTracks.orEmpty()
             if (predicate(current)) return current
             delay(20)
         }

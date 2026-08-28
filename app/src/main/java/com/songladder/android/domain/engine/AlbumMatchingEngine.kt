@@ -48,10 +48,24 @@ class AlbumMatchingEngine {
         return AlbumMatchOutcome(status = status, bestCandidate = topCandidate, confidence = topScore)
     }
 
-    fun missingTracks(ownedTrackTitles: List<String>, release: AlbumReleaseLookup): List<AlbumReleaseTrack> {
+    fun missingTracks(ownedTrackTitles: List<String>, tracks: List<AlbumReleaseTrack>): List<AlbumReleaseTrack> {
         val owned = ownedTrackTitles.map { normalize(it) }.toSet()
-        return release.tracks.filter { track -> normalize(track.title) !in owned }
+        return tracks.filter { track -> normalize(track.title) !in owned }
     }
+
+    fun missingTracks(ownedTrackTitles: List<String>, release: AlbumReleaseLookup): List<AlbumReleaseTrack> =
+        missingTracks(ownedTrackTitles, release.tracks)
+
+    /**
+     * Normalized title lookup set for a release's tracklist - lets a caller (the album
+     * repository, deciding whether an owned song counts toward an album's average) check
+     * song-title membership the same way [missingTracks] does, without re-implementing
+     * the normalization rules here.
+     */
+    fun normalizedTrackTitles(tracks: List<AlbumReleaseTrack>): Set<String> =
+        tracks.map { normalize(it.title) }.toSet()
+
+    fun normalizeTitle(title: String): String = normalize(title)
 
     /**
      * Orders [candidates] by the same scoring [classifyMatch] uses to pick a best
