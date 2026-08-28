@@ -302,6 +302,17 @@ class DefaultAlbumRepository(
 
                 AlbumMatchStatus.AUTO_MATCHED, AlbumMatchStatus.NEEDS_REVIEW -> {
                     val candidate = outcome.bestCandidate ?: return
+                    val lookup = if (outcome.status == AlbumMatchStatus.AUTO_MATCHED) {
+                        // A failed lookup here must not be committed as a "done"
+                        // AUTO_MATCHED album with missing artwork/tracks and no way
+                        // back to PENDING - bail out before persisting anything, same
+                        // as a failed search above, so the existing PENDING
+                        // backoff/retry picks this album back up on the next pass
+                        // instead of it silently sitting half-populated forever.
+                        albumMetadataProvider.lookupRelease(candidate.collectionId).getOrNull() ?: return
+                    } else {
+                        null
+                    }
                     val updated = album.copy(
                         providerCollectionId = candidate.collectionId,
                         providerTrackCount = candidate.trackCount,
@@ -311,11 +322,6 @@ class DefaultAlbumRepository(
                         lastMatchAttemptAt = timeSource.now(),
                         lastMatchedAt = timeSource.now()
                     )
-                    val lookup = if (outcome.status == AlbumMatchStatus.AUTO_MATCHED) {
-                        albumMetadataProvider.lookupRelease(candidate.collectionId).getOrNull()
-                    } else {
-                        null
-                    }
                     persistAlbumAndMissingTracks(updated, lookup)
                 }
 

@@ -106,6 +106,35 @@ class DefaultAlbumRepositoryTest {
     }
 
     @Test
+    fun autoMatchLeavesAlbumPendingWhenTheReleaseLookupFails() = runBlocking {
+        // The search half of matching succeeds with a confident candidate, but the
+        // follow-up release lookup that fills in artwork/missing-tracks fails (no
+        // fixture registered for its collection id, matching FakeAlbumMetadataProvider
+        // 's default "unavailable" behavior). This must not be committed as a "done"
+        // AUTO_MATCHED album with no artwork/tracks and no way back to PENDING - see
+        // https://github.com/hsgirgin/song-ladder/issues/65.
+        val provider = FakeAlbumMetadataProvider(
+            searchResult = Result.success(
+                listOf(
+                    AlbumReleaseCandidate(
+                        collectionId = "collection-1",
+                        collectionName = "Blonde",
+                        artistName = "Frank Ocean",
+                        trackCount = 2
+                    )
+                )
+            )
+        )
+        val repository = repository(provider)
+
+        insertSong(id = "song-1", title = "Nikes", artist = "Frank Ocean", album = "Blonde")
+
+        val album = waitForAlbum { it.lastMatchAttemptAt != null }
+        assertEquals(AlbumMatchStatus.PENDING.name, album.matchStatus)
+        assertNull(album.providerCollectionId)
+    }
+
+    @Test
     fun setTrackExcludedIsTransactionalAndRecomputesTheAverage() = runBlocking {
         val provider = FakeAlbumMetadataProvider()
         val repository = repository(provider)
