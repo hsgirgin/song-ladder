@@ -171,7 +171,64 @@ class RankingsScreenTest {
             }
         }
 
-        composeRule.onNodeWithText("Rate").assertIsDisplayed()
+        composeRule.onNodeWithText("?").assertIsDisplayed()
+    }
+
+    @Test
+    fun gridMode_opensScoreEditorFromNeutralScoreBadgeForAnUnratedSong() {
+        val song = rankingsSong(id = "song-1", scoreTenths = null)
+        var savedScore: Pair<String, Int>? = null
+
+        composeRule.setContent {
+            SongLadderTheme {
+                RankingsScreenContent(
+                    uiState = RankingsUiState(
+                        allSongs = listOf(song),
+                        rankedSongs = listOf(RankedSong(0, song)),
+                        selectedTab = RankingsTab.SONGS,
+                        presentation = RankingPresentation.GRID
+                    ),
+                    onTabSelected = {},
+                    onSearchActiveChanged = {},
+                    onSearchQueryChanged = {},
+                    onPresentationChanged = {},
+                    onToggleUnrated = {},
+                    onToggleIncompleteAlbums = {},
+                    onToggleStats = {},
+                    onTogglePreview = {},
+                    onShowDetails = {},
+                    onHideDetails = {},
+                    onSaveScore = { songId, scoreTenths -> savedScore = songId to scoreTenths },
+                    onDismissTip = {},
+                    onDeleteSong = {},
+                    onUndoDelete = {},
+                    onAcceptSuggestion = { _, _ -> },
+                    onDismissSuggestion = {},
+                    onToggleSuggestionSelection = {},
+                    onClearSuggestionSelection = {},
+                    onAcceptSelectedSuggestions = {},
+                    onShowAlbumDetails = {},
+                    onHideAlbumDetails = {},
+                    onToggleAlbumTrackExcluded = { _, _, _ -> },
+                    onAddAlbumMissingTracks = { _, _ -> },
+                    onChooseAlbumRelease = { _, _ -> },
+                    onRefreshAlbumMetadata = {},
+                    onOpenSettings = {},
+                    onAddSongs = {}
+                )
+            }
+        }
+
+        // Tapping the neutral "?" badge directly on an unrated song's card must open
+        // the score editor - the same one-tap path a rated song's badge already opens
+        // to edit its score - rather than requiring some other route to rank it.
+        composeRule.onNodeWithText("?").assertIsDisplayed().performClick()
+        composeRule.onNodeWithText("Edit score").assertIsDisplayed()
+        composeRule.onNodeWithText("Save 5.5").performClick()
+
+        composeRule.runOnIdle {
+            assertEquals("song-1" to 55, savedScore)
+        }
     }
 
     @Test

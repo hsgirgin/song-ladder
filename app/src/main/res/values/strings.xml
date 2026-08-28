@@ -50,7 +50,7 @@
     <string name="rankings_rank_badge">#%1$d</string>
     <string name="rankings_score_state">%1$s score for %2$s</string>
     <string name="rankings_unrated_state">Unrated song</string>
-    <string name="rankings_rate_song_short">Rate</string>
+    <string name="rankings_rate_song_short">?</string>
     <string name="rankings_edit_score">Edit score</string>
     <string name="rankings_suggestions_title">Suggested scores</string>
     <string name="rankings_suggestion_accept">Accept</string>
