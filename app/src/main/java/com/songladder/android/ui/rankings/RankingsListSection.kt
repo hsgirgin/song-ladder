@@ -199,7 +199,10 @@ internal fun RankingsListRow(
                     scoreTenths = draftScore,
                     onScoreChange = { draftScore = it },
                     onSave = { onSaveScore(draftScore) },
-                    onCancel = { draftScore = rankedSong.song.scoreTenths ?: 55 },
+                    onCancel = {
+                        draftScore = rankedSong.song.scoreTenths ?: 55
+                        onToggleStats()
+                    },
                     enabled = !isSaving
                 )
             }
