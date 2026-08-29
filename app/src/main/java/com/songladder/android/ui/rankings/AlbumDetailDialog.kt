@@ -1,6 +1,8 @@
 package com.songladder.android.ui.rankings
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,8 +18,10 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material3.Button
-import androidx.compose.material3.Checkbox
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -27,8 +31,13 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
@@ -223,6 +232,7 @@ private fun AlbumMatchCandidatesPicker(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun AlbumTrackListItem(
     track: AlbumTrackRow,
@@ -231,14 +241,28 @@ private fun AlbumTrackListItem(
     rateEnabled: Boolean = true,
     modifier: Modifier = Modifier
 ) {
+    var menuExpanded by remember { mutableStateOf(false) }
     val includedDescription = stringResource(R.string.rankings_album_track_included)
     val excludedDescription = stringResource(R.string.rankings_album_track_excluded)
+    val excludeActionLabel = stringResource(R.string.rankings_album_track_exclude_action)
+    val includeActionLabel = stringResource(R.string.rankings_album_track_include_action)
+    val menuActionLabel = if (track.excludedFromAverage) includeActionLabel else excludeActionLabel
     val scoreTenths = track.song.scoreTenths
     val rateLabel = scoreTenths?.let {
         stringResource(R.string.rankings_score_state, formatScoreTenths(it), track.song.title)
     } ?: stringResource(R.string.rankings_unrated_state)
     Row(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier
+            .fillMaxWidth()
+            .combinedClickable(
+                onClick = { menuExpanded = true },
+                onClickLabel = menuActionLabel,
+                onLongClick = { menuExpanded = true },
+                onLongClickLabel = menuActionLabel
+            )
+            .semantics {
+                contentDescription = if (track.excludedFromAverage) excludedDescription else includedDescription
+            },
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -246,13 +270,11 @@ private fun AlbumTrackListItem(
             text = track.song.title,
             modifier = Modifier.weight(1f),
             maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-        Checkbox(
-            checked = !track.excludedFromAverage,
-            onCheckedChange = { included -> onToggleExcluded(!included) },
-            modifier = Modifier.semantics {
-                contentDescription = if (track.excludedFromAverage) excludedDescription else includedDescription
+            overflow = TextOverflow.Ellipsis,
+            color = if (track.excludedFromAverage) {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            } else {
+                MaterialTheme.colorScheme.onSurface
             }
         )
         Box(
@@ -261,7 +283,27 @@ private fun AlbumTrackListItem(
                 .clickable(enabled = rateEnabled, onClickLabel = rateLabel, onClick = onRate),
             contentAlignment = Alignment.Center
         ) {
-            ScoreBadge(scoreTenths = scoreTenths, size = 32.dp)
+            ScoreBadge(
+                scoreTenths = scoreTenths,
+                size = 32.dp,
+                modifier = if (track.excludedFromAverage) Modifier.alpha(0.5f) else Modifier
+            )
+        }
+        Icon(
+            imageVector = Icons.Rounded.MoreVert,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Box {
+            DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
+                DropdownMenuItem(
+                    text = { Text(if (track.excludedFromAverage) includeActionLabel else excludeActionLabel) },
+                    onClick = {
+                        onToggleExcluded(!track.excludedFromAverage)
+                        menuExpanded = false
+                    }
+                )
+            }
         }
     }
 }

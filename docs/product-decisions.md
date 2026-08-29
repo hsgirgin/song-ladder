@@ -193,9 +193,10 @@ this revision writes `scoreTenths` silently.
   by default and controls only song artist/title/album metadata retrieval.
 - Album score is the simple average of rated tracks, shown to one decimal place.
   Hide it until at least three tracks are rated; otherwise show the album as an
-  unranked result. Users may exclude tracks from an album average in one tap.
-  Exclusions are per album release, affect albums only, and remain when metadata
-  is restored unless the user requests refresh.
+  unranked result. Users may exclude tracks from an album average via a
+  hold-menu action on the track row. Exclusions are per album release, affect
+  albums only, and remain when metadata is restored unless the user requests
+  refresh.
 - Album details open its detail page and show album rank and score. Preserve
   ranking and album state when metadata is restored.
 
