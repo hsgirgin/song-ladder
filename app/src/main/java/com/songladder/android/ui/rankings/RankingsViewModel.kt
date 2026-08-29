@@ -620,22 +620,20 @@ class RankingsViewModel(
     }
 }
 
+private fun Song.matchesQuery(normalizedQuery: String): Boolean {
+    return title.contains(normalizedQuery, ignoreCase = true) ||
+        artist.contains(normalizedQuery, ignoreCase = true) ||
+        album.contains(normalizedQuery, ignoreCase = true)
+}
+
 private fun List<Song>.filterByQuery(query: String): List<Song> {
     val normalizedQuery = query.trim()
     if (normalizedQuery.isBlank()) return this
-    return filter { song ->
-        song.title.contains(normalizedQuery, ignoreCase = true) ||
-            song.artist.contains(normalizedQuery, ignoreCase = true) ||
-            song.album.contains(normalizedQuery, ignoreCase = true)
-    }
+    return filter { it.matchesQuery(normalizedQuery) }
 }
 
 private fun List<RankedSong>.filterRankedByQuery(query: String): List<RankedSong> {
     val normalizedQuery = query.trim()
     if (normalizedQuery.isBlank()) return this
-    return filter { rankedSong ->
-        rankedSong.song.title.contains(normalizedQuery, ignoreCase = true) ||
-            rankedSong.song.artist.contains(normalizedQuery, ignoreCase = true) ||
-            rankedSong.song.album.contains(normalizedQuery, ignoreCase = true)
-    }
+    return filter { it.song.matchesQuery(normalizedQuery) }
 }
