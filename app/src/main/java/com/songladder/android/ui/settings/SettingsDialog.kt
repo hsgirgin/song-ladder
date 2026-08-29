@@ -2,6 +2,8 @@ package com.songladder.android.ui.settings
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -33,6 +35,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.songladder.android.BuildConfig
 import com.songladder.android.R
 import com.songladder.android.domain.model.DeletedRankingHistory
 import com.songladder.android.domain.model.formatScoreTenths
@@ -125,6 +128,7 @@ fun SettingsDialog(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 internal fun SettingsDialogContent(
     uiState: SettingsUiState,
@@ -249,6 +253,9 @@ internal fun SettingsDialogContent(
                 item {
                     SettingsStatusText(status = uiState.status)
                 }
+                item {
+                    SettingsVersionRow()
+                }
             }
         },
         confirmButton = {
@@ -357,6 +364,27 @@ private fun DeletedHistoryRow(
             )
         }
     }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun SettingsVersionRow(modifier: Modifier = Modifier) {
+    val versionText = stringResource(R.string.settings_version, BuildConfig.VERSION_NAME)
+    Text(
+        text = versionText,
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = if (BuildConfig.DEBUG) {
+            // Debug-only Crashlytics smoke test: long-press the version to force an
+            // uncaught exception and confirm crash reports actually reach the console.
+            modifier.combinedClickable(
+                onClick = {},
+                onLongClick = { throw RuntimeException("Test crash triggered from Settings version long-press") }
+            )
+        } else {
+            modifier
+        }
+    )
 }
 
 @Composable
