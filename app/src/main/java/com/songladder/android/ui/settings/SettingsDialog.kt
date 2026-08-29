@@ -374,16 +374,14 @@ private fun SettingsVersionRow(modifier: Modifier = Modifier) {
         text = versionText,
         style = MaterialTheme.typography.labelSmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = if (BuildConfig.DEBUG) {
-            // Debug-only Crashlytics smoke test: long-press the version to force an
-            // uncaught exception and confirm crash reports actually reach the console.
-            modifier.combinedClickable(
-                onClick = {},
-                onLongClick = { throw RuntimeException("Test crash triggered from Settings version long-press") }
-            )
-        } else {
-            modifier
-        }
+        // Crashlytics smoke test: long-press the version to force an uncaught exception and
+        // confirm crash reports actually reach the console. Works in release builds too, since
+        // that's the build Crashlytics needs verifying against; a long-press buried in Settings
+        // isn't something a real user will trigger by accident.
+        modifier = modifier.combinedClickable(
+            onClick = {},
+            onLongClick = { throw RuntimeException("Test crash triggered from Settings version long-press") }
+        )
     )
 }
 
