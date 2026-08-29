@@ -1,6 +1,18 @@
 # Song Ladder
 
+![Latest release](https://img.shields.io/github/v/release/hsgirgin/song-ladder)
+
 Song Ladder is a native Android app built with Kotlin, Jetpack Compose, Room, and local-first import/export flows. The application code lives under [app](app).
+
+This project is in active pre-release — expect frequent updates and some rough edges.
+
+## Try it
+
+1. Download `app-release.apk` from the [latest release](../../releases/latest).
+2. On your device, allow installing apps from unknown sources if prompted, then open the downloaded APK to install.
+3. There's no Google Play listing yet, so updates are manual: download and install the latest release APK again when a new version comes out (release APKs are signed consistently, so this works as an in-place update).
+
+Found a bug or have feedback? Please [open an issue](../../issues/new) — include your Android version/device and steps to reproduce if it's a bug.
 
 ## What is implemented
 
@@ -12,24 +24,13 @@ Song Ladder is a native Android app built with Kotlin, Jetpack Compose, Room, an
 - YouTube Music playlist preview/import for public playlist links
 - Song preview playback with iTunes and Deezer preview fallback
 
-## Opening the project
+## Building from source
 
 1. Open the repo root in Android Studio.
 2. Sync the project with the checked-in Gradle wrapper.
 3. Build and run the `app` module on an emulator or device.
 
-## Release APK updates
-
-Release APKs must be signed with the same keystore for Android to accept them as
-updates. When configured, CI reads the keystore and credentials from the
-`SONG_LADDER_KEYSTORE_BASE64`, `SONG_LADDER_KEYSTORE_PASSWORD`,
-`SONG_LADDER_KEY_ALIAS`, and `SONG_LADDER_KEY_PASSWORD` GitHub Actions secrets,
-and publishes the signed release APK for pushes and manual runs. If those secrets
-are not configured, CI skips the signed release artifact and still verifies the
-debug build. Increment
-`versionCode` in `app/build.gradle.kts` for each release. Existing debug APK
-installations may need one uninstall before the first signed release can be
-installed.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for details on the signed-release CI setup.
 
 ## Import
 
