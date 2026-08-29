@@ -318,6 +318,57 @@ class RankingsViewModelTest {
     }
 
     @Test
+    fun `albums search filters ranked and incomplete albums by title or artist`() = runTest {
+        val albumRepository = FakeAlbumRepository(
+            albums = listOf(
+                rankedAlbum(id = "ranked-match", title = "Needle in a Haystack", scoreTenths = 60),
+                rankedAlbum(id = "ranked-other", title = "Other", scoreTenths = 90),
+                rankedAlbum(id = "incomplete-match", artist = "Needle", scoreTenths = null),
+                rankedAlbum(id = "incomplete-other", artist = "Other", scoreTenths = null)
+            )
+        )
+        val viewModel = viewModel(albumRepository = albumRepository)
+        backgroundScope.launch(dispatcher) { viewModel.uiState.collect {} }
+        viewModel.selectTab(RankingsTab.ALBUMS)
+        advanceUntilIdle()
+
+        viewModel.setSearchActive(true)
+        viewModel.updateSearchQuery("needle")
+        advanceUntilIdle()
+
+        assertEquals(listOf("ranked-match"), viewModel.uiState.value.rankedAlbums.map { it.album.id })
+        assertEquals(listOf("incomplete-match"), viewModel.uiState.value.incompleteAlbums.map { it.album.id })
+
+        viewModel.setSearchActive(false)
+        advanceUntilIdle()
+
+        assertEquals("", viewModel.uiState.value.searchQuery)
+        assertEquals(2, viewModel.uiState.value.rankedAlbums.size)
+        assertEquals(2, viewModel.uiState.value.incompleteAlbums.size)
+    }
+
+    @Test
+    fun `selecting the songs tab closes albums search`() = runTest {
+        val albumRepository = FakeAlbumRepository(
+            albums = listOf(rankedAlbum(id = "one", title = "Needle", scoreTenths = 60))
+        )
+        val viewModel = viewModel(albumRepository = albumRepository)
+        backgroundScope.launch(dispatcher) { viewModel.uiState.collect {} }
+        viewModel.selectTab(RankingsTab.ALBUMS)
+        advanceUntilIdle()
+
+        viewModel.setSearchActive(true)
+        viewModel.updateSearchQuery("needle")
+        advanceUntilIdle()
+
+        viewModel.selectTab(RankingsTab.SONGS)
+        advanceUntilIdle()
+
+        assertEquals(false, viewModel.uiState.value.searchActive)
+        assertEquals("", viewModel.uiState.value.searchQuery)
+    }
+
+    @Test
     fun `incomplete albums start expanded when there are no ranked albums`() = runTest {
         val albumRepository = FakeAlbumRepository(
             albums = listOf(rankedAlbum(id = "incomplete-only", scoreTenths = null))

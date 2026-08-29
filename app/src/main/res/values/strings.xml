@@ -27,6 +27,7 @@
     <string name="rating_editor_save">Save %1$s</string>
     <string name="rankings_title">Rankings</string>
     <string name="rankings_search_label">Search songs</string>
+    <string name="rankings_search_label_albums">Search albums</string>
     <string name="rankings_open_search">Search rankings</string>
     <string name="rankings_close_search">Close search</string>
     <string name="rankings_show_list">Show list</string>

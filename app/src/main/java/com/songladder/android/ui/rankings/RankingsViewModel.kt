@@ -2,6 +2,7 @@ package com.songladder.android.ui.rankings
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.songladder.android.domain.model.Album
 import com.songladder.android.domain.model.AlbumDetail
 import com.songladder.android.domain.model.AlbumMatchStatus
 import com.songladder.android.domain.model.AlbumReleaseCandidate
@@ -195,9 +196,11 @@ class RankingsViewModel(
             .filter { it.scoreTenths != null }
             .sortedWith(albumScoreFirstComparator())
             .mapIndexed { index, rankedAlbum -> rankedAlbum.copy(rank = index + 1) }
+            .filterAlbumsByQuery(local.searchQuery)
         val incompleteAlbums = albums
             .filter { it.scoreTenths == null }
             .sortedByDescending { it.album.createdAt }
+            .filterAlbumsByQuery(local.searchQuery)
         RankingsUiState(
             allSongs = songs,
             rankedSongs = ranked,
@@ -255,10 +258,11 @@ class RankingsViewModel(
 
     fun selectTab(tab: RankingsTab) {
         localState.update {
+            val tabChanged = tab != it.selectedTab
             it.copy(
                 selectedTab = tab,
-                searchActive = if (tab == RankingsTab.SONGS) it.searchActive else false,
-                searchQuery = if (tab == RankingsTab.SONGS) it.searchQuery else "",
+                searchActive = if (tabChanged) false else it.searchActive,
+                searchQuery = if (tabChanged) "" else it.searchQuery,
                 status = if (tab == RankingsTab.ARTISTS) RankingsStatus.ComingSoon else RankingsStatus.None
             )
         }
@@ -636,4 +640,15 @@ private fun List<RankedSong>.filterRankedByQuery(query: String): List<RankedSong
     val normalizedQuery = query.trim()
     if (normalizedQuery.isBlank()) return this
     return filter { it.song.matchesQuery(normalizedQuery) }
+}
+
+private fun Album.matchesQuery(normalizedQuery: String): Boolean {
+    return title.contains(normalizedQuery, ignoreCase = true) ||
+        artist.contains(normalizedQuery, ignoreCase = true)
+}
+
+private fun List<RankedAlbum>.filterAlbumsByQuery(query: String): List<RankedAlbum> {
+    val normalizedQuery = query.trim()
+    if (normalizedQuery.isBlank()) return this
+    return filter { it.album.matchesQuery(normalizedQuery) }
 }
