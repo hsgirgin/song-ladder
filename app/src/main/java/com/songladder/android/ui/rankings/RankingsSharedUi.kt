@@ -84,7 +84,10 @@ internal fun SongDetailDialog(
                     scoreTenths = draftScore,
                     onScoreChange = { draftScore = it },
                     onSave = { onSaveScore(draftScore) },
-                    onCancel = { draftScore = song.scoreTenths ?: 55 },
+                    onCancel = {
+                        draftScore = song.scoreTenths ?: 55
+                        onDismiss()
+                    },
                     enabled = !isSaving
                 )
                 TextButton(onClick = onDeleteSong, modifier = Modifier.align(Alignment.End)) {
