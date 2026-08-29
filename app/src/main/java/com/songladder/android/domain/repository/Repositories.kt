@@ -111,6 +111,16 @@ interface AlbumMetadataProvider {
      * actually guaranteed to re-fetch.
      */
     suspend fun lookupRelease(collectionId: String, forceRefresh: Boolean = false): Result<AlbumReleaseLookup>
+
+    /**
+     * The batched form of [lookupRelease] used by a bulk refresh: one round trip can
+     * carry many collection ids (iTunes' Lookup endpoint accepts a comma-separated
+     * `id` list), so refreshing a whole library costs a handful of requests instead of
+     * one per album. Missing entries in the returned map (a since-deleted collection,
+     * one dropped from an oversized batch) are the caller's problem to notice, not an
+     * error - a partial batch is still a successful one.
+     */
+    suspend fun lookupReleases(collectionIds: List<String>, forceRefresh: Boolean = false): Result<Map<String, AlbumReleaseLookup>>
 }
 
 /**

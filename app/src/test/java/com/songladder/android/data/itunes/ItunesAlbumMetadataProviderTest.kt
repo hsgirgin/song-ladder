@@ -296,6 +296,62 @@ class ItunesAlbumMetadataProviderTest {
     }
 
     @Test
+    fun `lookup releases groups an interleaved batch response by collection id`() = runTest {
+        val server = MockWebServer()
+        server.enqueue(MockResponse().setBody(batchCollectionLookupResponse()))
+        server.start()
+
+        try {
+            val provider = ItunesAlbumMetadataProvider(
+                httpClient = OkHttpClient(),
+                lookupBaseUrl = server.url("/lookup")
+            )
+
+            val lookups = provider.lookupReleases(listOf("123456", "789")).getOrThrow()
+
+            assertEquals(1, server.requestCount)
+            assertEquals(2, lookups.size)
+            val blonde = lookups.getValue("123456")
+            assertEquals("Blonde", blonde.collectionName)
+            assertEquals(2, blonde.tracks.size)
+            assertEquals("Nikes", blonde.tracks[0].title)
+            val currents = lookups.getValue("789")
+            assertEquals("Currents", currents.collectionName)
+            assertEquals(1, currents.tracks.size)
+            assertEquals("Let It Happen", currents.tracks[0].title)
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    @Test
+    fun `lookup releases serves cached ids and only fetches the rest`() = runTest {
+        val server = MockWebServer()
+        server.enqueue(MockResponse().setBody(collectionLookupResponse()))
+        server.enqueue(MockResponse().setBody(singleCollectionLookupResponse(789, "Currents", "Tame Impala")))
+        server.start()
+
+        try {
+            val provider = ItunesAlbumMetadataProvider(
+                httpClient = OkHttpClient(),
+                lookupBaseUrl = server.url("/lookup")
+            )
+
+            provider.lookupRelease("123456").getOrThrow()
+            val lookups = provider.lookupReleases(listOf("123456", "789")).getOrThrow()
+
+            assertEquals(2, server.requestCount)
+            server.takeRequest() // the initial lookupRelease("123456") request
+            val batchRequest = server.takeRequest()
+            assertTrue(batchRequest.path.orEmpty().contains("id=789"))
+            assertEquals("Blonde", lookups.getValue("123456").collectionName)
+            assertEquals("Currents", lookups.getValue("789").collectionName)
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    @Test
     fun `a non-2xx response surfaces as unavailable rather than no-match`() = runTest {
         val server = MockWebServer()
         server.enqueue(MockResponse().setResponseCode(403))
@@ -386,6 +442,75 @@ private fun collectionLookupResponse() = """
           "artistName": "Frank Ocean",
           "collectionName": "Blonde",
           "trackNumber": 2
+        }
+      ]
+    }
+""".trimIndent()
+
+// Reproduces the shape of a real batched `id=1,2` lookup response: every
+// collection's header and tracks interleaved in one flat results list rather than
+// grouped, to exercise parseBatchLookup's own regrouping.
+private fun batchCollectionLookupResponse() = """
+    {
+      "resultCount": 5,
+      "results": [
+        {
+          "collectionId": 123456,
+          "collectionName": "Blonde",
+          "artistName": "Frank Ocean",
+          "trackCount": 2
+        },
+        {
+          "collectionId": 789,
+          "collectionName": "Currents",
+          "artistName": "Tame Impala",
+          "trackCount": 1
+        },
+        {
+          "trackId": 1,
+          "collectionId": 123456,
+          "trackName": "Nikes",
+          "artistName": "Frank Ocean",
+          "collectionName": "Blonde",
+          "trackNumber": 1
+        },
+        {
+          "trackId": 2,
+          "collectionId": 123456,
+          "trackName": "Ivy",
+          "artistName": "Frank Ocean",
+          "collectionName": "Blonde",
+          "trackNumber": 2
+        },
+        {
+          "trackId": 3,
+          "collectionId": 789,
+          "trackName": "Let It Happen",
+          "artistName": "Tame Impala",
+          "collectionName": "Currents",
+          "trackNumber": 1
+        }
+      ]
+    }
+""".trimIndent()
+
+private fun singleCollectionLookupResponse(collectionId: Long, collectionName: String, artistName: String) = """
+    {
+      "resultCount": 2,
+      "results": [
+        {
+          "collectionId": $collectionId,
+          "collectionName": "$collectionName",
+          "artistName": "$artistName",
+          "trackCount": 1
+        },
+        {
+          "trackId": 3,
+          "collectionId": $collectionId,
+          "trackName": "Let It Happen",
+          "artistName": "$artistName",
+          "collectionName": "$collectionName",
+          "trackNumber": 1
         }
       ]
     }

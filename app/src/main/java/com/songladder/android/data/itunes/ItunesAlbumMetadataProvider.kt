@@ -114,6 +114,32 @@ class ItunesAlbumMetadataProvider(
             lookup
         }.recoverProviderFailure()
 
+    override suspend fun lookupReleases(
+        collectionIds: List<String>,
+        forceRefresh: Boolean
+    ): Result<Map<String, AlbumReleaseLookup>> = runCatchingCancellable {
+        val now = timeSource.now()
+        val distinctIds = collectionIds.distinct()
+        val fromCache = if (forceRefresh) {
+            emptyMap()
+        } else {
+            distinctIds.mapNotNull { id ->
+                lookupCache[id]?.takeIf { it.expiresAtMillis > now }?.let { id to it.lookup }
+            }.toMap()
+        }
+        val toFetch = distinctIds - fromCache.keys
+        val fetched = toFetch.chunked(LOOKUP_BATCH_SIZE).flatMap { chunk ->
+            val url = lookupBaseUrl.newBuilder()
+                .addQueryParameter("id", chunk.joinToString(","))
+                .addQueryParameter("entity", "song")
+                .build()
+            parseBatchLookup(executeRequest(url))
+        }.associateBy { it.collectionId }
+        val fetchedNow = timeSource.now()
+        fetched.forEach { (id, lookup) -> lookupCache[id] = CachedLookup(lookup, fetchedNow + CACHE_TTL_MILLIS) }
+        fromCache + fetched
+    }.recoverProviderFailure()
+
     // Plain kotlin.runCatching also catches CancellationException, which would turn
     // structured-concurrency cancellation into an ordinary Result.failure instead of
     // letting it propagate - rethrow it before it can be mistaken for a provider
@@ -197,6 +223,42 @@ class ItunesAlbumMetadataProvider(
         )
     }
 
+    // A batched `id=1,2,3` lookup interleaves every collection's header and tracks in
+    // one flat `results` list rather than returning them pre-grouped, so results are
+    // regrouped by collectionId first - every track result also carries its parent
+    // collectionId (see ItunesTrackResult), not just headers, which is what makes this
+    // grouping possible at all.
+    private fun parseBatchLookup(body: String): List<AlbumReleaseLookup> {
+        val payload = json.decodeFromString(ItunesSearchResponse.serializer(), body)
+        return payload.results
+            .filter { it.collectionId != null }
+            .groupBy { it.collectionId!! }
+            .mapNotNull group@{ (collectionId, rows) ->
+                val header = rows.firstOrNull { it.trackId == null } ?: return@group null
+                val tracks = rows
+                    .filter { it.trackId != null }
+                    .mapNotNull track@{ track ->
+                        val trackId = track.trackId ?: return@track null
+                        val title = track.trackName?.trim().orEmpty()
+                        if (title.isBlank()) return@track null
+                        AlbumReleaseTrack(
+                            trackId = trackId.toString(),
+                            title = title,
+                            trackNumber = track.trackNumber,
+                            artworkUrl = track.artworkUrl100?.takeIf { it.isNotBlank() }?.replace("100x100", "600x600")
+                        )
+                    }
+                AlbumReleaseLookup(
+                    collectionId = collectionId.toString(),
+                    collectionName = header.collectionName?.trim().orEmpty(),
+                    artistName = header.artistName?.trim().orEmpty(),
+                    artworkUrl = header.artworkUrl100?.takeIf { it.isNotBlank() }?.replace("100x100", "600x600"),
+                    trackCount = header.trackCount,
+                    tracks = tracks
+                )
+            }
+    }
+
     private suspend fun executeRequest(url: HttpUrl): String {
         val request = Request.Builder().url(url).header("Accept", "application/json").build()
         return suspendCancellableCoroutine { continuation ->
@@ -237,5 +299,11 @@ class ItunesAlbumMetadataProvider(
 
     private companion object {
         const val CACHE_TTL_MILLIS = 30 * 60 * 1000L
+
+        // Apple's Lookup endpoint doesn't publish a hard cap on comma-separated ids,
+        // but a request this size stays well clear of both any undocumented server-side
+        // limit and typical URL-length limits (each id + comma is only a handful of
+        // characters).
+        const val LOOKUP_BATCH_SIZE = 100
     }
 }

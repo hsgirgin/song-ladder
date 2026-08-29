@@ -260,28 +260,55 @@ class DefaultAlbumRepository(
     override suspend fun refreshAllMetadata(): Result<Unit> = runCatching {
         if (!settingsRepository.observeSettings().first().metadataRetrievalEnabled) return@runCatching
         val albums = albumDao.getAll()
-        // A bulk refresh across a whole library is the burst-of-requests case the
-        // iTunes rate limit comment on matchAttemptSpacingMillis warns about, just
-        // triggered by a button instead of a sync - but most albums here are already
-        // matched, and refreshMetadataForAlbum's matched branch costs exactly one
-        // request (lookupRelease), not attemptMatch's worst-case four. Reusing the
-        // 12s auto-match spacing for that made refreshing an already-matched library
-        // take albums.size * 12s for no reason - indistinguishable from a hang to
-        // whoever's watching the spinner. REFRESH_SPACING_MILLIS (3s = 60s / iTunes'
-        // ~20 req/min budget) covers the common one-request case at full throughput;
-        // unmatched albums still fall back to attemptMatch's own wider spacing since
-        // that path can burn up to four requests in one go.
-        albums.forEachIndexed { index, album ->
-            if (index > 0) {
-                delay(if (album.providerCollectionId != null) REFRESH_SPACING_MILLIS else matchAttemptSpacingMillis)
-            }
+        // Already-matched albums (the overwhelming majority of any real library) go
+        // through the provider's batched lookup - iTunes' Lookup endpoint accepts a
+        // comma-separated id list, so a whole library's worth of them costs one request
+        // per REFRESH_LOOKUP_BATCH_SIZE albums instead of one request per album. That's
+        // what turns a refresh from albums.size sequential round trips (minutes for a
+        // 100+ album library, one request at a time spaced for iTunes' rate limit) into
+        // a handful of requests. Albums without a confirmed release still have to go
+        // through the per-album search/match flow (attemptMatch), since there's no
+        // collection id yet to batch-lookup - those keep the original wide spacing,
+        // since that path can burn up to four requests in one go.
+        val (matched, unmatched) = albums.partition { it.providerCollectionId != null }
+        matched.chunked(REFRESH_LOOKUP_BATCH_SIZE).forEachIndexed { index, batch ->
+            if (index > 0) delay(REFRESH_SPACING_MILLIS)
             try {
-                refreshMetadataForAlbum(album)
+                refreshMatchedAlbumsBatch(batch)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.e(TAG, "Batch metadata refresh failed for ${batch.size} albums; continuing with the rest.", e)
+            }
+        }
+        unmatched.forEachIndexed { index, album ->
+            if (index > 0) delay(matchAttemptSpacingMillis)
+            try {
+                attemptMatch(album)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 Log.e(TAG, "Refresh-all metadata failed for album ${album.id}; continuing with the rest.", e)
             }
+        }
+    }
+
+    private suspend fun refreshMatchedAlbumsBatch(batch: List<AlbumEntity>) {
+        val collectionIds = batch.mapNotNull { it.providerCollectionId }
+        val lookups = albumMetadataProvider.lookupReleases(collectionIds, forceRefresh = true).getOrThrow()
+        batch.forEach { album ->
+            // A collection id absent from the response (e.g. a release pulled from the
+            // catalog since it was matched) is left alone rather than treated as a
+            // failure - it keeps its existing metadata and gets picked up again on the
+            // next refresh, same as a single refreshMetadata call hitting "not found".
+            val lookup = lookups[album.providerCollectionId] ?: return@forEach
+            val updated = album.copy(
+                providerTrackCount = lookup.trackCount ?: album.providerTrackCount,
+                artworkUrl = lookup.artworkUrl ?: album.artworkUrl,
+                lastMatchAttemptAt = timeSource.now(),
+                lastMatchedAt = timeSource.now()
+            )
+            persistAlbumAndReleaseTracks(updated, lookup)
         }
     }
 
@@ -472,9 +499,18 @@ class DefaultAlbumRepository(
         // the batch auto-matches.
         const val MATCH_ATTEMPT_SPACING_MILLIS = 12_000L
 
-        // A single-request refresh (already-matched album, just lookupRelease) can be
-        // spaced far tighter than the auto-match worst case above - 3s keeps a whole
-        // library of one-request refreshes right at iTunes' ~20 req/min/IP budget.
+        // Spacing between batched-lookup chunks in refreshAllMetadata (only relevant
+        // once a library has more than REFRESH_LOOKUP_BATCH_SIZE matched albums, i.e.
+        // more than one chunk) - 3s keeps even a multi-chunk refresh comfortably inside
+        // iTunes' ~20 req/min/IP budget.
         const val REFRESH_SPACING_MILLIS = 3_000L
+
+        // Mirrors ItunesAlbumMetadataProvider's own internal LOOKUP_BATCH_SIZE so each
+        // chunk here maps to exactly one provider request - chunking here too (rather
+        // than relying solely on the provider chunking a bigger list) keeps the
+        // rate-limit spacing above and the request-batching in this file in sync,
+        // instead of the provider silently firing several unspaced requests back to
+        // back for a library over 100 matched albums.
+        const val REFRESH_LOOKUP_BATCH_SIZE = 100
     }
 }
