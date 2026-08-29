@@ -10,6 +10,10 @@ import com.songladder.android.domain.model.RankingSettings
 import com.songladder.android.domain.model.ScoreSaveResult
 import com.songladder.android.domain.model.Song
 import com.songladder.android.domain.model.SongInput
+import com.songladder.android.domain.model.TombstoneImportAction
+import com.songladder.android.domain.model.TombstoneImportConflict
+import com.songladder.android.domain.model.TombstoneImportMatch
+import com.songladder.android.domain.model.TombstoneImportResolution
 import com.songladder.android.domain.repository.ImportRepository
 import com.songladder.android.domain.repository.MusicSourceClient
 import com.songladder.android.domain.repository.PlaylistSourceClient
@@ -315,6 +319,115 @@ class LibraryViewModelTest {
     }
 
     @Test
+    fun `restoring a tombstoned song does not queue it for rating`() = runTest {
+        val songRepository = FakeSongRepository()
+        val restoredCandidate = MusicTrackCandidate(
+            externalId = "ytm-1",
+            title = "Midnight City",
+            artist = "M83",
+            sourceType = MusicSourceType.YOUTUBE_MUSIC
+        )
+        val importRepository = TombstoneAwareImportRepository(
+            songRepository = songRepository,
+            tombstoneMatchesByExternalId = mapOf(
+                "ytm-1" to TombstoneImportMatch(
+                    rankingSubjectId = "subject-1",
+                    title = "midnight city",
+                    artist = "m83",
+                    sourceType = MusicSourceType.YOUTUBE_MUSIC,
+                    externalId = "ytm-1"
+                )
+            )
+        )
+        val preview = PlaylistImportPreview(
+            playlistTitle = "Drive Home",
+            importableTracks = listOf(restoredCandidate),
+            ambiguousTracks = emptyList()
+        )
+        val viewModel = viewModel(
+            songRepository = songRepository,
+            importRepository = importRepository,
+            playlistSourceClient = FakePlaylistSourceClient(Result.success(preview))
+        )
+        backgroundScope.launch(dispatcher) { viewModel.uiState.collect {} }
+
+        viewModel.updateYoutubeMusicPlaylistUrl("https://music.youtube.com/playlist?list=PL123")
+        viewModel.previewYoutubeMusicPlaylist()
+        advanceUntilIdle()
+        viewModel.confirmYoutubeMusicPreviewImport()
+        advanceUntilIdle()
+
+        assertNotNull(viewModel.uiState.value.tombstoneConflict)
+
+        viewModel.resolveTombstoneConflict(
+            TombstoneImportResolution(action = TombstoneImportAction.RESTORE, rankingSubjectId = "subject-1")
+        )
+        advanceUntilIdle()
+
+        assertEquals("Midnight City", songRepository.titleFor(songRepository.idFor("Midnight City")))
+        assertNull(
+            "a restored song's score/history were already recovered; it must not be queued for rating",
+            viewModel.uiState.value.ratingQueue
+        )
+    }
+
+    @Test
+    fun `restoring one song while another is freshly imported only queues the fresh song for rating`() = runTest {
+        val songRepository = FakeSongRepository()
+        val restoredCandidate = MusicTrackCandidate(
+            externalId = "ytm-1",
+            title = "Midnight City",
+            artist = "M83",
+            sourceType = MusicSourceType.YOUTUBE_MUSIC
+        )
+        val freshCandidate = MusicTrackCandidate(
+            externalId = "ytm-2",
+            title = "Intro",
+            artist = "The xx",
+            sourceType = MusicSourceType.YOUTUBE_MUSIC
+        )
+        val importRepository = TombstoneAwareImportRepository(
+            songRepository = songRepository,
+            tombstoneMatchesByExternalId = mapOf(
+                "ytm-1" to TombstoneImportMatch(
+                    rankingSubjectId = "subject-1",
+                    title = "midnight city",
+                    artist = "m83",
+                    sourceType = MusicSourceType.YOUTUBE_MUSIC,
+                    externalId = "ytm-1"
+                )
+            )
+        )
+        val preview = PlaylistImportPreview(
+            playlistTitle = "Drive Home",
+            importableTracks = listOf(restoredCandidate, freshCandidate),
+            ambiguousTracks = emptyList()
+        )
+        val viewModel = viewModel(
+            songRepository = songRepository,
+            importRepository = importRepository,
+            playlistSourceClient = FakePlaylistSourceClient(Result.success(preview))
+        )
+        backgroundScope.launch(dispatcher) { viewModel.uiState.collect {} }
+
+        viewModel.updateYoutubeMusicPlaylistUrl("https://music.youtube.com/playlist?list=PL123")
+        viewModel.previewYoutubeMusicPlaylist()
+        advanceUntilIdle()
+        viewModel.confirmYoutubeMusicPreviewImport()
+        advanceUntilIdle()
+
+        viewModel.resolveTombstoneConflict(
+            TombstoneImportResolution(action = TombstoneImportAction.RESTORE, rankingSubjectId = "subject-1")
+        )
+        advanceUntilIdle()
+
+        val queue = viewModel.uiState.value.ratingQueue
+        assertNotNull(queue)
+        assertEquals(ImportRatingQueueKind.SINGLE_SONG, queue?.kind)
+        assertEquals(listOf(songRepository.idFor("Intro")), queue?.songIds)
+    }
+
+    @Test
     fun `import while a rating queue is active waits its turn instead of being dropped`() = runTest {
         val songRepository = FakeSongRepository()
         val viewModel = viewModel(songRepository = songRepository)
@@ -493,6 +606,27 @@ private class FakeSongRepository(
 
     fun titleFor(songId: String): String =
         songs.value.first { it.id == songId }.title
+
+    fun idFor(title: String): String =
+        songs.value.first { it.title == title }.id
+
+    /** Simulates a tombstone RESTORE: a brand-new SongEntity id, but with the preserved score. */
+    fun insertRestoredSong(candidate: MusicTrackCandidate, scoreTenths: Int): String {
+        val id = "song-${nextId++}"
+        songs.value = songs.value + Song(
+            id = id,
+            rankingSubjectId = id,
+            externalId = candidate.externalId,
+            sourceType = candidate.sourceType,
+            title = candidate.title.trim(),
+            artist = candidate.artist.trim(),
+            album = candidate.album,
+            artworkUrl = candidate.artworkUrl,
+            createdAt = nextId.toLong(),
+            scoreTenths = scoreTenths
+        )
+        return id
+    }
 }
 
 private class FakeImportRepository(
@@ -512,6 +646,61 @@ private class FakeImportRepository(
 
     override suspend fun exportToJson(contentResolver: ContentResolver, uri: Uri): Result<Unit> = Result.success(Unit)
 }
+
+/**
+ * Simulates the real tombstone-conflict/restore semantics that
+ * [DefaultImportRepository] implements against Room: a candidate flagged as a
+ * tombstone match surfaces a conflict, and resolving it as RESTORE inserts the song
+ * under a brand-new id (mirroring the real restore path re-pointing a fresh
+ * SongEntity at the preserved RankingSubjectEntity) while carrying over its score,
+ * whereas START_FRESH (or no conflict at all) inserts a normal unrated song.
+ */
+private class TombstoneAwareImportRepository(
+    private val songRepository: FakeSongRepository,
+    private val tombstoneMatchesByExternalId: Map<String, TombstoneImportMatch>,
+    private val restoredScoreTenths: Int = 88
+) : ImportRepository {
+    override suspend fun seedSampleSongs(): Result<Int> = Result.success(0)
+
+    override suspend fun importTracks(candidates: List<MusicTrackCandidate>, sourceLabel: String): Result<Int> =
+        importTracks(candidates, sourceLabel, emptyMap())
+
+    override suspend fun importTracks(
+        candidates: List<MusicTrackCandidate>,
+        sourceLabel: String,
+        resolutions: Map<String, TombstoneImportResolution>
+    ): Result<Int> {
+        var inserted = 0
+        candidates.forEach { candidate ->
+            val resolution = resolutions[importKeyFor(candidate)]
+            if (resolution?.action == TombstoneImportAction.RESTORE) {
+                songRepository.insertRestoredSong(candidate, restoredScoreTenths)
+            } else {
+                songRepository.importCandidates(listOf(candidate))
+            }
+            inserted += 1
+        }
+        return Result.success(inserted)
+    }
+
+    override suspend fun findTombstoneMatches(
+        candidates: List<MusicTrackCandidate>
+    ): Result<List<TombstoneImportConflict>> {
+        val conflicts = candidates.mapNotNull { candidate ->
+            val match = tombstoneMatchesByExternalId[candidate.externalId] ?: return@mapNotNull null
+            TombstoneImportConflict(candidate = candidate, matches = listOf(match))
+        }
+        return Result.success(conflicts)
+    }
+
+    override suspend fun importFromJson(contentResolver: ContentResolver, uri: Uri): Result<Int> = Result.success(0)
+
+    override suspend fun exportToJson(contentResolver: ContentResolver, uri: Uri): Result<Unit> = Result.success(Unit)
+}
+
+/** Mirrors LibraryViewModel's private `importKey`, used only to key resolutions for the fake above. */
+private fun importKeyFor(candidate: MusicTrackCandidate): String =
+    "${candidate.sourceType.name}:${candidate.externalId}:${candidate.title.trim().lowercase()}::${candidate.artist.trim().lowercase()}"
 
 private class FakeRankingRepository(
     private val saveScoreResult: Result<ScoreSaveResult>? = null
