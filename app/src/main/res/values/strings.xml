@@ -77,6 +77,8 @@
     <string name="rankings_album_missing_tracks_title">Missing tracks</string>
     <string name="rankings_album_track_included">Included in average</string>
     <string name="rankings_album_track_excluded">Excluded from average</string>
+    <string name="rankings_album_track_exclude_action">Exclude from ranking</string>
+    <string name="rankings_album_track_include_action">Include in ranking</string>
     <string name="rankings_album_add_track_action">Add</string>
     <string name="rankings_album_candidates_title">Choose the correct release</string>
     <string name="rankings_album_candidates_body">We found more than one possible match online. Pick the release that matches your copy:</string>

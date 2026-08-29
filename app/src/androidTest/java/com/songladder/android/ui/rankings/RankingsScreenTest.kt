@@ -8,12 +8,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.isToggleable
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.unit.dp
 import com.songladder.android.domain.model.Album
 import com.songladder.android.domain.model.AlbumDetail
@@ -772,7 +773,7 @@ class RankingsScreenTest {
     }
 
     @Test
-    fun albumDetailDialog_exclusionCheckboxTogglesTheTappedTrack() {
+    fun albumDetailDialog_holdMenuExcludeActionTogglesTheTappedTrack() {
         var toggled: Pair<String, Boolean>? = null
         composeRule.setContent {
             SongLadderTheme {
@@ -794,8 +795,9 @@ class RankingsScreenTest {
         }
 
         composeRule.onNodeWithContentDescription("Included in average").assertIsDisplayed()
-        composeRule.onNodeWithText("Nikes").assertIsDisplayed()
-        composeRule.onNode(isToggleable()).performClick()
+        composeRule.onNodeWithText("Nikes").performTouchInput { longClick() }
+        composeRule.onNodeWithText("Exclude from ranking").assertIsDisplayed()
+        composeRule.onNodeWithText("Exclude from ranking").performClick()
 
         composeRule.runOnIdle {
             assertEquals("song-1" to true, toggled)
