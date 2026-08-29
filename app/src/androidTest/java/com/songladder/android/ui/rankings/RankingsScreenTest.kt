@@ -731,6 +731,27 @@ class RankingsScreenTest {
     }
 
     @Test
+    fun albumsContent_emptySearchResultsShowsNoMatchingAlbumsInsteadOfNoAlbumsYet() {
+        composeRule.setContent {
+            SongLadderTheme {
+                RankingsAlbumsContent(
+                    uiState = RankingsUiState(
+                        presentation = RankingPresentation.GRID,
+                        searchQuery = "xyz123",
+                        rankedAlbums = emptyList(),
+                        incompleteAlbums = emptyList()
+                    ),
+                    onToggleIncompleteAlbums = {},
+                    onShowAlbumDetails = {}
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("No matching albums").assertIsDisplayed()
+        composeRule.onNodeWithText("No albums yet").assertDoesNotExist()
+    }
+
+    @Test
     fun albumDetailDialog_showsArtistRankAndScoreForARankedAlbum() {
         composeRule.setContent {
             SongLadderTheme {
