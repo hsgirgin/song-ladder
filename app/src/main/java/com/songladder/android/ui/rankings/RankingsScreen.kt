@@ -131,14 +131,25 @@ internal fun RankingsScreenContent(
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
     ) {
+        val searchableTab = uiState.selectedTab == RankingsTab.SONGS || uiState.selectedTab == RankingsTab.ALBUMS
         TopAppBar(
             title = {
-                if (uiState.searchActive && uiState.selectedTab == RankingsTab.SONGS) {
+                if (uiState.searchActive && searchableTab) {
                     OutlinedTextField(
                         value = uiState.searchQuery,
                         onValueChange = onSearchQueryChanged,
                         singleLine = true,
-                        label = { Text(stringResource(R.string.rankings_search_label)) },
+                        label = {
+                            Text(
+                                stringResource(
+                                    if (uiState.selectedTab == RankingsTab.ALBUMS) {
+                                        R.string.rankings_search_label_albums
+                                    } else {
+                                        R.string.rankings_search_label
+                                    }
+                                )
+                            )
+                        },
                         modifier = Modifier.fillMaxWidth()
                     )
                 } else {
@@ -146,7 +157,7 @@ internal fun RankingsScreenContent(
                 }
             },
             actions = {
-                if (uiState.selectedTab == RankingsTab.SONGS) {
+                if (searchableTab) {
                     IconButton(onClick = { onSearchActiveChanged(!uiState.searchActive) }) {
                         Icon(
                             imageVector = if (uiState.searchActive) Icons.Rounded.Close else Icons.Rounded.Search,
@@ -155,6 +166,8 @@ internal fun RankingsScreenContent(
                             )
                         )
                     }
+                }
+                if (uiState.selectedTab == RankingsTab.SONGS) {
                     IconButton(
                         onClick = {
                             onPresentationChanged(
@@ -266,6 +279,8 @@ internal fun RankingsScreenContent(
         )
     }
 
+    var albumRatingSongId by rememberSaveable { mutableStateOf<String?>(null) }
+
     uiState.albumDetail?.let { detail ->
         val rank = uiState.rankedAlbums.firstOrNull { it.album.id == detail.album.id }?.rank
         AlbumDetailDialog(
@@ -276,7 +291,27 @@ internal fun RankingsScreenContent(
             onToggleTrackExcluded = { songId, excluded -> onToggleAlbumTrackExcluded(detail.album.id, songId, excluded) },
             onAddMissingTracks = { providerTrackIds -> onAddAlbumMissingTracks(detail.album.id, providerTrackIds) },
             onChooseRelease = { collectionId -> onChooseAlbumRelease(detail.album.id, collectionId) },
-            onRefreshMetadata = { onRefreshAlbumMetadata(detail.album.id) }
+            onRefreshMetadata = { onRefreshAlbumMetadata(detail.album.id) },
+            onRateTrack = { song -> albumRatingSongId = song.id },
+            isSavingScore = uiState.isSavingScore
+        )
+    }
+
+    val albumRatingSong = uiState.albumDetail?.tracks?.firstOrNull { it.song.id == albumRatingSongId }?.song
+    LaunchedEffect(albumRatingSongId, albumRatingSong) {
+        if (albumRatingSongId != null && albumRatingSong == null) {
+            albumRatingSongId = null
+        }
+    }
+    albumRatingSong?.let { song ->
+        GridScoreEditorSheet(
+            song = song,
+            isSaving = uiState.isSavingScore,
+            onDismiss = { albumRatingSongId = null },
+            onSaveScore = { scoreTenths ->
+                onSaveScore(song.id, scoreTenths)
+                albumRatingSongId = null
+            }
         )
     }
 }

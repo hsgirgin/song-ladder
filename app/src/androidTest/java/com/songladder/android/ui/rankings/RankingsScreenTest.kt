@@ -27,6 +27,7 @@ import com.songladder.android.domain.model.RankingPresentation
 import com.songladder.android.domain.model.RankingSettings
 import com.songladder.android.domain.model.Song
 import com.songladder.android.domain.model.Suggestion
+import com.songladder.android.domain.model.formatScoreTenths
 import com.songladder.android.ui.components.SongRatingControl
 import com.songladder.android.ui.theme.SongLadderTheme
 import org.junit.Assert.assertEquals
@@ -731,6 +732,27 @@ class RankingsScreenTest {
     }
 
     @Test
+    fun albumsContent_emptySearchResultsShowsNoMatchingAlbumsInsteadOfNoAlbumsYet() {
+        composeRule.setContent {
+            SongLadderTheme {
+                RankingsAlbumsContent(
+                    uiState = RankingsUiState(
+                        presentation = RankingPresentation.GRID,
+                        searchQuery = "xyz123",
+                        rankedAlbums = emptyList(),
+                        incompleteAlbums = emptyList()
+                    ),
+                    onToggleIncompleteAlbums = {},
+                    onShowAlbumDetails = {}
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("No matching albums").assertIsDisplayed()
+        composeRule.onNodeWithText("No albums yet").assertDoesNotExist()
+    }
+
+    @Test
     fun albumDetailDialog_showsArtistRankAndScoreForARankedAlbum() {
         composeRule.setContent {
             SongLadderTheme {
@@ -742,7 +764,8 @@ class RankingsScreenTest {
                     onToggleTrackExcluded = { _, _ -> },
                     onAddMissingTracks = {},
                     onChooseRelease = {},
-                    onRefreshMetadata = {}
+                    onRefreshMetadata = {},
+                    onRateTrack = {}
                 )
             }
         }
@@ -764,7 +787,8 @@ class RankingsScreenTest {
                     onToggleTrackExcluded = { _, _ -> },
                     onAddMissingTracks = {},
                     onChooseRelease = {},
-                    onRefreshMetadata = {}
+                    onRefreshMetadata = {},
+                    onRateTrack = {}
                 )
             }
         }
@@ -789,7 +813,8 @@ class RankingsScreenTest {
                     onToggleTrackExcluded = { songId, excluded -> toggled = songId to excluded },
                     onAddMissingTracks = {},
                     onChooseRelease = {},
-                    onRefreshMetadata = {}
+                    onRefreshMetadata = {},
+                    onRateTrack = {}
                 )
             }
         }
@@ -821,7 +846,8 @@ class RankingsScreenTest {
                     onToggleTrackExcluded = { songId, excluded -> toggled = songId to excluded },
                     onAddMissingTracks = {},
                     onChooseRelease = {},
-                    onRefreshMetadata = {}
+                    onRefreshMetadata = {},
+                    onRateTrack = {}
                 )
             }
         }
@@ -832,6 +858,68 @@ class RankingsScreenTest {
 
         composeRule.runOnIdle {
             assertEquals("song-1" to true, toggled)
+        }
+    }
+
+    @Test
+    fun albumDetailDialog_tappingScoreBadgeOnATrackInvokesOnRateTrackWithThatSong() {
+        var rated: Song? = null
+        val song = rankingsSong(id = "song-1", title = "Nikes", scoreTenths = null)
+        composeRule.setContent {
+            SongLadderTheme {
+                AlbumDetailDialog(
+                    detail = albumDetail(
+                        id = "album-1",
+                        scoreTenths = null,
+                        tracks = listOf(AlbumTrackRow(song = song, excludedFromAverage = false))
+                    ),
+                    rank = null,
+                    matchCandidates = null,
+                    onDismiss = {},
+                    onToggleTrackExcluded = { _, _ -> },
+                    onAddMissingTracks = {},
+                    onChooseRelease = {},
+                    onRefreshMetadata = {},
+                    onRateTrack = { rated = it }
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("?").performClick()
+
+        composeRule.runOnIdle {
+            assertEquals(song, rated)
+        }
+    }
+
+    @Test
+    fun albumDetailDialog_tappingScoreBadgeOnAnAlreadyScoredTrackInvokesOnRateTrackWithThatSong() {
+        var rated: Song? = null
+        val song = rankingsSong(id = "song-1", title = "Nikes", scoreTenths = 85)
+        composeRule.setContent {
+            SongLadderTheme {
+                AlbumDetailDialog(
+                    detail = albumDetail(
+                        id = "album-1",
+                        scoreTenths = null,
+                        tracks = listOf(AlbumTrackRow(song = song, excludedFromAverage = false))
+                    ),
+                    rank = null,
+                    matchCandidates = null,
+                    onDismiss = {},
+                    onToggleTrackExcluded = { _, _ -> },
+                    onAddMissingTracks = {},
+                    onChooseRelease = {},
+                    onRefreshMetadata = {},
+                    onRateTrack = { rated = it }
+                )
+            }
+        }
+
+        composeRule.onNodeWithText(formatScoreTenths(85)).performClick()
+
+        composeRule.runOnIdle {
+            assertEquals(song, rated)
         }
     }
 
@@ -852,7 +940,8 @@ class RankingsScreenTest {
                     onToggleTrackExcluded = { _, _ -> },
                     onAddMissingTracks = { ids -> added = ids },
                     onChooseRelease = {},
-                    onRefreshMetadata = {}
+                    onRefreshMetadata = {},
+                    onRateTrack = {}
                 )
             }
         }
@@ -879,7 +968,8 @@ class RankingsScreenTest {
                     onToggleTrackExcluded = { _, _ -> },
                     onAddMissingTracks = {},
                     onChooseRelease = {},
-                    onRefreshMetadata = {}
+                    onRefreshMetadata = {},
+                    onRateTrack = {}
                 )
             }
         }
@@ -925,7 +1015,8 @@ class RankingsScreenTest {
                     onToggleTrackExcluded = { _, _ -> },
                     onAddMissingTracks = {},
                     onChooseRelease = {},
-                    onRefreshMetadata = {}
+                    onRefreshMetadata = {},
+                    onRateTrack = {}
                 )
             }
         }
@@ -947,7 +1038,8 @@ class RankingsScreenTest {
                     onToggleTrackExcluded = { _, _ -> },
                     onAddMissingTracks = {},
                     onChooseRelease = {},
-                    onRefreshMetadata = {}
+                    onRefreshMetadata = {},
+                    onRateTrack = {}
                 )
             }
         }
@@ -968,7 +1060,8 @@ class RankingsScreenTest {
                     onToggleTrackExcluded = { _, _ -> },
                     onAddMissingTracks = {},
                     onChooseRelease = {},
-                    onRefreshMetadata = { refreshed = true }
+                    onRefreshMetadata = { refreshed = true },
+                    onRateTrack = {}
                 )
             }
         }

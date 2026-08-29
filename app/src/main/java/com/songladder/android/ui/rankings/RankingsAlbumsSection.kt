@@ -84,7 +84,11 @@ internal fun RankingsAlbumsContent(
     }
 
     if (uiState.rankedAlbums.isEmpty() && uiState.incompleteAlbums.isEmpty()) {
-        EmptyAlbumsContent(modifier = modifier)
+        if (uiState.searchQuery.isNotBlank()) {
+            EmptyAlbumSearchResultsContent(modifier = modifier)
+        } else {
+            EmptyAlbumsContent(modifier = modifier)
+        }
         return
     }
 
@@ -372,6 +376,24 @@ internal fun IncompleteAlbumsHeader(count: Int, expanded: Boolean, onToggle: () 
 
 @Composable
 private fun EmptyAlbumsContent(modifier: Modifier = Modifier) {
+    EmptyAlbumsCard(
+        title = stringResource(R.string.rankings_album_empty_title),
+        message = stringResource(R.string.rankings_album_empty_message),
+        modifier = modifier
+    )
+}
+
+@Composable
+private fun EmptyAlbumSearchResultsContent(modifier: Modifier = Modifier) {
+    EmptyAlbumsCard(
+        title = stringResource(R.string.rankings_album_search_empty_title),
+        message = stringResource(R.string.rankings_album_search_empty_message),
+        modifier = modifier
+    )
+}
+
+@Composable
+private fun EmptyAlbumsCard(title: String, message: String, modifier: Modifier = Modifier) {
     Box(
         modifier = modifier
             .fillMaxSize()
@@ -380,11 +402,8 @@ private fun EmptyAlbumsContent(modifier: Modifier = Modifier) {
     ) {
         Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
             Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(stringResource(R.string.rankings_album_empty_title), style = MaterialTheme.typography.titleLarge)
-                Text(
-                    stringResource(R.string.rankings_album_empty_message),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                Text(title, style = MaterialTheme.typography.titleLarge)
+                Text(message, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }
