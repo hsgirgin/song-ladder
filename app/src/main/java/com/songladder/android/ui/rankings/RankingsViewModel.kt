@@ -6,6 +6,7 @@ import com.songladder.android.domain.model.Album
 import com.songladder.android.domain.model.AlbumDetail
 import com.songladder.android.domain.model.AlbumMatchStatus
 import com.songladder.android.domain.model.AlbumReleaseCandidate
+import com.songladder.android.domain.model.AlbumReleaseTrack
 import com.songladder.android.domain.model.RankedAlbum
 import com.songladder.android.domain.model.RankingPresentation
 import com.songladder.android.domain.model.RankingSettings
@@ -577,6 +578,32 @@ class RankingsViewModel(
         }
     }
 
+    // Missing tracks have no local Song row to resolve a preview from, so a synthetic
+    // Song carrying the release track's provider id is built on demand - the iTunes
+    // resolver already knows to look up a preview by that id directly.
+    fun toggleMissingTrackPreview(albumArtist: String, albumTitle: String, track: AlbumReleaseTrack) {
+        val key = albumMissingTrackPreviewKey(track.trackId)
+        when (previewStates.value[key]) {
+            RankingsPreviewState.Playing -> {
+                songPreviewPlayer.pause()
+                previewStates.update { it + (key to RankingsPreviewState.Available) }
+            }
+            RankingsPreviewState.Available -> playResolvedPreview(key)
+            RankingsPreviewState.Loading -> Unit
+            RankingsPreviewState.Unavailable, null -> resolveAndPlay(
+                key,
+                Song(
+                    id = key,
+                    externalId = track.trackId,
+                    title = track.title,
+                    artist = albumArtist,
+                    album = albumTitle,
+                    createdAt = 0L
+                )
+            )
+        }
+    }
+
     fun stopPreview() {
         previewJob?.cancel()
         previewJob = null
@@ -590,17 +617,21 @@ class RankingsViewModel(
 
     private fun resolveAndPlay(songId: String) {
         val song = uiState.value.allSongs.firstOrNull { it.id == songId } ?: return
+        resolveAndPlay(songId, song)
+    }
+
+    private fun resolveAndPlay(previewKey: String, song: Song) {
         previewJob?.cancel()
-        previewStates.update { it + (songId to RankingsPreviewState.Loading) }
+        previewStates.update { it + (previewKey to RankingsPreviewState.Loading) }
         previewJob = viewModelScope.launch {
             val url = songPreviewResolver.resolve(song)
             if (url == null) {
-                previewUrls.remove(songId)
-                previewStates.update { it + (songId to RankingsPreviewState.Unavailable) }
+                previewUrls.remove(previewKey)
+                previewStates.update { it + (previewKey to RankingsPreviewState.Unavailable) }
                 return@launch
             }
-            previewUrls[songId] = url
-            playResolvedPreview(songId)
+            previewUrls[previewKey] = url
+            playResolvedPreview(previewKey)
         }
     }
 
@@ -623,6 +654,10 @@ class RankingsViewModel(
             }
     }
 }
+
+// Shared with AlbumDetailDialog so it can look up a missing track's preview state in
+// RankingsUiState.previews using the same key this ViewModel stores it under.
+internal fun albumMissingTrackPreviewKey(trackId: String): String = "missing-track:$trackId"
 
 private fun Song.matchesQuery(normalizedQuery: String): Boolean {
     return title.contains(normalizedQuery, ignoreCase = true) ||

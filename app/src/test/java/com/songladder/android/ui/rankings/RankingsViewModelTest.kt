@@ -4,6 +4,7 @@ import com.songladder.android.domain.model.Album
 import com.songladder.android.domain.model.AlbumDetail
 import com.songladder.android.domain.model.AlbumMatchStatus
 import com.songladder.android.domain.model.AlbumReleaseCandidate
+import com.songladder.android.domain.model.AlbumReleaseTrack
 import com.songladder.android.domain.model.AlbumTrackRow
 import com.songladder.android.domain.model.AppStats
 import com.songladder.android.domain.model.DeletedRankingHistory
@@ -630,6 +631,52 @@ class RankingsViewModelTest {
         advanceUntilIdle()
 
         assertEquals(RankingsPreviewState.Unavailable, viewModel.uiState.value.previews["song-1"])
+    }
+
+    @Test
+    fun `missing track preview tap resolves using the track's provider id and starts playback`() = runTest {
+        var resolvedSong: Song? = null
+        val viewModel = viewModel(
+            previewResolver = object : SongPreviewResolver {
+                override suspend fun resolve(song: Song): String? {
+                    resolvedSong = song
+                    return "https://example.test/preview.mp3"
+                }
+            }
+        )
+        backgroundScope.launch(dispatcher) { viewModel.uiState.collect {} }
+        advanceUntilIdle()
+
+        viewModel.toggleMissingTrackPreview("Frank Ocean", "Blonde", AlbumReleaseTrack(trackId = "12345", title = "Ivy"))
+        advanceUntilIdle()
+
+        assertEquals(
+            RankingsPreviewState.Playing,
+            viewModel.uiState.value.previews[albumMissingTrackPreviewKey("12345")]
+        )
+        assertEquals("12345", resolvedSong?.externalId)
+        assertEquals("Ivy", resolvedSong?.title)
+        assertEquals("Frank Ocean", resolvedSong?.artist)
+        assertEquals("Blonde", resolvedSong?.album)
+    }
+
+    @Test
+    fun `missing track preview tap exposes unavailable state when no preview can be resolved`() = runTest {
+        val viewModel = viewModel(
+            previewResolver = object : SongPreviewResolver {
+                override suspend fun resolve(song: Song): String? = null
+            }
+        )
+        backgroundScope.launch(dispatcher) { viewModel.uiState.collect {} }
+        advanceUntilIdle()
+
+        viewModel.toggleMissingTrackPreview("Frank Ocean", "Blonde", AlbumReleaseTrack(trackId = "12345", title = "Ivy"))
+        advanceUntilIdle()
+
+        assertEquals(
+            RankingsPreviewState.Unavailable,
+            viewModel.uiState.value.previews[albumMissingTrackPreviewKey("12345")]
+        )
     }
 
     @Test

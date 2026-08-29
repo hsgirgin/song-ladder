@@ -40,7 +40,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -64,8 +65,11 @@ internal fun AlbumDetailDialog(
     detail: AlbumDetail,
     rank: Int?,
     matchCandidates: AlbumMatchCandidatesState?,
+    previews: Map<String, RankingsPreviewState>,
     onDismiss: () -> Unit,
     onToggleTrackExcluded: (String, Boolean) -> Unit,
+    onTogglePreview: (String) -> Unit,
+    onToggleMissingTrackPreview: (AlbumReleaseTrack) -> Unit,
     onAddMissingTracks: (List<String>) -> Unit,
     onChooseRelease: (String) -> Unit,
     onRefreshMetadata: () -> Unit,
@@ -140,6 +144,8 @@ internal fun AlbumDetailDialog(
                         detail.tracks.forEach { track ->
                             AlbumTrackListItem(
                                 track = track,
+                                previewState = previews[track.song.id],
+                                onTogglePreview = { onTogglePreview(track.song.id) },
                                 onToggleExcluded = { excluded -> onToggleTrackExcluded(track.song.id, excluded) },
                                 onRate = { onRateTrack(track.song) },
                                 rateEnabled = !isSavingScore
@@ -157,6 +163,8 @@ internal fun AlbumDetailDialog(
                             detail.missingTracks.forEach { track ->
                                 MissingTrackListItem(
                                     track = track,
+                                    previewState = previews[albumMissingTrackPreviewKey(track.trackId)],
+                                    onTogglePreview = { onToggleMissingTrackPreview(track) },
                                     onAdd = { onAddMissingTracks(listOf(track.trackId)) }
                                 )
                             }
@@ -236,14 +244,15 @@ private fun AlbumMatchCandidatesPicker(
 @Composable
 private fun AlbumTrackListItem(
     track: AlbumTrackRow,
+    previewState: RankingsPreviewState?,
+    onTogglePreview: () -> Unit,
     onToggleExcluded: (Boolean) -> Unit,
     onRate: () -> Unit,
     rateEnabled: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
-    val includedDescription = stringResource(R.string.rankings_album_track_included)
-    val excludedDescription = stringResource(R.string.rankings_album_track_excluded)
+    val previewActionLabel = stringResource(R.string.rankings_preview_action)
     val excludeActionLabel = stringResource(R.string.rankings_album_track_exclude_action)
     val includeActionLabel = stringResource(R.string.rankings_album_track_include_action)
     val menuActionLabel = if (track.excludedFromAverage) includeActionLabel else excludeActionLabel
@@ -255,28 +264,35 @@ private fun AlbumTrackListItem(
         modifier = modifier
             .fillMaxWidth()
             .combinedClickable(
-                onClick = { menuExpanded = true },
-                onClickLabel = menuActionLabel,
+                onClick = onTogglePreview,
+                onClickLabel = previewActionLabel,
                 onLongClick = { menuExpanded = true },
                 onLongClickLabel = menuActionLabel
             )
             .semantics {
-                contentDescription = if (track.excludedFromAverage) excludedDescription else includedDescription
+                customActions = listOf(
+                    CustomAccessibilityAction(label = menuActionLabel) {
+                        onToggleExcluded(!track.excludedFromAverage)
+                        true
+                    }
+                )
             },
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(
-            text = track.song.title,
-            modifier = Modifier.weight(1f),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            color = if (track.excludedFromAverage) {
-                MaterialTheme.colorScheme.onSurfaceVariant
-            } else {
-                MaterialTheme.colorScheme.onSurface
-            }
-        )
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(
+                text = track.song.title,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                color = if (track.excludedFromAverage) {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                } else {
+                    MaterialTheme.colorScheme.onSurface
+                }
+            )
+            PreviewLabel(state = previewState)
+        }
         Box(
             modifier = Modifier
                 .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
@@ -289,12 +305,14 @@ private fun AlbumTrackListItem(
                 modifier = if (track.excludedFromAverage) Modifier.alpha(0.5f) else Modifier
             )
         }
-        Icon(
-            imageVector = Icons.Rounded.MoreVert,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant
-        )
         Box {
+            IconButton(onClick = { menuExpanded = true }) {
+                Icon(
+                    imageVector = Icons.Rounded.MoreVert,
+                    contentDescription = menuActionLabel,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
             DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
                 DropdownMenuItem(
                     text = { Text(if (track.excludedFromAverage) includeActionLabel else excludeActionLabel) },
@@ -311,21 +329,28 @@ private fun AlbumTrackListItem(
 @Composable
 private fun MissingTrackListItem(
     track: AlbumReleaseTrack,
+    previewState: RankingsPreviewState?,
+    onTogglePreview: () -> Unit,
     onAdd: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val previewActionLabel = stringResource(R.string.rankings_preview_action)
     Row(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier
+            .fillMaxWidth()
+            .clickable(onClick = onTogglePreview, onClickLabel = previewActionLabel),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(
-            text = track.title,
-            modifier = Modifier.weight(1f),
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(
+                text = track.title,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            PreviewLabel(state = previewState)
+        }
         Button(onClick = onAdd) {
             Text(stringResource(R.string.rankings_album_add_track_action))
         }

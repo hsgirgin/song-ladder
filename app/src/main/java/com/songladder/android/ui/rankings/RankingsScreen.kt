@@ -41,6 +41,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.songladder.android.R
+import com.songladder.android.domain.model.AlbumReleaseTrack
 import com.songladder.android.domain.model.RankingPresentation
 import com.songladder.android.domain.model.Song
 
@@ -83,6 +84,7 @@ fun RankingsScreen(
         onShowAlbumDetails = viewModel::showAlbumDetails,
         onHideAlbumDetails = viewModel::hideAlbumDetails,
         onToggleAlbumTrackExcluded = viewModel::setAlbumTrackExcluded,
+        onToggleAlbumMissingTrackPreview = viewModel::toggleMissingTrackPreview,
         onAddAlbumMissingTracks = viewModel::addAlbumMissingTracks,
         onChooseAlbumRelease = viewModel::chooseAlbumRelease,
         onRefreshAlbumMetadata = viewModel::refreshAlbumMetadata,
@@ -118,6 +120,7 @@ internal fun RankingsScreenContent(
     onShowAlbumDetails: (String) -> Unit,
     onHideAlbumDetails: () -> Unit,
     onToggleAlbumTrackExcluded: (String, String, Boolean) -> Unit,
+    onToggleAlbumMissingTrackPreview: (String, String, AlbumReleaseTrack) -> Unit,
     onAddAlbumMissingTracks: (String, List<String>) -> Unit,
     onChooseAlbumRelease: (String, String) -> Unit,
     onRefreshAlbumMetadata: (String) -> Unit,
@@ -287,8 +290,13 @@ internal fun RankingsScreenContent(
             detail = detail,
             rank = rank,
             matchCandidates = uiState.albumMatchCandidates,
+            previews = uiState.previews,
             onDismiss = onHideAlbumDetails,
             onToggleTrackExcluded = { songId, excluded -> onToggleAlbumTrackExcluded(detail.album.id, songId, excluded) },
+            onTogglePreview = onTogglePreview,
+            onToggleMissingTrackPreview = { track ->
+                onToggleAlbumMissingTrackPreview(detail.album.artist, detail.album.title, track)
+            },
             onAddMissingTracks = { providerTrackIds -> onAddAlbumMissingTracks(detail.album.id, providerTrackIds) },
             onChooseRelease = { collectionId -> onChooseAlbumRelease(detail.album.id, collectionId) },
             onRefreshMetadata = { onRefreshAlbumMetadata(detail.album.id) },

@@ -208,7 +208,7 @@ internal fun RankingsListRow(
 }
 
 @Composable
-private fun PreviewLabel(state: RankingsPreviewState?) {
+internal fun PreviewLabel(state: RankingsPreviewState?) {
     val text = when (state) {
         RankingsPreviewState.Playing -> stringResource(R.string.rankings_pause_preview)
         RankingsPreviewState.Unavailable -> stringResource(R.string.rankings_preview_unavailable)
