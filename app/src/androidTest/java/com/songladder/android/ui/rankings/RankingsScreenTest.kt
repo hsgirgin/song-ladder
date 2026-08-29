@@ -846,7 +846,7 @@ class RankingsScreenTest {
                 AlbumDetailDialog(
                     detail = albumDetail(
                         id = "album-1",
-                        scoreTenths = 85,
+                        scoreTenths = null,
                         tracks = listOf(AlbumTrackRow(song = song, excludedFromAverage = false))
                     ),
                     rank = null,
