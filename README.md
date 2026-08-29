@@ -1,6 +1,6 @@
 # Song Ladder
 
-![Latest release](https://img.shields.io/github/v/release/hsgirgin/song-ladder?include_prereleases)
+[![Latest release](https://img.shields.io/github/v/release/hsgirgin/song-ladder?include_prereleases)](https://github.com/hsgirgin/song-ladder/releases)
 
 Song Ladder is a native Android app built with Kotlin, Jetpack Compose, Room, and local-first import/export flows. The application code lives under [app](app).
 
