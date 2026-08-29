@@ -99,6 +99,7 @@
     <string name="settings_deleted_histories_empty">No deleted ranking histories.</string>
     <string name="settings_clear_selection">Clear</string>
     <string name="settings_done">Done</string>
+    <string name="settings_version">Version %1$s</string>
     <string name="settings_unknown_title">Unknown title</string>
     <string name="settings_unknown_artist">Unknown artist</string>
     <string name="settings_save_failed">Could not save settings. Try again.</string>
