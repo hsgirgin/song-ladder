@@ -9,6 +9,8 @@ import com.songladder.android.domain.model.MatchupSelection
 import com.songladder.android.domain.model.RankingSubject
 import com.songladder.android.domain.model.ResponsivenessEpoch
 import com.songladder.android.domain.model.Song
+import com.songladder.android.domain.model.MAX_ELO
+import com.songladder.android.domain.model.MIN_ELO
 import com.songladder.android.domain.model.libraryAnchorScoreTenths
 import com.songladder.android.domain.model.seedEloForScore
 import kotlin.math.abs
@@ -205,12 +207,12 @@ class EloMatchupEngine(
         val loserExpected = expectedScore(loser.elo, winner.elo)
         return EloMatchupResult(
             winner = winner.copy(
-                elo = winner.elo + winnerEffectiveK * (1 - winnerExpected),
+                elo = (winner.elo + winnerEffectiveK * (1 - winnerExpected)).coerceIn(MIN_ELO, MAX_ELO),
                 wins = winner.wins + 1,
                 completedMatchupsInEpoch = winner.completedMatchupsInEpoch + 1
             ),
             loser = loser.copy(
-                elo = loser.elo + loserEffectiveK * (0 - loserExpected),
+                elo = (loser.elo + loserEffectiveK * (0 - loserExpected)).coerceIn(MIN_ELO, MAX_ELO),
                 losses = loser.losses + 1,
                 completedMatchupsInEpoch = loser.completedMatchupsInEpoch + 1
             ),
@@ -303,12 +305,12 @@ class EloMatchupEngine(
         val winnerExpected = expectedScore(winner.elo, loser.elo)
         val loserExpected = expectedScore(loser.elo, winner.elo)
         replayed[winnerId] = winner.copy(
-            elo = winner.elo + winnerK * (1 - winnerExpected),
+            elo = (winner.elo + winnerK * (1 - winnerExpected)).coerceIn(MIN_ELO, MAX_ELO),
             wins = winner.wins + 1,
             completedMatchupsInEpoch = winner.completedMatchupsInEpoch + 1
         )
         replayed[loserId] = loser.copy(
-            elo = loser.elo + loserK * (0 - loserExpected),
+            elo = (loser.elo + loserK * (0 - loserExpected)).coerceIn(MIN_ELO, MAX_ELO),
             losses = loser.losses + 1,
             completedMatchupsInEpoch = loser.completedMatchupsInEpoch + 1
         )

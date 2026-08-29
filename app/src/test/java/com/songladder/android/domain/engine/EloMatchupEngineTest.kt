@@ -7,6 +7,8 @@ import com.songladder.android.domain.model.MatchupOutcome
 import com.songladder.android.domain.model.RankingSubject
 import com.songladder.android.domain.model.ResponsivenessEpoch
 import com.songladder.android.domain.model.Song
+import com.songladder.android.domain.model.MAX_ELO
+import com.songladder.android.domain.model.MIN_ELO
 import com.songladder.android.domain.model.formatScoreTenths
 import com.songladder.android.domain.model.validateScoreTenths
 import org.junit.Assert.assertEquals
@@ -675,6 +677,36 @@ class EloMatchupEngineTest {
             winnerEffectiveK = 64.0,
             loserEffectiveK = 64.0
         )
+
+    @Test
+    fun `winner elo does not run away past the max score ceiling on repeated wins`() {
+        val winner = subject(id = "leader", elo = MAX_ELO)
+        val loser = subject(id = "underdog", elo = BASE_RATING.toDouble())
+
+        val result = engine.updateRatings(winner, loser)
+
+        assertEquals(MAX_ELO, result.winner.elo, 0.000001)
+    }
+
+    @Test
+    fun `loser elo does not run away past the min score floor on repeated losses`() {
+        val winner = subject(id = "leader", elo = BASE_RATING.toDouble())
+        val loser = subject(id = "underdog", elo = MIN_ELO)
+
+        val result = engine.updateRatings(winner, loser)
+
+        assertEquals(MIN_ELO, result.loser.elo, 0.000001)
+    }
+
+    @Test
+    fun `an upset against a maxed-out leader cannot overshoot the underdog straight to the ceiling`() {
+        val leader = subject(id = "leader", elo = MAX_ELO)
+        val underdog = subject(id = "underdog", elo = BASE_RATING.toDouble() - 200.0)
+
+        val result = engine.updateRatings(winner = underdog, loser = leader)
+
+        assertTrue(result.winner.elo < MAX_ELO)
+    }
 
     private fun subject(
         id: String,

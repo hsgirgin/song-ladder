@@ -10,11 +10,21 @@ const val MIN_SCORE_TENTHS = 10
 const val MAX_SCORE_TENTHS = 100
 const val CURRENT_EXPORT_SCHEMA_VERSION = 2
 
+const val ELO_PER_SCORE_POINT = 80.0
+
+// The elo range that maps onto the displayable 1.0-10.0 rating scale. Match outcomes must
+// clamp stored elo to this range (see EloMatchupEngine.updateRatings/applyWinEvent) - without
+// it, a winning streak's elo can run away far past what "10.0" represents, and the resulting
+// oversized elo gap against normally-rated opponents produces near-max-K jumps that overshoot
+// their score straight to the ceiling in just one or two matchups.
+val MIN_ELO: Double = seedEloForScore(MIN_SCORE_TENTHS)
+val MAX_ELO: Double = seedEloForScore(MAX_SCORE_TENTHS)
+
 fun seedEloForScore(scoreTenths: Int?, fallbackTenths: Int = 55): Double =
-    BASE_ELO + 80.0 * ((scoreTenths ?: fallbackTenths) / 10.0 - 5.5)
+    BASE_ELO + ELO_PER_SCORE_POINT * ((scoreTenths ?: fallbackTenths) / 10.0 - 5.5)
 
 fun scoreTenthsForElo(elo: Double): Int =
-    (((elo - BASE_ELO) / 80.0 + 5.5) * 10.0)
+    (((elo - BASE_ELO) / ELO_PER_SCORE_POINT + 5.5) * 10.0)
         .roundToInt()
         .coerceIn(MIN_SCORE_TENTHS, MAX_SCORE_TENTHS)
 
