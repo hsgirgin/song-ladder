@@ -32,6 +32,25 @@ Found a bug or have feedback? Please [open an issue](https://github.com/hsgirgin
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for details on the signed-release CI setup.
 
+## Crash reporting
+
+Crash reporting is powered by Firebase Crashlytics, and is opt-in at the build level:
+the `com.google.gms.google-services` and `com.google.firebase.crashlytics` Gradle
+plugins, plus the Firebase Crashlytics dependency, only apply when
+`app/google-services.json` exists. Without that file the build is unaffected and
+Crashlytics is simply absent.
+
+To enable it:
+
+1. Create a Firebase project at [console.firebase.google.com](https://console.firebase.google.com)
+   and register an Android app with package name `com.songladder.android`.
+2. Download the generated `google-services.json` and place it at `app/google-services.json`.
+3. Enable Crashlytics for the app in the Firebase console.
+4. Commit the file. `google-services.json` contains no secrets (it's shipped inside
+   every APK), so it's safe to check in.
+
+Crashlytics auto-initializes and reports uncaught exceptions with no additional code.
+
 ## Import
 
 Use the Library screen to search iTunes, add songs manually, load the sample pack, preview a public YouTube Music playlist, or import/export a Song Ladder JSON backup.

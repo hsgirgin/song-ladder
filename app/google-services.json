@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "227128456503",
+    "project_id": "song-ladder",
+    "storage_bucket": "song-ladder.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:227128456503:android:4df6f94b23c8979636d6b2",
+        "android_client_info": {
+          "package_name": "com.songladder.android"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAMy_-Hg1kajlcj_Xy_ridDNCSGec8OZSM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

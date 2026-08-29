@@ -5,6 +5,17 @@ plugins {
     id("org.jetbrains.kotlin.plugin.serialization")
 }
 
+// Crashlytics needs a Firebase project's google-services.json, which isn't checked in until
+// someone registers the app in the Firebase console (see README). Gate the Google plugins and
+// dependencies on the file's presence so the build (and CI) keeps working before that happens,
+// and Crashlytics turns on automatically the moment the real file is added.
+val hasGoogleServicesConfig = file("google-services.json").exists()
+
+if (hasGoogleServicesConfig) {
+    apply(plugin = "com.google.gms.google-services")
+    apply(plugin = "com.google.firebase.crashlytics")
+}
+
 android {
     namespace = "com.songladder.android"
     compileSdk = 35
@@ -102,6 +113,11 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("io.coil-kt:coil-compose:2.7.0")
+
+    if (hasGoogleServicesConfig) {
+        implementation(platform("com.google.firebase:firebase-bom:33.5.1"))
+        implementation("com.google.firebase:firebase-crashlytics")
+    }
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")
