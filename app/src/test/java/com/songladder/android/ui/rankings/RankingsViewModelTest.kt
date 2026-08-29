@@ -221,6 +221,28 @@ class RankingsViewModelTest {
     }
 
     @Test
+    fun `searching preserves each song's original rank instead of re-ranking the filtered results`() = runTest {
+        val viewModel = viewModel(
+            songs = listOf(
+                rankingsSong(id = "one", title = "First", scoreTenths = 90),
+                rankingsSong(id = "two", title = "Needle", scoreTenths = 50)
+            )
+        )
+        backgroundScope.launch(dispatcher) { viewModel.uiState.collect {} }
+        advanceUntilIdle()
+
+        assertEquals(2, viewModel.uiState.value.rankedSongs.first { it.song.id == "two" }.rank)
+
+        viewModel.setSearchActive(true)
+        viewModel.updateSearchQuery("needle")
+        advanceUntilIdle()
+
+        val filtered = viewModel.uiState.value.rankedSongs
+        assertEquals(listOf("two"), filtered.map { it.song.id })
+        assertEquals(2, filtered.single().rank)
+    }
+
+    @Test
     fun `selecting the artists tab closes songs search and reports coming soon`() = runTest {
         val viewModel = viewModel(
             songs = listOf(
