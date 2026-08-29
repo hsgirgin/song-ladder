@@ -279,7 +279,8 @@ internal fun RankingsScreenContent(
             onAddMissingTracks = { providerTrackIds -> onAddAlbumMissingTracks(detail.album.id, providerTrackIds) },
             onChooseRelease = { collectionId -> onChooseAlbumRelease(detail.album.id, collectionId) },
             onRefreshMetadata = { onRefreshAlbumMetadata(detail.album.id) },
-            onRateTrack = { song -> albumRatingSongId = song.id }
+            onRateTrack = { song -> albumRatingSongId = song.id },
+            isSavingScore = uiState.isSavingScore
         )
     }
 

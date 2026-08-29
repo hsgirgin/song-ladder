@@ -2,6 +2,7 @@ package com.songladder.android.ui.rankings
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -10,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -58,7 +60,8 @@ internal fun AlbumDetailDialog(
     onAddMissingTracks: (List<String>) -> Unit,
     onChooseRelease: (String) -> Unit,
     onRefreshMetadata: () -> Unit,
-    onRateTrack: (Song) -> Unit
+    onRateTrack: (Song) -> Unit,
+    isSavingScore: Boolean = false
 ) {
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
@@ -129,7 +132,8 @@ internal fun AlbumDetailDialog(
                             AlbumTrackListItem(
                                 track = track,
                                 onToggleExcluded = { excluded -> onToggleTrackExcluded(track.song.id, excluded) },
-                                onRate = { onRateTrack(track.song) }
+                                onRate = { onRateTrack(track.song) },
+                                rateEnabled = !isSavingScore
                             )
                         }
                     }
@@ -224,6 +228,7 @@ private fun AlbumTrackListItem(
     track: AlbumTrackRow,
     onToggleExcluded: (Boolean) -> Unit,
     onRate: () -> Unit,
+    rateEnabled: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     val includedDescription = stringResource(R.string.rankings_album_track_included)
@@ -250,11 +255,14 @@ private fun AlbumTrackListItem(
                 contentDescription = if (track.excludedFromAverage) excludedDescription else includedDescription
             }
         )
-        ScoreBadge(
-            scoreTenths = scoreTenths,
-            size = 32.dp,
-            modifier = Modifier.clickable(onClickLabel = rateLabel, onClick = onRate)
-        )
+        Box(
+            modifier = Modifier
+                .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
+                .clickable(enabled = rateEnabled, onClickLabel = rateLabel, onClick = onRate),
+            contentAlignment = Alignment.Center
+        ) {
+            ScoreBadge(scoreTenths = scoreTenths, size = 32.dp)
+        }
     }
 }
 

@@ -26,6 +26,7 @@ import com.songladder.android.domain.model.RankingPresentation
 import com.songladder.android.domain.model.RankingSettings
 import com.songladder.android.domain.model.Song
 import com.songladder.android.domain.model.Suggestion
+import com.songladder.android.domain.model.formatScoreTenths
 import com.songladder.android.ui.components.SongRatingControl
 import com.songladder.android.ui.theme.SongLadderTheme
 import org.junit.Assert.assertEquals
@@ -830,6 +831,37 @@ class RankingsScreenTest {
         }
 
         composeRule.onNodeWithText("?").performClick()
+
+        composeRule.runOnIdle {
+            assertEquals(song, rated)
+        }
+    }
+
+    @Test
+    fun albumDetailDialog_tappingScoreBadgeOnAnAlreadyScoredTrackInvokesOnRateTrackWithThatSong() {
+        var rated: Song? = null
+        val song = rankingsSong(id = "song-1", title = "Nikes", scoreTenths = 85)
+        composeRule.setContent {
+            SongLadderTheme {
+                AlbumDetailDialog(
+                    detail = albumDetail(
+                        id = "album-1",
+                        scoreTenths = 85,
+                        tracks = listOf(AlbumTrackRow(song = song, excludedFromAverage = false))
+                    ),
+                    rank = null,
+                    matchCandidates = null,
+                    onDismiss = {},
+                    onToggleTrackExcluded = { _, _ -> },
+                    onAddMissingTracks = {},
+                    onChooseRelease = {},
+                    onRefreshMetadata = {},
+                    onRateTrack = { rated = it }
+                )
+            }
+        }
+
+        composeRule.onNodeWithText(formatScoreTenths(85)).performClick()
 
         composeRule.runOnIdle {
             assertEquals(song, rated)
