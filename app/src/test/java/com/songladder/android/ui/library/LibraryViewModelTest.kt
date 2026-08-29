@@ -523,7 +523,7 @@ class LibraryViewModelTest {
 
     private fun viewModel(
         songRepository: FakeSongRepository = FakeSongRepository(),
-        importRepository: FakeImportRepository = FakeImportRepository(songRepository),
+        importRepository: ImportRepository = FakeImportRepository(songRepository),
         musicSourceClient: FakeMusicSourceClient = FakeMusicSourceClient(emptyList()),
         playlistSourceClient: FakePlaylistSourceClient = FakePlaylistSourceClient(Result.success(emptyPreview())),
         rankingRepository: FakeRankingRepository = FakeRankingRepository(),
