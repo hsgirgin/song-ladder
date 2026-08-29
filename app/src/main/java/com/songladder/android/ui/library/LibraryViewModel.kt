@@ -12,6 +12,7 @@ import com.songladder.android.domain.model.PlaylistImportPreview
 import com.songladder.android.domain.model.RankingSettings
 import com.songladder.android.domain.model.Song
 import com.songladder.android.domain.model.SongInput
+import com.songladder.android.domain.model.TombstoneImportAction
 import com.songladder.android.domain.model.TombstoneImportConflict
 import com.songladder.android.domain.model.TombstoneImportResolution
 import com.songladder.android.domain.repository.ImportRepository
@@ -493,11 +494,20 @@ class LibraryViewModel(
                                 statusMessage = "Imported $count songs."
                             )
                         }
+                        // Restored candidates get a freshly-inserted SongEntity id (re-pointed at the
+                        // preserved RankingSubjectEntity), so they'd otherwise pass the "new song" filter
+                        // in tryResolveNextPendingRatingQueueLaunch and get queued for rating even though
+                        // their score/wins/losses were already restored. Only songs actually resolved as
+                        // START_FRESH (or with no tombstone conflict at all) belong in the rating queue.
+                        val ratableSongKeys = candidates
+                            .filterNot { resolutions[importKey(it)]?.action == TombstoneImportAction.RESTORE }
+                            .distinctSongLookupKeys()
+                        val ratableCount = minOf(count, ratableSongKeys.size)
                         scheduleRatingQueueLaunch(
-                            kind = if (count > 1) ImportRatingQueueKind.PLAYLIST else ImportRatingQueueKind.SINGLE_SONG,
-                            songKeys = candidates.distinctSongLookupKeys(),
+                            kind = if (ratableCount > 1) ImportRatingQueueKind.PLAYLIST else ImportRatingQueueKind.SINGLE_SONG,
+                            songKeys = ratableSongKeys,
                             existingSongIds = existingSongIds,
-                            expectedCount = count
+                            expectedCount = ratableCount
                         )
                     }
                     .onFailure { error ->
