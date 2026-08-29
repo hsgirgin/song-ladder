@@ -1,5 +1,6 @@
 package com.songladder.android.ui.rankings
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -40,6 +41,8 @@ import com.songladder.android.domain.model.AlbumDetail
 import com.songladder.android.domain.model.AlbumMatchStatus
 import com.songladder.android.domain.model.AlbumReleaseTrack
 import com.songladder.android.domain.model.AlbumTrackRow
+import com.songladder.android.domain.model.Song
+import com.songladder.android.domain.model.formatScoreTenths
 import com.songladder.android.ui.components.MatchCandidateRow
 import com.songladder.android.ui.components.ScoreBadge
 import com.songladder.android.ui.components.SongArtwork
@@ -54,7 +57,8 @@ internal fun AlbumDetailDialog(
     onToggleTrackExcluded: (String, Boolean) -> Unit,
     onAddMissingTracks: (List<String>) -> Unit,
     onChooseRelease: (String) -> Unit,
-    onRefreshMetadata: () -> Unit
+    onRefreshMetadata: () -> Unit,
+    onRateTrack: (Song) -> Unit
 ) {
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
@@ -124,7 +128,8 @@ internal fun AlbumDetailDialog(
                         detail.tracks.forEach { track ->
                             AlbumTrackListItem(
                                 track = track,
-                                onToggleExcluded = { excluded -> onToggleTrackExcluded(track.song.id, excluded) }
+                                onToggleExcluded = { excluded -> onToggleTrackExcluded(track.song.id, excluded) },
+                                onRate = { onRateTrack(track.song) }
                             )
                         }
                     }
@@ -218,10 +223,15 @@ private fun AlbumMatchCandidatesPicker(
 private fun AlbumTrackListItem(
     track: AlbumTrackRow,
     onToggleExcluded: (Boolean) -> Unit,
+    onRate: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val includedDescription = stringResource(R.string.rankings_album_track_included)
     val excludedDescription = stringResource(R.string.rankings_album_track_excluded)
+    val scoreTenths = track.song.scoreTenths
+    val rateLabel = scoreTenths?.let {
+        stringResource(R.string.rankings_score_state, formatScoreTenths(it), track.song.title)
+    } ?: stringResource(R.string.rankings_unrated_state)
     Row(
         modifier = modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -240,7 +250,11 @@ private fun AlbumTrackListItem(
                 contentDescription = if (track.excludedFromAverage) excludedDescription else includedDescription
             }
         )
-        ScoreBadge(scoreTenths = track.song.scoreTenths, size = 32.dp)
+        ScoreBadge(
+            scoreTenths = scoreTenths,
+            size = 32.dp,
+            modifier = Modifier.clickable(onClickLabel = rateLabel, onClick = onRate)
+        )
     }
 }
 
