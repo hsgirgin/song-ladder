@@ -447,4 +447,11 @@ private class FakeAlbumMetadataProvider(
     override suspend fun lookupRelease(collectionId: String, forceRefresh: Boolean): Result<AlbumReleaseLookup> =
         lookupResults[collectionId]
             ?: Result.failure(AlbumMetadataUnavailableException("No fixture for $collectionId"))
+
+    override suspend fun lookupReleases(
+        collectionIds: List<String>,
+        forceRefresh: Boolean
+    ): Result<Map<String, AlbumReleaseLookup>> = runCatching {
+        collectionIds.distinct().mapNotNull { id -> lookupResults[id]?.getOrNull()?.let { id to it } }.toMap()
+    }
 }
