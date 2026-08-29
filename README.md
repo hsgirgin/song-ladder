@@ -8,11 +8,11 @@ This project is in active pre-release — expect frequent updates and some rough
 
 ## Try it
 
-1. Download `app-release.apk` from the [latest release](../../releases/latest).
+1. Download `app-release.apk` from the [latest release](https://github.com/hsgirgin/song-ladder/releases/latest).
 2. On your device, allow installing apps from unknown sources if prompted, then open the downloaded APK to install.
 3. There's no Google Play listing yet, so updates are manual: download and install the latest release APK again when a new version comes out (release APKs are signed consistently, so this works as an in-place update).
 
-Found a bug or have feedback? Please [open an issue](../../issues/new) — include your Android version/device and steps to reproduce if it's a bug.
+Found a bug or have feedback? Please [open an issue](https://github.com/hsgirgin/song-ladder/issues/new) — include your Android version/device and steps to reproduce if it's a bug.
 
 ## What is implemented
 
