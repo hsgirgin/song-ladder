@@ -10,6 +10,10 @@ import com.songladder.android.domain.model.RankingSettings
 import com.songladder.android.domain.model.ScoreSaveResult
 import com.songladder.android.domain.model.Song
 import com.songladder.android.domain.model.SongInput
+import com.songladder.android.domain.model.TombstoneImportAction
+import com.songladder.android.domain.model.TombstoneImportConflict
+import com.songladder.android.domain.model.TombstoneImportMatch
+import com.songladder.android.domain.model.TombstoneImportResolution
 import com.songladder.android.domain.repository.ImportRepository
 import com.songladder.android.domain.repository.MusicSourceClient
 import com.songladder.android.domain.repository.PlaylistSourceClient
@@ -257,6 +261,93 @@ class LibraryViewModelTest {
     }
 
     @Test
+    fun `restoring a tombstoned song does not queue it for rating`() = runTest {
+        val songRepository = FakeSongRepository()
+        val candidate = MusicTrackCandidate(
+            externalId = "1",
+            title = "Nights",
+            artist = "Frank Ocean",
+            album = "Blonde",
+            sourceType = MusicSourceType.ITUNES
+        )
+        val conflict = TombstoneImportConflict(
+            candidate = candidate,
+            matches = listOf(
+                TombstoneImportMatch(
+                    rankingSubjectId = "subject-1",
+                    title = "Nights",
+                    artist = "Frank Ocean",
+                    sourceType = MusicSourceType.ITUNES,
+                    externalId = "1"
+                )
+            )
+        )
+        val importRepository = FakeImportRepository(
+            songRepository,
+            tombstoneMatches = mapOf(importKeyFor(candidate) to conflict)
+        )
+        val viewModel = viewModel(songRepository = songRepository, importRepository = importRepository)
+        backgroundScope.launch(dispatcher) { viewModel.uiState.collect {} }
+
+        viewModel.addSearchResult(candidate)
+        advanceUntilIdle()
+
+        assertNotNull(viewModel.uiState.value.tombstoneConflict)
+
+        viewModel.resolveTombstoneConflict(
+            TombstoneImportResolution(TombstoneImportAction.RESTORE, rankingSubjectId = "subject-1")
+        )
+        advanceUntilIdle()
+
+        assertEquals(80, viewModel.uiState.value.songs.single { it.title == "Nights" }.scoreTenths)
+        assertNull(
+            "a restored song already has its score back, so it should not enter the post-import rating queue",
+            viewModel.uiState.value.ratingQueue
+        )
+    }
+
+    @Test
+    fun `starting fresh on a tombstoned song still queues it for rating`() = runTest {
+        val songRepository = FakeSongRepository()
+        val candidate = MusicTrackCandidate(
+            externalId = "1",
+            title = "Nights",
+            artist = "Frank Ocean",
+            album = "Blonde",
+            sourceType = MusicSourceType.ITUNES
+        )
+        val conflict = TombstoneImportConflict(
+            candidate = candidate,
+            matches = listOf(
+                TombstoneImportMatch(
+                    rankingSubjectId = "subject-1",
+                    title = "Nights",
+                    artist = "Frank Ocean",
+                    sourceType = MusicSourceType.ITUNES,
+                    externalId = "1"
+                )
+            )
+        )
+        val importRepository = FakeImportRepository(
+            songRepository,
+            tombstoneMatches = mapOf(importKeyFor(candidate) to conflict)
+        )
+        val viewModel = viewModel(songRepository = songRepository, importRepository = importRepository)
+        backgroundScope.launch(dispatcher) { viewModel.uiState.collect {} }
+
+        viewModel.addSearchResult(candidate)
+        advanceUntilIdle()
+
+        viewModel.resolveTombstoneConflict(TombstoneImportResolution(TombstoneImportAction.START_FRESH))
+        advanceUntilIdle()
+
+        assertNotNull(
+            "a song the user chose to start fresh on still needs its first rating",
+            viewModel.uiState.value.ratingQueue
+        )
+    }
+
+    @Test
     fun `playlist queue save and skip advance to completion summary`() = runTest {
         val songRepository = FakeSongRepository()
         val importRepository = FakeImportRepository(songRepository)
@@ -493,11 +584,34 @@ private class FakeSongRepository(
 
     fun titleFor(songId: String): String =
         songs.value.first { it.id == songId }.title
+
+    /**
+     * Mirrors DefaultImportRepository's restore branch: inserts a fresh SongEntity row
+     * pointed at the preserved ranking subject, so the restored song's id is new but its
+     * score/wins/losses carry over.
+     */
+    fun restoreCandidate(candidate: MusicTrackCandidate, rankingSubjectId: String, scoreTenths: Int): String {
+        val id = "song-${nextId++}"
+        songs.value = songs.value + Song(
+            id = id,
+            rankingSubjectId = rankingSubjectId,
+            externalId = candidate.externalId,
+            sourceType = candidate.sourceType,
+            title = candidate.title.trim(),
+            artist = candidate.artist.trim(),
+            album = candidate.album,
+            artworkUrl = candidate.artworkUrl,
+            createdAt = nextId.toLong(),
+            scoreTenths = scoreTenths
+        )
+        return id
+    }
 }
 
 private class FakeImportRepository(
     private val songRepository: FakeSongRepository,
-    private val importJsonResult: Result<Int> = Result.success(0)
+    private val importJsonResult: Result<Int> = Result.success(0),
+    private val tombstoneMatches: Map<String, TombstoneImportConflict> = emptyMap()
 ) : ImportRepository {
     val imported = mutableListOf<MusicTrackCandidate>()
 
@@ -508,9 +622,38 @@ private class FakeImportRepository(
         return Result.success(songRepository.importCandidates(candidates))
     }
 
+    override suspend fun importTracks(
+        candidates: List<MusicTrackCandidate>,
+        sourceLabel: String,
+        resolutions: Map<String, TombstoneImportResolution>
+    ): Result<Int> {
+        imported += candidates
+        var count = 0
+        candidates.forEach { candidate ->
+            val resolution = resolutions[importKey(candidate)]
+            if (resolution?.action == TombstoneImportAction.RESTORE) {
+                songRepository.restoreCandidate(
+                    candidate = candidate,
+                    rankingSubjectId = resolution.rankingSubjectId ?: "restored-subject",
+                    scoreTenths = 80
+                )
+                count += 1
+            } else {
+                count += songRepository.importCandidates(listOf(candidate))
+            }
+        }
+        return Result.success(count)
+    }
+
+    override suspend fun findTombstoneMatches(candidates: List<MusicTrackCandidate>): Result<List<TombstoneImportConflict>> =
+        Result.success(candidates.mapNotNull { tombstoneMatches[importKey(it)] })
+
     override suspend fun importFromJson(contentResolver: ContentResolver, uri: Uri): Result<Int> = importJsonResult
 
     override suspend fun exportToJson(contentResolver: ContentResolver, uri: Uri): Result<Unit> = Result.success(Unit)
+
+    private fun importKey(candidate: MusicTrackCandidate): String =
+        "${candidate.sourceType.name}:${candidate.externalId}:${candidate.title.trim().lowercase()}::${candidate.artist.trim().lowercase()}"
 }
 
 private class FakeRankingRepository(
@@ -565,3 +708,6 @@ private fun emptyPreview(): PlaylistImportPreview = PlaylistImportPreview(
     importableTracks = emptyList(),
     ambiguousTracks = emptyList()
 )
+
+private fun importKeyFor(candidate: MusicTrackCandidate): String =
+    "${candidate.sourceType.name}:${candidate.externalId}:${candidate.title.trim().lowercase()}::${candidate.artist.trim().lowercase()}"

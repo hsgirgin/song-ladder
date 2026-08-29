@@ -12,6 +12,7 @@ import com.songladder.android.domain.model.PlaylistImportPreview
 import com.songladder.android.domain.model.RankingSettings
 import com.songladder.android.domain.model.Song
 import com.songladder.android.domain.model.SongInput
+import com.songladder.android.domain.model.TombstoneImportAction
 import com.songladder.android.domain.model.TombstoneImportConflict
 import com.songladder.android.domain.model.TombstoneImportResolution
 import com.songladder.android.domain.repository.ImportRepository
@@ -493,11 +494,18 @@ class LibraryViewModel(
                                 statusMessage = "Imported $count songs."
                             )
                         }
+                        val restoredCandidateKeys = resolutions
+                            .filterValues { it.action == TombstoneImportAction.RESTORE }
+                            .keys
+                        val ratableCandidates = candidates.filterNot { candidate ->
+                            importKey(candidate) in restoredCandidateKeys
+                        }
+                        val ratableCount = count - restoredCandidateKeys.size
                         scheduleRatingQueueLaunch(
-                            kind = if (count > 1) ImportRatingQueueKind.PLAYLIST else ImportRatingQueueKind.SINGLE_SONG,
-                            songKeys = candidates.distinctSongLookupKeys(),
+                            kind = if (ratableCount > 1) ImportRatingQueueKind.PLAYLIST else ImportRatingQueueKind.SINGLE_SONG,
+                            songKeys = ratableCandidates.distinctSongLookupKeys(),
                             existingSongIds = existingSongIds,
-                            expectedCount = count
+                            expectedCount = ratableCount
                         )
                     }
                     .onFailure { error ->
