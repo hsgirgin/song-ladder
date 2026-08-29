@@ -187,20 +187,20 @@ class RankingsViewModel(
             .filter { it.scoreTenths != null }
             .sortedWith(scoreFirstComparator())
             .mapIndexed { index, song -> RankedSong(rank = index + 1, song = song) }
-            .filterRankedByQuery(local.searchQuery)
+            .filterByQuery(local.searchQuery) { rankedSong, q -> rankedSong.song.matchesQuery(q) }
         val unrated = songs
             .filter { it.scoreTenths == null }
             .sortedByDescending { it.createdAt }
-            .filterByQuery(local.searchQuery)
+            .filterByQuery(local.searchQuery) { song, q -> song.matchesQuery(q) }
         val rankedAlbums = albums
             .filter { it.scoreTenths != null }
             .sortedWith(albumScoreFirstComparator())
             .mapIndexed { index, rankedAlbum -> rankedAlbum.copy(rank = index + 1) }
-            .filterAlbumsByQuery(local.searchQuery)
+            .filterByQuery(local.searchQuery) { rankedAlbum, q -> rankedAlbum.album.matchesQuery(q) }
         val incompleteAlbums = albums
             .filter { it.scoreTenths == null }
             .sortedByDescending { it.album.createdAt }
-            .filterAlbumsByQuery(local.searchQuery)
+            .filterByQuery(local.searchQuery) { rankedAlbum, q -> rankedAlbum.album.matchesQuery(q) }
         RankingsUiState(
             allSongs = songs,
             rankedSongs = ranked,
@@ -630,25 +630,13 @@ private fun Song.matchesQuery(normalizedQuery: String): Boolean {
         album.contains(normalizedQuery, ignoreCase = true)
 }
 
-private fun List<Song>.filterByQuery(query: String): List<Song> {
-    val normalizedQuery = query.trim()
-    if (normalizedQuery.isBlank()) return this
-    return filter { it.matchesQuery(normalizedQuery) }
-}
-
-private fun List<RankedSong>.filterRankedByQuery(query: String): List<RankedSong> {
-    val normalizedQuery = query.trim()
-    if (normalizedQuery.isBlank()) return this
-    return filter { it.song.matchesQuery(normalizedQuery) }
-}
-
 private fun Album.matchesQuery(normalizedQuery: String): Boolean {
     return title.contains(normalizedQuery, ignoreCase = true) ||
         artist.contains(normalizedQuery, ignoreCase = true)
 }
 
-private fun List<RankedAlbum>.filterAlbumsByQuery(query: String): List<RankedAlbum> {
+private inline fun <T> List<T>.filterByQuery(query: String, matches: (T, String) -> Boolean): List<T> {
     val normalizedQuery = query.trim()
     if (normalizedQuery.isBlank()) return this
-    return filter { it.album.matchesQuery(normalizedQuery) }
+    return filter { matches(it, normalizedQuery) }
 }
