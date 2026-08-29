@@ -109,6 +109,7 @@ class RankingsScreenTest {
                     onShowAlbumDetails = {},
                     onHideAlbumDetails = {},
                     onToggleAlbumTrackExcluded = { _, _, _ -> },
+                    onToggleAlbumMissingTrackPreview = { _, _, _ -> },
                     onAddAlbumMissingTracks = { _, _ -> },
                     onChooseAlbumRelease = { _, _ -> },
                     onRefreshAlbumMetadata = {},
@@ -165,6 +166,7 @@ class RankingsScreenTest {
                     onShowAlbumDetails = {},
                     onHideAlbumDetails = {},
                     onToggleAlbumTrackExcluded = { _, _, _ -> },
+                    onToggleAlbumMissingTrackPreview = { _, _, _ -> },
                     onAddAlbumMissingTracks = { _, _ -> },
                     onChooseAlbumRelease = { _, _ -> },
                     onRefreshAlbumMetadata = {},
@@ -214,6 +216,7 @@ class RankingsScreenTest {
                     onShowAlbumDetails = {},
                     onHideAlbumDetails = {},
                     onToggleAlbumTrackExcluded = { _, _, _ -> },
+                    onToggleAlbumMissingTrackPreview = { _, _, _ -> },
                     onAddAlbumMissingTracks = { _, _ -> },
                     onChooseAlbumRelease = { _, _ -> },
                     onRefreshAlbumMetadata = {},
@@ -284,6 +287,7 @@ class RankingsScreenTest {
                     onShowAlbumDetails = {},
                     onHideAlbumDetails = {},
                     onToggleAlbumTrackExcluded = { _, _, _ -> },
+                    onToggleAlbumMissingTrackPreview = { _, _, _ -> },
                     onAddAlbumMissingTracks = { _, _ -> },
                     onChooseAlbumRelease = { _, _ -> },
                     onRefreshAlbumMetadata = {},
@@ -350,6 +354,7 @@ class RankingsScreenTest {
                     onShowAlbumDetails = {},
                     onHideAlbumDetails = {},
                     onToggleAlbumTrackExcluded = { _, _, _ -> },
+                    onToggleAlbumMissingTrackPreview = { _, _, _ -> },
                     onAddAlbumMissingTracks = { _, _ -> },
                     onChooseAlbumRelease = { _, _ -> },
                     onRefreshAlbumMetadata = {},
@@ -399,6 +404,7 @@ class RankingsScreenTest {
                     onShowAlbumDetails = {},
                     onHideAlbumDetails = {},
                     onToggleAlbumTrackExcluded = { _, _, _ -> },
+                    onToggleAlbumMissingTrackPreview = { _, _, _ -> },
                     onAddAlbumMissingTracks = { _, _ -> },
                     onChooseAlbumRelease = { _, _ -> },
                     onRefreshAlbumMetadata = {},
@@ -455,6 +461,7 @@ class RankingsScreenTest {
                     onShowAlbumDetails = {},
                     onHideAlbumDetails = {},
                     onToggleAlbumTrackExcluded = { _, _, _ -> },
+                    onToggleAlbumMissingTrackPreview = { _, _, _ -> },
                     onAddAlbumMissingTracks = { _, _ -> },
                     onChooseAlbumRelease = { _, _ -> },
                     onRefreshAlbumMetadata = {},
@@ -503,6 +510,7 @@ class RankingsScreenTest {
                     onShowAlbumDetails = {},
                     onHideAlbumDetails = {},
                     onToggleAlbumTrackExcluded = { _, _, _ -> },
+                    onToggleAlbumMissingTrackPreview = { _, _, _ -> },
                     onAddAlbumMissingTracks = { _, _ -> },
                     onChooseAlbumRelease = { _, _ -> },
                     onRefreshAlbumMetadata = {},
@@ -574,6 +582,7 @@ class RankingsScreenTest {
                     onShowAlbumDetails = {},
                     onHideAlbumDetails = {},
                     onToggleAlbumTrackExcluded = { _, _, _ -> },
+                    onToggleAlbumMissingTrackPreview = { _, _, _ -> },
                     onAddAlbumMissingTracks = { _, _ -> },
                     onChooseAlbumRelease = { _, _ -> },
                     onRefreshAlbumMetadata = {},
@@ -622,6 +631,7 @@ class RankingsScreenTest {
                     onShowAlbumDetails = {},
                     onHideAlbumDetails = {},
                     onToggleAlbumTrackExcluded = { _, _, _ -> },
+                    onToggleAlbumMissingTrackPreview = { _, _, _ -> },
                     onAddAlbumMissingTracks = { _, _ -> },
                     onChooseAlbumRelease = { _, _ -> },
                     onRefreshAlbumMetadata = {},
@@ -664,6 +674,7 @@ class RankingsScreenTest {
                     onShowAlbumDetails = {},
                     onHideAlbumDetails = {},
                     onToggleAlbumTrackExcluded = { _, _, _ -> },
+                    onToggleAlbumMissingTrackPreview = { _, _, _ -> },
                     onAddAlbumMissingTracks = { _, _ -> },
                     onChooseAlbumRelease = { _, _ -> },
                     onRefreshAlbumMetadata = {},
@@ -760,8 +771,11 @@ class RankingsScreenTest {
                     detail = albumDetail(id = "album-1", title = "Blonde", artist = "Frank Ocean", scoreTenths = 80),
                     rank = 1,
                     matchCandidates = null,
+                    previews = emptyMap(),
                     onDismiss = {},
                     onToggleTrackExcluded = { _, _ -> },
+                    onTogglePreview = {},
+                    onToggleMissingTrackPreview = {},
                     onAddMissingTracks = {},
                     onChooseRelease = {},
                     onRefreshMetadata = {},
@@ -783,8 +797,11 @@ class RankingsScreenTest {
                     detail = albumDetail(id = "album-1", scoreTenths = null),
                     rank = null,
                     matchCandidates = null,
+                    previews = emptyMap(),
                     onDismiss = {},
                     onToggleTrackExcluded = { _, _ -> },
+                    onTogglePreview = {},
+                    onToggleMissingTrackPreview = {},
                     onAddMissingTracks = {},
                     onChooseRelease = {},
                     onRefreshMetadata = {},
@@ -809,8 +826,11 @@ class RankingsScreenTest {
                     ),
                     rank = null,
                     matchCandidates = null,
+                    previews = emptyMap(),
                     onDismiss = {},
                     onToggleTrackExcluded = { songId, excluded -> toggled = songId to excluded },
+                    onTogglePreview = {},
+                    onToggleMissingTrackPreview = {},
                     onAddMissingTracks = {},
                     onChooseRelease = {},
                     onRefreshMetadata = {},
@@ -819,7 +839,6 @@ class RankingsScreenTest {
             }
         }
 
-        composeRule.onNodeWithContentDescription("Included in average").assertIsDisplayed()
         composeRule.onNodeWithText("Nikes").performTouchInput { longClick() }
         composeRule.onNodeWithText("Exclude from ranking").assertIsDisplayed()
         composeRule.onNodeWithText("Exclude from ranking").performClick()
@@ -830,7 +849,7 @@ class RankingsScreenTest {
     }
 
     @Test
-    fun albumDetailDialog_holdMenuExcludeActionAlsoOpensOnSingleTap() {
+    fun albumDetailDialog_overflowIconOpensHoldMenu() {
         var toggled: Pair<String, Boolean>? = null
         composeRule.setContent {
             SongLadderTheme {
@@ -842,8 +861,11 @@ class RankingsScreenTest {
                     ),
                     rank = null,
                     matchCandidates = null,
+                    previews = emptyMap(),
                     onDismiss = {},
                     onToggleTrackExcluded = { songId, excluded -> toggled = songId to excluded },
+                    onTogglePreview = {},
+                    onToggleMissingTrackPreview = {},
                     onAddMissingTracks = {},
                     onChooseRelease = {},
                     onRefreshMetadata = {},
@@ -852,12 +874,78 @@ class RankingsScreenTest {
             }
         }
 
-        composeRule.onNodeWithText("Nikes").performClick()
-        composeRule.onNodeWithText("Exclude from ranking").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Exclude from ranking").performClick()
         composeRule.onNodeWithText("Exclude from ranking").performClick()
 
         composeRule.runOnIdle {
             assertEquals("song-1" to true, toggled)
+        }
+    }
+
+    @Test
+    fun albumDetailDialog_singleTapTogglesPreviewInsteadOfOpeningHoldMenu() {
+        var toggledSongId: String? = null
+        composeRule.setContent {
+            SongLadderTheme {
+                AlbumDetailDialog(
+                    detail = albumDetail(
+                        id = "album-1",
+                        scoreTenths = null,
+                        tracks = listOf(albumTrackRow(songId = "song-1", title = "Nikes", excluded = false))
+                    ),
+                    rank = null,
+                    matchCandidates = null,
+                    previews = mapOf("song-1" to RankingsPreviewState.Playing),
+                    onDismiss = {},
+                    onToggleTrackExcluded = { _, _ -> },
+                    onTogglePreview = { songId -> toggledSongId = songId },
+                    onToggleMissingTrackPreview = {},
+                    onAddMissingTracks = {},
+                    onChooseRelease = {},
+                    onRefreshMetadata = {},
+                    onRateTrack = {}
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("Pause").assertIsDisplayed()
+        composeRule.onNodeWithText("Nikes").performClick()
+        composeRule.onNodeWithText("Exclude from ranking").assertDoesNotExist()
+
+        composeRule.runOnIdle {
+            assertEquals("song-1", toggledSongId)
+        }
+    }
+
+    @Test
+    fun albumDetailDialog_tapOnMissingTrackTogglesPreview() {
+        var toggledTrackId: String? = null
+        composeRule.setContent {
+            SongLadderTheme {
+                AlbumDetailDialog(
+                    detail = albumDetail(id = "album-1", scoreTenths = null).copy(
+                        missingTracks = listOf(AlbumReleaseTrack(trackId = "track-1", title = "Ivy"))
+                    ),
+                    rank = null,
+                    matchCandidates = null,
+                    previews = mapOf(albumMissingTrackPreviewKey("track-1") to RankingsPreviewState.Loading),
+                    onDismiss = {},
+                    onToggleTrackExcluded = { _, _ -> },
+                    onTogglePreview = {},
+                    onToggleMissingTrackPreview = { track -> toggledTrackId = track.trackId },
+                    onAddMissingTracks = {},
+                    onChooseRelease = {},
+                    onRefreshMetadata = {},
+                    onRateTrack = {}
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("Loading preview").assertIsDisplayed()
+        composeRule.onNodeWithText("Ivy").performClick()
+
+        composeRule.runOnIdle {
+            assertEquals("track-1", toggledTrackId)
         }
     }
 
@@ -875,8 +963,11 @@ class RankingsScreenTest {
                     ),
                     rank = null,
                     matchCandidates = null,
+                    previews = emptyMap(),
                     onDismiss = {},
                     onToggleTrackExcluded = { _, _ -> },
+                    onTogglePreview = {},
+                    onToggleMissingTrackPreview = {},
                     onAddMissingTracks = {},
                     onChooseRelease = {},
                     onRefreshMetadata = {},
@@ -906,8 +997,11 @@ class RankingsScreenTest {
                     ),
                     rank = null,
                     matchCandidates = null,
+                    previews = emptyMap(),
                     onDismiss = {},
                     onToggleTrackExcluded = { _, _ -> },
+                    onTogglePreview = {},
+                    onToggleMissingTrackPreview = {},
                     onAddMissingTracks = {},
                     onChooseRelease = {},
                     onRefreshMetadata = {},
@@ -936,8 +1030,11 @@ class RankingsScreenTest {
                     ),
                     rank = null,
                     matchCandidates = null,
+                    previews = emptyMap(),
                     onDismiss = {},
                     onToggleTrackExcluded = { _, _ -> },
+                    onTogglePreview = {},
+                    onToggleMissingTrackPreview = {},
                     onAddMissingTracks = { ids -> added = ids },
                     onChooseRelease = {},
                     onRefreshMetadata = {},
@@ -964,8 +1061,11 @@ class RankingsScreenTest {
                     detail = albumDetail(id = "album-1", scoreTenths = null, matchStatus = AlbumMatchStatus.NEEDS_REVIEW),
                     rank = null,
                     matchCandidates = AlbumMatchCandidatesState(albumId = "album-1", isLoading = false, candidates = listOf(candidate)),
+                    previews = emptyMap(),
                     onDismiss = {},
                     onToggleTrackExcluded = { _, _ -> },
+                    onTogglePreview = {},
+                    onToggleMissingTrackPreview = {},
                     onAddMissingTracks = {},
                     onChooseRelease = {},
                     onRefreshMetadata = {},
@@ -1011,8 +1111,11 @@ class RankingsScreenTest {
                         isLoading = false,
                         candidates = listOf(matchingCandidate, otherCandidate)
                     ),
+                    previews = emptyMap(),
                     onDismiss = {},
                     onToggleTrackExcluded = { _, _ -> },
+                    onTogglePreview = {},
+                    onToggleMissingTrackPreview = {},
                     onAddMissingTracks = {},
                     onChooseRelease = {},
                     onRefreshMetadata = {},
@@ -1034,8 +1137,11 @@ class RankingsScreenTest {
                     detail = albumDetail(id = "album-1", scoreTenths = 80, matchStatus = AlbumMatchStatus.AUTO_MATCHED),
                     rank = 1,
                     matchCandidates = null,
+                    previews = emptyMap(),
                     onDismiss = {},
                     onToggleTrackExcluded = { _, _ -> },
+                    onTogglePreview = {},
+                    onToggleMissingTrackPreview = {},
                     onAddMissingTracks = {},
                     onChooseRelease = {},
                     onRefreshMetadata = {},
@@ -1056,8 +1162,11 @@ class RankingsScreenTest {
                     detail = albumDetail(id = "album-1", scoreTenths = null),
                     rank = null,
                     matchCandidates = null,
+                    previews = emptyMap(),
                     onDismiss = {},
                     onToggleTrackExcluded = { _, _ -> },
+                    onTogglePreview = {},
+                    onToggleMissingTrackPreview = {},
                     onAddMissingTracks = {},
                     onChooseRelease = {},
                     onRefreshMetadata = { refreshed = true },
