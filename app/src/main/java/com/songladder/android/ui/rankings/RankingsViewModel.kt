@@ -182,14 +182,15 @@ class RankingsViewModel(
         localState,
         albumRepository.observeAlbums()
     ) { (songs, suggestionRows), settings, local, albums ->
-        val filtered = songs.filterByQuery(local.searchQuery)
-        val ranked = filtered
+        val ranked = songs
             .filter { it.scoreTenths != null }
             .sortedWith(scoreFirstComparator())
             .mapIndexed { index, song -> RankedSong(rank = index + 1, song = song) }
-        val unrated = filtered
+            .filterRankedByQuery(local.searchQuery)
+        val unrated = songs
             .filter { it.scoreTenths == null }
             .sortedByDescending { it.createdAt }
+            .filterByQuery(local.searchQuery)
         val rankedAlbums = albums
             .filter { it.scoreTenths != null }
             .sortedWith(albumScoreFirstComparator())
@@ -626,5 +627,15 @@ private fun List<Song>.filterByQuery(query: String): List<Song> {
         song.title.contains(normalizedQuery, ignoreCase = true) ||
             song.artist.contains(normalizedQuery, ignoreCase = true) ||
             song.album.contains(normalizedQuery, ignoreCase = true)
+    }
+}
+
+private fun List<RankedSong>.filterRankedByQuery(query: String): List<RankedSong> {
+    val normalizedQuery = query.trim()
+    if (normalizedQuery.isBlank()) return this
+    return filter { rankedSong ->
+        rankedSong.song.title.contains(normalizedQuery, ignoreCase = true) ||
+            rankedSong.song.artist.contains(normalizedQuery, ignoreCase = true) ||
+            rankedSong.song.album.contains(normalizedQuery, ignoreCase = true)
     }
 }
