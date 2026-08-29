@@ -805,6 +805,37 @@ class RankingsScreenTest {
     }
 
     @Test
+    fun albumDetailDialog_holdMenuExcludeActionAlsoOpensOnSingleTap() {
+        var toggled: Pair<String, Boolean>? = null
+        composeRule.setContent {
+            SongLadderTheme {
+                AlbumDetailDialog(
+                    detail = albumDetail(
+                        id = "album-1",
+                        scoreTenths = null,
+                        tracks = listOf(albumTrackRow(songId = "song-1", title = "Nikes", excluded = false))
+                    ),
+                    rank = null,
+                    matchCandidates = null,
+                    onDismiss = {},
+                    onToggleTrackExcluded = { songId, excluded -> toggled = songId to excluded },
+                    onAddMissingTracks = {},
+                    onChooseRelease = {},
+                    onRefreshMetadata = {}
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("Nikes").performClick()
+        composeRule.onNodeWithText("Exclude from ranking").assertIsDisplayed()
+        composeRule.onNodeWithText("Exclude from ranking").performClick()
+
+        composeRule.runOnIdle {
+            assertEquals("song-1" to true, toggled)
+        }
+    }
+
+    @Test
     fun albumDetailDialog_missingTrackAddButtonInvokesCallbackWithThatTrackId() {
         var added: List<String>? = null
         composeRule.setContent {

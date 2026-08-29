@@ -16,6 +16,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -34,6 +35,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
@@ -234,13 +236,15 @@ private fun AlbumTrackListItem(
     val excludedDescription = stringResource(R.string.rankings_album_track_excluded)
     val excludeActionLabel = stringResource(R.string.rankings_album_track_exclude_action)
     val includeActionLabel = stringResource(R.string.rankings_album_track_include_action)
+    val menuActionLabel = if (track.excludedFromAverage) includeActionLabel else excludeActionLabel
     Row(
         modifier = modifier
             .fillMaxWidth()
             .combinedClickable(
-                onClick = {},
+                onClick = { menuExpanded = true },
+                onClickLabel = menuActionLabel,
                 onLongClick = { menuExpanded = true },
-                onLongClickLabel = if (track.excludedFromAverage) includeActionLabel else excludeActionLabel
+                onLongClickLabel = menuActionLabel
             )
             .semantics {
                 contentDescription = if (track.excludedFromAverage) excludedDescription else includedDescription
@@ -259,7 +263,16 @@ private fun AlbumTrackListItem(
                 MaterialTheme.colorScheme.onSurface
             }
         )
-        ScoreBadge(scoreTenths = track.song.scoreTenths, size = 32.dp)
+        ScoreBadge(
+            scoreTenths = track.song.scoreTenths,
+            size = 32.dp,
+            modifier = if (track.excludedFromAverage) Modifier.alpha(0.5f) else Modifier
+        )
+        Icon(
+            imageVector = Icons.Rounded.MoreVert,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant
+        )
         Box {
             DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
                 DropdownMenuItem(
