@@ -1,6 +1,6 @@
 # Song Ladder
 
-![Latest release](https://img.shields.io/github/v/release/hsgirgin/song-ladder)
+![Latest release](https://img.shields.io/github/v/release/hsgirgin/song-ladder?include_prereleases)
 
 Song Ladder is a native Android app built with Kotlin, Jetpack Compose, Room, and local-first import/export flows. The application code lives under [app](app).
 
@@ -8,7 +8,7 @@ This project is in active pre-release — expect frequent updates and some rough
 
 ## Try it
 
-1. Download `app-release.apk` from the [latest release](https://github.com/hsgirgin/song-ladder/releases/latest).
+1. Download `app-release.apk` from the [most recent release](https://github.com/hsgirgin/song-ladder/releases) (all releases are currently marked pre-release, so pick the topmost one).
 2. On your device, allow installing apps from unknown sources if prompted, then open the downloaded APK to install.
 3. There's no Google Play listing yet, so updates are manual: download and install the latest release APK again when a new version comes out (release APKs are signed consistently, so this works as an in-place update).
 
