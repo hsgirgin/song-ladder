@@ -424,7 +424,25 @@ class RankViewModel(
                 sessionState.update { it.copy(autoplayArmed = true) }
                 startPreviewSequence(startSongId = songId)
             }
+            SongPreviewState.Unavailable -> retryPreview(songId)
             else -> Unit
+        }
+    }
+
+    private fun retryPreview(songId: String) {
+        val matchup = sessionState.value.currentMatchup ?: return
+        val song = listOf(matchup.left, matchup.right).firstOrNull { it.id == songId } ?: return
+        val generation = previewPrefetchGeneration
+        previewStates.update { it + (songId to SongPreviewState.Loading) }
+        viewModelScope.launch {
+            val url = songPreviewResolver.resolve(song)
+            if (generation != previewPrefetchGeneration) return@launch
+            if (url != null) previewUrls[songId] = url else previewUrls.remove(songId)
+            previewStates.update { states ->
+                if (generation != previewPrefetchGeneration) return@update states
+                states + (songId to if (url == null) SongPreviewState.Unavailable else SongPreviewState.Available)
+            }
+            maybeStartArmedAutoplay()
         }
     }
 

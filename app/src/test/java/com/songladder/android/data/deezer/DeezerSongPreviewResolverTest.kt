@@ -51,6 +51,31 @@ class DeezerSongPreviewResolverTest {
             server.shutdown()
         }
     }
+
+    @Test
+    fun `transient lookup failures are not cached as unavailable`() = runTest {
+        val server = MockWebServer()
+        server.enqueue(MockResponse().setResponseCode(500))
+        server.enqueue(MockResponse().setBody(searchResponse()))
+        server.start()
+
+        try {
+            val resolver = DeezerSongPreviewResolver(
+                httpClient = OkHttpClient(),
+                searchBaseUrl = server.url("/search")
+            )
+            val query = song(title = "RATATATA", artist = "BABYMETAL")
+
+            assertNull(resolver.resolve(query))
+            assertEquals(
+                "https://audio.example/ratatata.mp3",
+                resolver.resolve(query)
+            )
+            assertEquals(2, server.requestCount)
+        } finally {
+            server.shutdown()
+        }
+    }
 }
 
 private fun song(title: String, artist: String) = Song(

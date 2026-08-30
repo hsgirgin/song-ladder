@@ -24,6 +24,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -578,12 +579,23 @@ internal fun MinimalSongChoiceCard(
                 }
             }
             Icon(
-                imageVector = if (previewState == SongPreviewState.Playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
+                imageVector = when (previewState) {
+                    SongPreviewState.Playing -> Icons.Rounded.Pause
+                    SongPreviewState.Unavailable -> Icons.Rounded.Refresh
+                    else -> Icons.Rounded.PlayArrow
+                },
                 contentDescription = stringResource(
-                    if (previewState == SongPreviewState.Playing) com.songladder.android.R.string.rank_pause_preview
-                    else com.songladder.android.R.string.rank_preview_action
+                    when (previewState) {
+                        SongPreviewState.Playing -> com.songladder.android.R.string.rank_pause_preview
+                        SongPreviewState.Unavailable -> com.songladder.android.R.string.rank_preview_retry
+                        else -> com.songladder.android.R.string.rank_preview_action
+                    }
                 ),
-                tint = MaterialTheme.colorScheme.onSurface,
+                tint = if (previewState == SongPreviewState.Unavailable) {
+                    MaterialTheme.colorScheme.onSurface.copy(alpha = 0.45f)
+                } else {
+                    MaterialTheme.colorScheme.onSurface
+                },
                 modifier = Modifier.align(Alignment.TopEnd).padding(16.dp)
             )
             if (selectingThisCard) {
