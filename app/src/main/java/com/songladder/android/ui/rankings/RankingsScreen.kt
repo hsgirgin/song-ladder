@@ -87,6 +87,7 @@ fun RankingsScreen(
         onToggleAlbumMissingTrackPreview = viewModel::toggleMissingTrackPreview,
         onAddAlbumMissingTracks = viewModel::addAlbumMissingTracks,
         onChooseAlbumRelease = viewModel::chooseAlbumRelease,
+        onRequestChangeRelease = viewModel::requestReleaseCandidates,
         onRefreshAlbumMetadata = viewModel::refreshAlbumMetadata,
         onRefreshAllAlbums = viewModel::refreshAllAlbumMetadata,
         onOpenSettings = onOpenSettings,
@@ -123,6 +124,7 @@ internal fun RankingsScreenContent(
     onToggleAlbumMissingTrackPreview: (String, String, AlbumReleaseTrack) -> Unit,
     onAddAlbumMissingTracks: (String, List<String>) -> Unit,
     onChooseAlbumRelease: (String, String) -> Unit,
+    onRequestChangeRelease: (String) -> Unit,
     onRefreshAlbumMetadata: (String) -> Unit,
     onRefreshAllAlbums: () -> Unit,
     onOpenSettings: () -> Unit,
@@ -299,6 +301,7 @@ internal fun RankingsScreenContent(
             },
             onAddMissingTracks = { providerTrackIds -> onAddAlbumMissingTracks(detail.album.id, providerTrackIds) },
             onChooseRelease = { collectionId -> onChooseAlbumRelease(detail.album.id, collectionId) },
+            onRequestChangeRelease = { onRequestChangeRelease(detail.album.id) },
             onRefreshMetadata = { onRefreshAlbumMetadata(detail.album.id) },
             onRateTrack = { song -> albumRatingSongId = song.id },
             isSavingScore = uiState.isSavingScore

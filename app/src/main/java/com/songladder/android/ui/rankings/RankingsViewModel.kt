@@ -250,7 +250,10 @@ class RankingsViewModel(
             albumDetailFlow.collect { detail ->
                 if (detail?.album?.matchStatus == AlbumMatchStatus.NEEDS_REVIEW) {
                     loadAlbumMatchCandidatesIfNeeded(detail.album.id)
-                } else {
+                } else if (albumCandidatesState.value?.albumId != detail?.album?.id) {
+                    // Don't clobber a manually requested picker (requestReleaseCandidates)
+                    // for the album that's still open - only reset when the open album
+                    // actually changed (or the dialog closed).
                     albumCandidatesState.value = null
                 }
             }
@@ -341,6 +344,10 @@ class RankingsViewModel(
             albumRepository.chooseRelease(albumId, providerCollectionId)
                 .onFailure { localState.update { it.copy(status = RankingsStatus.SaveFailed) } }
         }
+    }
+
+    fun requestReleaseCandidates(albumId: String) {
+        loadAlbumMatchCandidatesIfNeeded(albumId)
     }
 
     fun refreshAlbumMetadata(albumId: String) {
