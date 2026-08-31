@@ -1,5 +1,6 @@
 package com.songladder.android.data.itunes
 
+import com.songladder.android.data.preview.PreviewUrlCache
 import com.songladder.android.data.preview.SongPreviewMatcher
 import com.songladder.android.domain.model.Song
 import com.songladder.android.domain.repository.SongPreviewResolver
@@ -14,7 +15,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
 import java.io.IOException
-import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.TimeUnit
 import kotlin.coroutines.resume
 
 class ItunesSongPreviewResolver(
@@ -23,11 +24,14 @@ class ItunesSongPreviewResolver(
     private val lookupBaseUrl: HttpUrl = "https://itunes.apple.com/lookup".toHttpUrl()
 ) : SongPreviewResolver {
     private val json = Json { ignoreUnknownKeys = true }
-    private val cache = ConcurrentHashMap<String, CachedPreview>()
+    private val cache = PreviewUrlCache(
+        positiveTtlMillis = TimeUnit.HOURS.toMillis(24),
+        negativeTtlMillis = TimeUnit.MINUTES.toMillis(5)
+    )
 
     override suspend fun resolve(song: Song): String? {
-        val key = SongPreviewMatcher.cacheKey(song.title, song.artist, song.album, song.externalId.orEmpty())
-        cache[key]?.let { return it.url }
+        val key = cacheKey(song)
+        cache.getIfFresh(key)?.let { return it.url }
 
         val resolved = try {
             resolveByTrackId(song) ?: resolveBySearch(song)
@@ -37,9 +41,16 @@ class ItunesSongPreviewResolver(
             return null
         }
 
-        cache[key] = CachedPreview(resolved)
+        cache.put(key, resolved)
         return resolved
     }
+
+    override fun invalidate(song: Song) {
+        cache.invalidate(cacheKey(song))
+    }
+
+    private fun cacheKey(song: Song): String =
+        SongPreviewMatcher.cacheKey(song.title, song.artist, song.album, song.externalId.orEmpty())
 
     private suspend fun resolveByTrackId(song: Song): String? {
         val trackId = song.externalId?.toLongOrNull() ?: return null
@@ -171,6 +182,5 @@ class ItunesSongPreviewResolver(
             })
         }
 
-    private data class CachedPreview(val url: String?)
     private data class ScoredPreview(val url: String, val score: Int)
 }

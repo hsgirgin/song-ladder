@@ -12,4 +12,8 @@ class FallbackSongPreviewResolver(
         }
         return null
     }
+
+    override fun invalidate(song: Song) {
+        resolvers.forEach { it.invalidate(song) }
+    }
 }

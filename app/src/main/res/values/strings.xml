@@ -13,6 +13,7 @@
     <string name="rank_skip_for_now">Skip for now</string>
     <string name="rank_preview_action">Play preview</string>
     <string name="rank_pause_preview">Pause preview</string>
+    <string name="rank_preview_retry">Preview unavailable. Tap to retry.</string>
     <string name="rank_swipe_selecting">Choosing</string>
     <string name="destination_matchups">Matchups</string>
     <string name="destination_rankings">Rankings</string>

@@ -1,5 +1,6 @@
 package com.songladder.android.data.deezer
 
+import com.songladder.android.data.preview.PreviewUrlCache
 import com.songladder.android.data.preview.SongPreviewMatcher
 import com.songladder.android.domain.model.Song
 import com.songladder.android.domain.repository.SongPreviewResolver
@@ -16,7 +17,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
 import java.io.IOException
-import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.TimeUnit
 import kotlin.coroutines.resume
 
 class DeezerSongPreviewResolver(
@@ -24,12 +25,14 @@ class DeezerSongPreviewResolver(
     private val searchBaseUrl: HttpUrl = "https://api.deezer.com/search".toHttpUrl()
 ) : SongPreviewResolver {
     private val json = Json { ignoreUnknownKeys = true }
-    private val cache = ConcurrentHashMap<String, CachedPreview>()
+    private val cache = PreviewUrlCache(
+        positiveTtlMillis = TimeUnit.HOURS.toMillis(24),
+        negativeTtlMillis = TimeUnit.MINUTES.toMillis(5)
+    )
 
     override suspend fun resolve(song: Song): String? {
-        val key = SongPreviewMatcher.cacheKey(song.title, song.artist, song.album, song.externalId.orEmpty())
-        val now = System.currentTimeMillis()
-        cache[key]?.takeIf { it.expiresAtMillis > now }?.let { return it.url }
+        val key = cacheKey(song)
+        cache.getIfFresh(key)?.let { return it.url }
 
         val resolved = try {
             resolveBySearch(song)
@@ -39,9 +42,16 @@ class DeezerSongPreviewResolver(
             return null
         }
 
-        cache[key] = CachedPreview(resolved, now + CACHE_TTL_MILLIS)
+        cache.put(key, resolved)
         return resolved
     }
+
+    override fun invalidate(song: Song) {
+        cache.invalidate(cacheKey(song))
+    }
+
+    private fun cacheKey(song: Song): String =
+        SongPreviewMatcher.cacheKey(song.title, song.artist, song.album, song.externalId.orEmpty())
 
     private suspend fun resolveBySearch(song: Song): String? {
         val seenTracks = mutableSetOf<String>()
@@ -126,12 +136,7 @@ class DeezerSongPreviewResolver(
             })
         }
 
-    private data class CachedPreview(val url: String?, val expiresAtMillis: Long)
     private data class ScoredPreview(val url: String, val score: Int)
-
-    private companion object {
-        const val CACHE_TTL_MILLIS = 30 * 60 * 1000L
-    }
 }
 
 @Serializable
