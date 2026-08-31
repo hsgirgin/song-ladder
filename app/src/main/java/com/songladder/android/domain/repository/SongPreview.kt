@@ -5,6 +5,9 @@ import kotlinx.coroutines.flow.Flow
 
 interface SongPreviewResolver {
     suspend fun resolve(song: Song): String?
+
+    /** Drops any cached result for [song] so the next [resolve] call re-checks the network. */
+    fun invalidate(song: Song) {}
 }
 
 interface SongPreviewPlayer {

@@ -104,6 +104,7 @@ class RankViewModel(
     private var previewPrefetchGeneration: Long = 0
     private var mutationInFlight = false
     private var previewPlaybackSession: PreviewPlaybackSession? = null
+    private val previewRetryJobs = mutableMapOf<String, Job>()
 
     private val rankingUiState: StateFlow<RankUiState> = combine(
         songRepository.observeSongs(),
@@ -244,6 +245,8 @@ class RankViewModel(
         previewPrefetchGeneration += 1
         previewPrefetchJob?.cancel()
         previewPrefetchJob = null
+        previewRetryJobs.values.forEach { it.cancel() }
+        previewRetryJobs.clear()
         previewPlaybackSession = null
         previewStates.value = emptyMap()
     }
@@ -430,11 +433,13 @@ class RankViewModel(
     }
 
     private fun retryPreview(songId: String) {
-        val matchup = sessionState.value.currentMatchup ?: return
+        val matchup = uiState.value.matchup ?: return
         val song = listOf(matchup.left, matchup.right).firstOrNull { it.id == songId } ?: return
         val generation = previewPrefetchGeneration
+        previewRetryJobs.remove(songId)?.cancel()
         previewStates.update { it + (songId to SongPreviewState.Loading) }
-        viewModelScope.launch {
+        previewRetryJobs[songId] = viewModelScope.launch {
+            songPreviewResolver.invalidate(song)
             val url = songPreviewResolver.resolve(song)
             if (generation != previewPrefetchGeneration) return@launch
             if (url != null) previewUrls[songId] = url else previewUrls.remove(songId)

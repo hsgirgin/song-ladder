@@ -27,5 +27,9 @@ internal class PreviewUrlCache(
         entries[key] = Entry(url, System.currentTimeMillis() + ttlMillis)
     }
 
+    fun invalidate(key: String) {
+        entries.remove(key)
+    }
+
     data class CachedResult(val url: String?)
 }

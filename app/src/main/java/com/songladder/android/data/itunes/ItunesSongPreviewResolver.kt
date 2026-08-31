@@ -30,7 +30,7 @@ class ItunesSongPreviewResolver(
     )
 
     override suspend fun resolve(song: Song): String? {
-        val key = SongPreviewMatcher.cacheKey(song.title, song.artist, song.album, song.externalId.orEmpty())
+        val key = cacheKey(song)
         cache.getIfFresh(key)?.let { return it.url }
 
         val resolved = try {
@@ -44,6 +44,13 @@ class ItunesSongPreviewResolver(
         cache.put(key, resolved)
         return resolved
     }
+
+    override fun invalidate(song: Song) {
+        cache.invalidate(cacheKey(song))
+    }
+
+    private fun cacheKey(song: Song): String =
+        SongPreviewMatcher.cacheKey(song.title, song.artist, song.album, song.externalId.orEmpty())
 
     private suspend fun resolveByTrackId(song: Song): String? {
         val trackId = song.externalId?.toLongOrNull() ?: return null
