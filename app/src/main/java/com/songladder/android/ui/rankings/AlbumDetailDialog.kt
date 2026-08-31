@@ -31,6 +31,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -79,6 +80,17 @@ internal fun AlbumDetailDialog(
 ) {
     var showReleasePicker by remember(detail.album.id) {
         mutableStateOf(detail.album.matchStatus == AlbumMatchStatus.NEEDS_REVIEW)
+    }
+    // Tracks a pending chooseRelease call so the picker only closes once the new
+    // release's tracks actually land (i.e. it succeeded) rather than closing
+    // optimistically on tap and hiding a failure with no easy way to retry.
+    var pendingReleaseChoice by remember(detail.album.id) { mutableStateOf(false) }
+    val trackIds = detail.tracks.map { it.song.id }
+    LaunchedEffect(trackIds) {
+        if (pendingReleaseChoice) {
+            showReleasePicker = false
+            pendingReleaseChoice = false
+        }
     }
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
@@ -146,7 +158,7 @@ internal fun AlbumDetailDialog(
                             state = matchCandidates,
                             ownedTrackCount = detail.tracks.size,
                             onChoose = { collectionId ->
-                                showReleasePicker = false
+                                pendingReleaseChoice = true
                                 onChooseRelease(collectionId)
                             }
                         )

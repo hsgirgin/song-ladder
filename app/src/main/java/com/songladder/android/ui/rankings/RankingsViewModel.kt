@@ -342,6 +342,11 @@ class RankingsViewModel(
     fun chooseAlbumRelease(albumId: String, providerCollectionId: String) {
         viewModelScope.launch {
             albumRepository.chooseRelease(albumId, providerCollectionId)
+                // Invalidates the cached candidate list on success so a later manual
+                // "Change release" request for this album re-searches instead of the
+                // loadAlbumMatchCandidatesIfNeeded same-albumId guard silently serving
+                // the pre-choice list back.
+                .onSuccess { albumCandidatesState.value = null }
                 .onFailure { localState.update { it.copy(status = RankingsStatus.SaveFailed) } }
         }
     }
@@ -353,10 +358,7 @@ class RankingsViewModel(
     fun refreshAlbumMetadata(albumId: String) {
         viewModelScope.launch {
             albumRepository.refreshMetadata(albumId)
-                // Cleared rather than reloaded inline: the collector in init{} re-issues
-                // a fresh search as soon as the next albumDetailFlow emission lands, which
-                // naturally picks up whatever matchStatus the refresh actually produced.
-                .onSuccess { albumCandidatesState.value = null }
+                .onSuccess { reloadReleaseCandidatesIfOpenForAlbum(albumId) }
                 .onFailure { localState.update { it.copy(status = RankingsStatus.SaveFailed) } }
         }
     }
@@ -370,9 +372,23 @@ class RankingsViewModel(
         localState.update { it.copy(isRefreshingAllAlbums = true, status = RankingsStatus.None) }
         viewModelScope.launch {
             albumRepository.refreshAllMetadata()
-                .onSuccess { albumCandidatesState.value = null }
+                .onSuccess { reloadReleaseCandidatesIfOpenForAlbum(localState.value.detailAlbumId) }
                 .onFailure { localState.update { it.copy(status = RankingsStatus.SaveFailed) } }
             localState.update { it.copy(isRefreshingAllAlbums = false) }
+        }
+    }
+
+    // Refreshing metadata never changes matchStatus for an already AUTO_MATCHED/CONFIRMED
+    // album, so the init{} collector's NEEDS_REVIEW-triggered reload never fires for it.
+    // Without this, clearing albumCandidatesState to null after a refresh would leave a
+    // manually opened "Change release" picker (requestReleaseCandidates) stuck loading
+    // forever with no way to retry. Reissue the search directly instead when that picker
+    // was open for the album that was just refreshed.
+    private fun reloadReleaseCandidatesIfOpenForAlbum(albumId: String?) {
+        val wasOpenForThisAlbum = albumId != null && albumCandidatesState.value?.albumId == albumId
+        albumCandidatesState.value = null
+        if (wasOpenForThisAlbum && albumId != null) {
+            loadAlbumMatchCandidatesIfNeeded(albumId)
         }
     }
 
