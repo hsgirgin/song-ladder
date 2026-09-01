@@ -73,9 +73,13 @@ internal fun AlbumDetailDialog(
     onAddMissingTracks: (List<String>) -> Unit,
     onChooseRelease: (String) -> Unit,
     onRefreshMetadata: () -> Unit,
+    onRequestChangeRelease: () -> Unit,
     onRateTrack: (Song) -> Unit,
     isSavingScore: Boolean = false
 ) {
+    var showReleasePicker by remember(detail.album.id) {
+        mutableStateOf(detail.album.matchStatus == AlbumMatchStatus.NEEDS_REVIEW)
+    }
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
             Column(modifier = Modifier.fillMaxSize()) {
@@ -122,16 +126,35 @@ internal fun AlbumDetailDialog(
                             AlbumUnrankedBadge()
                         }
                         Spacer(modifier = Modifier.weight(1f))
+                        if (!showReleasePicker) {
+                            TextButton(
+                                onClick = {
+                                    showReleasePicker = true
+                                    onRequestChangeRelease()
+                                }
+                            ) {
+                                Text(stringResource(R.string.rankings_album_change_release))
+                            }
+                        }
                         TextButton(onClick = onRefreshMetadata) {
                             Text(stringResource(R.string.rankings_album_refresh_metadata))
                         }
                     }
 
-                    if (detail.album.matchStatus == AlbumMatchStatus.NEEDS_REVIEW) {
+                    if (showReleasePicker) {
                         AlbumMatchCandidatesPicker(
                             state = matchCandidates,
                             ownedTrackCount = detail.tracks.size,
-                            onChoose = onChooseRelease
+                            onChoose = { collectionId ->
+                                // Closes immediately rather than waiting on the async
+                                // result: a failure surfaces via the generic save-failed
+                                // status banner, and since a failed choice leaves the
+                                // ViewModel's candidate cache untouched, tapping "Change
+                                // release" again reopens instantly with the same list to
+                                // retry - no need to keep this open pending the outcome.
+                                showReleasePicker = false
+                                onChooseRelease(collectionId)
+                            }
                         )
                     }
 

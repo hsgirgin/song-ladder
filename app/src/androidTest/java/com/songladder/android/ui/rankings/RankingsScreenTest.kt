@@ -112,6 +112,7 @@ class RankingsScreenTest {
                     onToggleAlbumMissingTrackPreview = { _, _, _ -> },
                     onAddAlbumMissingTracks = { _, _ -> },
                     onChooseAlbumRelease = { _, _ -> },
+                    onRequestChangeRelease = {},
                     onRefreshAlbumMetadata = {},
                     onRefreshAllAlbums = {},
                     onOpenSettings = {},
@@ -169,6 +170,7 @@ class RankingsScreenTest {
                     onToggleAlbumMissingTrackPreview = { _, _, _ -> },
                     onAddAlbumMissingTracks = { _, _ -> },
                     onChooseAlbumRelease = { _, _ -> },
+                    onRequestChangeRelease = {},
                     onRefreshAlbumMetadata = {},
                     onRefreshAllAlbums = {},
                     onOpenSettings = {},
@@ -219,6 +221,7 @@ class RankingsScreenTest {
                     onToggleAlbumMissingTrackPreview = { _, _, _ -> },
                     onAddAlbumMissingTracks = { _, _ -> },
                     onChooseAlbumRelease = { _, _ -> },
+                    onRequestChangeRelease = {},
                     onRefreshAlbumMetadata = {},
                     onRefreshAllAlbums = {},
                     onOpenSettings = {},
@@ -290,6 +293,7 @@ class RankingsScreenTest {
                     onToggleAlbumMissingTrackPreview = { _, _, _ -> },
                     onAddAlbumMissingTracks = { _, _ -> },
                     onChooseAlbumRelease = { _, _ -> },
+                    onRequestChangeRelease = {},
                     onRefreshAlbumMetadata = {},
                     onRefreshAllAlbums = {},
                     onOpenSettings = {},
@@ -357,6 +361,7 @@ class RankingsScreenTest {
                     onToggleAlbumMissingTrackPreview = { _, _, _ -> },
                     onAddAlbumMissingTracks = { _, _ -> },
                     onChooseAlbumRelease = { _, _ -> },
+                    onRequestChangeRelease = {},
                     onRefreshAlbumMetadata = {},
                     onRefreshAllAlbums = {},
                     onOpenSettings = {},
@@ -407,6 +412,7 @@ class RankingsScreenTest {
                     onToggleAlbumMissingTrackPreview = { _, _, _ -> },
                     onAddAlbumMissingTracks = { _, _ -> },
                     onChooseAlbumRelease = { _, _ -> },
+                    onRequestChangeRelease = {},
                     onRefreshAlbumMetadata = {},
                     onRefreshAllAlbums = {},
                     onOpenSettings = { openedSettings = true },
@@ -464,6 +470,7 @@ class RankingsScreenTest {
                     onToggleAlbumMissingTrackPreview = { _, _, _ -> },
                     onAddAlbumMissingTracks = { _, _ -> },
                     onChooseAlbumRelease = { _, _ -> },
+                    onRequestChangeRelease = {},
                     onRefreshAlbumMetadata = {},
                     onRefreshAllAlbums = {},
                     onOpenSettings = {},
@@ -513,6 +520,7 @@ class RankingsScreenTest {
                     onToggleAlbumMissingTrackPreview = { _, _, _ -> },
                     onAddAlbumMissingTracks = { _, _ -> },
                     onChooseAlbumRelease = { _, _ -> },
+                    onRequestChangeRelease = {},
                     onRefreshAlbumMetadata = {},
                     onRefreshAllAlbums = {},
                     onOpenSettings = {},
@@ -585,6 +593,7 @@ class RankingsScreenTest {
                     onToggleAlbumMissingTrackPreview = { _, _, _ -> },
                     onAddAlbumMissingTracks = { _, _ -> },
                     onChooseAlbumRelease = { _, _ -> },
+                    onRequestChangeRelease = {},
                     onRefreshAlbumMetadata = {},
                     onRefreshAllAlbums = {},
                     onOpenSettings = {},
@@ -634,6 +643,7 @@ class RankingsScreenTest {
                     onToggleAlbumMissingTrackPreview = { _, _, _ -> },
                     onAddAlbumMissingTracks = { _, _ -> },
                     onChooseAlbumRelease = { _, _ -> },
+                    onRequestChangeRelease = {},
                     onRefreshAlbumMetadata = {},
                     onRefreshAllAlbums = { refreshed = true },
                     onOpenSettings = {},
@@ -677,6 +687,7 @@ class RankingsScreenTest {
                     onToggleAlbumMissingTrackPreview = { _, _, _ -> },
                     onAddAlbumMissingTracks = { _, _ -> },
                     onChooseAlbumRelease = { _, _ -> },
+                    onRequestChangeRelease = {},
                     onRefreshAlbumMetadata = {},
                     onRefreshAllAlbums = {},
                     onOpenSettings = {},
@@ -778,6 +789,7 @@ class RankingsScreenTest {
                     onToggleMissingTrackPreview = {},
                     onAddMissingTracks = {},
                     onChooseRelease = {},
+                    onRequestChangeRelease = {},
                     onRefreshMetadata = {},
                     onRateTrack = {}
                 )
@@ -804,6 +816,7 @@ class RankingsScreenTest {
                     onToggleMissingTrackPreview = {},
                     onAddMissingTracks = {},
                     onChooseRelease = {},
+                    onRequestChangeRelease = {},
                     onRefreshMetadata = {},
                     onRateTrack = {}
                 )
@@ -833,6 +846,7 @@ class RankingsScreenTest {
                     onToggleMissingTrackPreview = {},
                     onAddMissingTracks = {},
                     onChooseRelease = {},
+                    onRequestChangeRelease = {},
                     onRefreshMetadata = {},
                     onRateTrack = {}
                 )
@@ -868,6 +882,7 @@ class RankingsScreenTest {
                     onToggleMissingTrackPreview = {},
                     onAddMissingTracks = {},
                     onChooseRelease = {},
+                    onRequestChangeRelease = {},
                     onRefreshMetadata = {},
                     onRateTrack = {}
                 )
@@ -902,6 +917,7 @@ class RankingsScreenTest {
                     onToggleMissingTrackPreview = {},
                     onAddMissingTracks = {},
                     onChooseRelease = {},
+                    onRequestChangeRelease = {},
                     onRefreshMetadata = {},
                     onRateTrack = {}
                 )
@@ -935,6 +951,7 @@ class RankingsScreenTest {
                     onToggleMissingTrackPreview = { track -> toggledTrackId = track.trackId },
                     onAddMissingTracks = {},
                     onChooseRelease = {},
+                    onRequestChangeRelease = {},
                     onRefreshMetadata = {},
                     onRateTrack = {}
                 )
@@ -970,6 +987,7 @@ class RankingsScreenTest {
                     onToggleMissingTrackPreview = {},
                     onAddMissingTracks = {},
                     onChooseRelease = {},
+                    onRequestChangeRelease = {},
                     onRefreshMetadata = {},
                     onRateTrack = { rated = it }
                 )
@@ -1004,6 +1022,7 @@ class RankingsScreenTest {
                     onToggleMissingTrackPreview = {},
                     onAddMissingTracks = {},
                     onChooseRelease = {},
+                    onRequestChangeRelease = {},
                     onRefreshMetadata = {},
                     onRateTrack = { rated = it }
                 )
@@ -1037,6 +1056,7 @@ class RankingsScreenTest {
                     onToggleMissingTrackPreview = {},
                     onAddMissingTracks = { ids -> added = ids },
                     onChooseRelease = {},
+                    onRequestChangeRelease = {},
                     onRefreshMetadata = {},
                     onRateTrack = {}
                 )
@@ -1068,6 +1088,7 @@ class RankingsScreenTest {
                     onToggleMissingTrackPreview = {},
                     onAddMissingTracks = {},
                     onChooseRelease = {},
+                    onRequestChangeRelease = {},
                     onRefreshMetadata = {},
                     onRateTrack = {}
                 )
@@ -1118,6 +1139,7 @@ class RankingsScreenTest {
                     onToggleMissingTrackPreview = {},
                     onAddMissingTracks = {},
                     onChooseRelease = {},
+                    onRequestChangeRelease = {},
                     onRefreshMetadata = {},
                     onRateTrack = {}
                 )
@@ -1144,6 +1166,7 @@ class RankingsScreenTest {
                     onToggleMissingTrackPreview = {},
                     onAddMissingTracks = {},
                     onChooseRelease = {},
+                    onRequestChangeRelease = {},
                     onRefreshMetadata = {},
                     onRateTrack = {}
                 )
@@ -1151,6 +1174,73 @@ class RankingsScreenTest {
         }
 
         composeRule.onNodeWithText("Choose the correct release").assertDoesNotExist()
+    }
+
+    @Test
+    fun albumDetailDialog_changeReleaseButtonOpensThePickerAndInvokesCallback() {
+        var requested: String? = null
+        composeRule.setContent {
+            SongLadderTheme {
+                AlbumDetailDialog(
+                    detail = albumDetail(id = "album-1", scoreTenths = 80, matchStatus = AlbumMatchStatus.AUTO_MATCHED),
+                    rank = 1,
+                    matchCandidates = null,
+                    previews = emptyMap(),
+                    onDismiss = {},
+                    onToggleTrackExcluded = { _, _ -> },
+                    onTogglePreview = {},
+                    onToggleMissingTrackPreview = {},
+                    onAddMissingTracks = {},
+                    onChooseRelease = {},
+                    onRequestChangeRelease = { requested = "album-1" },
+                    onRefreshMetadata = {},
+                    onRateTrack = {}
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("Choose the correct release").assertDoesNotExist()
+        composeRule.onNodeWithText("Change release").performClick()
+
+        composeRule.runOnIdle {
+            assertEquals("album-1", requested)
+        }
+        composeRule.onNodeWithText("Choose the correct release").assertIsDisplayed()
+        composeRule.onNodeWithText("Change release").assertDoesNotExist()
+    }
+
+    @Test
+    fun albumDetailDialog_choosingACandidateClosesThePickerAndInvokesCallback() {
+        val candidate = AlbumReleaseCandidate(collectionId = "collection-1", collectionName = "Blonde", artistName = "Frank Ocean")
+        var chosenCollectionId: String? = null
+        composeRule.setContent {
+            SongLadderTheme {
+                AlbumDetailDialog(
+                    detail = albumDetail(id = "album-1", scoreTenths = null, matchStatus = AlbumMatchStatus.NEEDS_REVIEW),
+                    rank = null,
+                    matchCandidates = AlbumMatchCandidatesState(albumId = "album-1", isLoading = false, candidates = listOf(candidate)),
+                    previews = emptyMap(),
+                    onDismiss = {},
+                    onToggleTrackExcluded = { _, _ -> },
+                    onTogglePreview = {},
+                    onToggleMissingTrackPreview = {},
+                    onAddMissingTracks = {},
+                    onChooseRelease = { chosenCollectionId = it },
+                    onRequestChangeRelease = {},
+                    onRefreshMetadata = {},
+                    onRateTrack = {}
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("Choose the correct release").assertIsDisplayed()
+        composeRule.onNodeWithText("Use this release").performClick()
+
+        composeRule.runOnIdle {
+            assertEquals("collection-1", chosenCollectionId)
+        }
+        composeRule.onNodeWithText("Choose the correct release").assertDoesNotExist()
+        composeRule.onNodeWithText("Change release").assertIsDisplayed()
     }
 
     @Test
@@ -1169,6 +1259,7 @@ class RankingsScreenTest {
                     onToggleMissingTrackPreview = {},
                     onAddMissingTracks = {},
                     onChooseRelease = {},
+                    onRequestChangeRelease = {},
                     onRefreshMetadata = { refreshed = true },
                     onRateTrack = {}
                 )

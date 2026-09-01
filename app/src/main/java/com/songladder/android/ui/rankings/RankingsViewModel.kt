@@ -250,7 +250,10 @@ class RankingsViewModel(
             albumDetailFlow.collect { detail ->
                 if (detail?.album?.matchStatus == AlbumMatchStatus.NEEDS_REVIEW) {
                     loadAlbumMatchCandidatesIfNeeded(detail.album.id)
-                } else {
+                } else if (albumCandidatesState.value?.albumId != detail?.album?.id) {
+                    // Don't clobber a manually requested picker (requestReleaseCandidates)
+                    // for the album that's still open - only reset when the open album
+                    // actually changed (or the dialog closed).
                     albumCandidatesState.value = null
                 }
             }
@@ -339,17 +342,23 @@ class RankingsViewModel(
     fun chooseAlbumRelease(albumId: String, providerCollectionId: String) {
         viewModelScope.launch {
             albumRepository.chooseRelease(albumId, providerCollectionId)
+                // Invalidates the cached candidate list on success so a later manual
+                // "Change release" request for this album re-searches instead of the
+                // loadAlbumMatchCandidatesIfNeeded same-albumId guard silently serving
+                // the pre-choice list back.
+                .onSuccess { albumCandidatesState.value = null }
                 .onFailure { localState.update { it.copy(status = RankingsStatus.SaveFailed) } }
         }
+    }
+
+    fun requestReleaseCandidates(albumId: String) {
+        loadAlbumMatchCandidatesIfNeeded(albumId)
     }
 
     fun refreshAlbumMetadata(albumId: String) {
         viewModelScope.launch {
             albumRepository.refreshMetadata(albumId)
-                // Cleared rather than reloaded inline: the collector in init{} re-issues
-                // a fresh search as soon as the next albumDetailFlow emission lands, which
-                // naturally picks up whatever matchStatus the refresh actually produced.
-                .onSuccess { albumCandidatesState.value = null }
+                .onSuccess { reloadReleaseCandidatesIfOpenForAlbum(albumId) }
                 .onFailure { localState.update { it.copy(status = RankingsStatus.SaveFailed) } }
         }
     }
@@ -363,16 +372,34 @@ class RankingsViewModel(
         localState.update { it.copy(isRefreshingAllAlbums = true, status = RankingsStatus.None) }
         viewModelScope.launch {
             albumRepository.refreshAllMetadata()
-                .onSuccess { albumCandidatesState.value = null }
+                .onSuccess { reloadReleaseCandidatesIfOpenForAlbum(localState.value.detailAlbumId) }
                 .onFailure { localState.update { it.copy(status = RankingsStatus.SaveFailed) } }
             localState.update { it.copy(isRefreshingAllAlbums = false) }
         }
     }
 
+    // Refreshing metadata never changes matchStatus for an already AUTO_MATCHED/CONFIRMED
+    // album, so the init{} collector's NEEDS_REVIEW-triggered reload never fires for it.
+    // Without this, clearing albumCandidatesState to null after a refresh would leave a
+    // manually opened "Change release" picker (requestReleaseCandidates) stuck loading
+    // forever with no way to retry. Reissue the search directly instead when that picker
+    // was open for the album that was just refreshed - and only touch state that actually
+    // belongs to that album, so a refresh for one album can't clobber a different album's
+    // picker that happens to be open (e.g. the user switched dialogs while this refresh
+    // was still in flight).
+    private fun reloadReleaseCandidatesIfOpenForAlbum(albumId: String?) {
+        if (albumId == null || albumCandidatesState.value?.albumId != albumId) return
+        albumCandidatesState.value = null
+        loadAlbumMatchCandidatesIfNeeded(albumId)
+    }
+
+    private var candidateSearchJob: Job? = null
+
     private fun loadAlbumMatchCandidatesIfNeeded(albumId: String) {
         if (albumCandidatesState.value?.albumId == albumId) return
         albumCandidatesState.value = AlbumMatchCandidatesState(albumId = albumId, isLoading = true)
-        viewModelScope.launch {
+        candidateSearchJob?.cancel()
+        candidateSearchJob = viewModelScope.launch {
             albumRepository.searchReleaseCandidates(albumId)
                 .onSuccess { candidates ->
                     albumCandidatesState.update { current ->

@@ -509,6 +509,133 @@ class RankingsViewModelTest {
     }
 
     @Test
+    fun `manually requesting release candidates loads them for an already-matched album`() = runTest {
+        val candidate = AlbumReleaseCandidate(collectionId = "collection-1", collectionName = "Blonde", artistName = "Frank Ocean")
+        val albumRepository = FakeAlbumRepository(
+            detail = albumDetail(id = "album-1", matchStatus = AlbumMatchStatus.AUTO_MATCHED),
+            candidatesResult = Result.success(listOf(candidate))
+        )
+        val viewModel = viewModel(albumRepository = albumRepository)
+        backgroundScope.launch(dispatcher) { viewModel.uiState.collect {} }
+
+        viewModel.showAlbumDetails("album-1")
+        advanceUntilIdle()
+        assertEquals(emptyList<String>(), albumRepository.searchReleaseCandidatesCalls)
+
+        viewModel.requestReleaseCandidates("album-1")
+        advanceUntilIdle()
+
+        assertEquals(listOf("album-1"), albumRepository.searchReleaseCandidatesCalls)
+        assertEquals(listOf(candidate), viewModel.uiState.value.albumMatchCandidates?.candidates)
+    }
+
+    @Test
+    fun `refreshing metadata reloads a manually requested picker instead of leaving it stuck`() = runTest {
+        val candidate = AlbumReleaseCandidate(collectionId = "collection-1", collectionName = "Blonde", artistName = "Frank Ocean")
+        val albumRepository = FakeAlbumRepository(
+            detail = albumDetail(id = "album-1", matchStatus = AlbumMatchStatus.AUTO_MATCHED),
+            candidatesResult = Result.success(listOf(candidate))
+        )
+        val viewModel = viewModel(albumRepository = albumRepository)
+        backgroundScope.launch(dispatcher) { viewModel.uiState.collect {} }
+
+        viewModel.showAlbumDetails("album-1")
+        advanceUntilIdle()
+        viewModel.requestReleaseCandidates("album-1")
+        advanceUntilIdle()
+        assertEquals(listOf("album-1"), albumRepository.searchReleaseCandidatesCalls)
+
+        // Refreshing metadata for an already-matched album never flips it to
+        // NEEDS_REVIEW, so the auto-load path in init{} won't reissue this search -
+        // without reloadReleaseCandidatesIfOpenForAlbum this would leave the picker
+        // stuck on its stale "loading" state forever.
+        viewModel.refreshAlbumMetadata("album-1")
+        advanceUntilIdle()
+
+        assertEquals(listOf("album-1"), albumRepository.refreshMetadataCalls)
+        assertEquals(listOf("album-1", "album-1"), albumRepository.searchReleaseCandidatesCalls)
+        assertEquals(listOf(candidate), viewModel.uiState.value.albumMatchCandidates?.candidates)
+        assertEquals(false, viewModel.uiState.value.albumMatchCandidates?.isLoading)
+    }
+
+    @Test
+    fun `choosing a release invalidates cached candidates so reopening the picker re-searches`() = runTest {
+        val candidate = AlbumReleaseCandidate(collectionId = "collection-1", collectionName = "Blonde", artistName = "Frank Ocean")
+        val albumRepository = FakeAlbumRepository(
+            detail = albumDetail(id = "album-1", matchStatus = AlbumMatchStatus.AUTO_MATCHED),
+            candidatesResult = Result.success(listOf(candidate))
+        )
+        val viewModel = viewModel(albumRepository = albumRepository)
+        backgroundScope.launch(dispatcher) { viewModel.uiState.collect {} }
+
+        viewModel.showAlbumDetails("album-1")
+        advanceUntilIdle()
+        viewModel.requestReleaseCandidates("album-1")
+        advanceUntilIdle()
+        assertEquals(listOf("album-1"), albumRepository.searchReleaseCandidatesCalls)
+
+        viewModel.chooseAlbumRelease("album-1", "collection-1")
+        advanceUntilIdle()
+        assertEquals(null, viewModel.uiState.value.albumMatchCandidates)
+
+        viewModel.requestReleaseCandidates("album-1")
+        advanceUntilIdle()
+
+        assertEquals(listOf("album-1", "album-1"), albumRepository.searchReleaseCandidatesCalls)
+    }
+
+    @Test
+    fun `refreshing one album's metadata does not clobber a different album's open picker`() = runTest {
+        val candidateForB = AlbumReleaseCandidate(collectionId = "collection-b", collectionName = "Channel Orange", artistName = "Frank Ocean")
+        val albumRepository = FakeAlbumRepository(
+            detail = albumDetail(id = "album-1", matchStatus = AlbumMatchStatus.AUTO_MATCHED),
+            candidatesResult = Result.success(listOf(candidateForB))
+        )
+        val viewModel = viewModel(albumRepository = albumRepository)
+        backgroundScope.launch(dispatcher) { viewModel.uiState.collect {} }
+
+        viewModel.showAlbumDetails("album-1")
+        advanceUntilIdle()
+
+        // The user switches away from album-1 (whose refresh is still in flight below)
+        // and opens album-2's picker instead.
+        viewModel.requestReleaseCandidates("album-2")
+        advanceUntilIdle()
+        assertEquals("album-2", viewModel.uiState.value.albumMatchCandidates?.albumId)
+
+        // album-1's stale refresh finally resolves - it must not touch album-2's state.
+        viewModel.refreshAlbumMetadata("album-1")
+        advanceUntilIdle()
+
+        assertEquals("album-2", viewModel.uiState.value.albumMatchCandidates?.albumId)
+        assertEquals(listOf(candidateForB), viewModel.uiState.value.albumMatchCandidates?.candidates)
+    }
+
+    @Test
+    fun `refreshing all album metadata reloads a manually requested picker for the open album`() = runTest {
+        val candidate = AlbumReleaseCandidate(collectionId = "collection-1", collectionName = "Blonde", artistName = "Frank Ocean")
+        val albumRepository = FakeAlbumRepository(
+            detail = albumDetail(id = "album-1", matchStatus = AlbumMatchStatus.AUTO_MATCHED),
+            candidatesResult = Result.success(listOf(candidate))
+        )
+        val viewModel = viewModel(albumRepository = albumRepository)
+        backgroundScope.launch(dispatcher) { viewModel.uiState.collect {} }
+
+        viewModel.showAlbumDetails("album-1")
+        advanceUntilIdle()
+        viewModel.requestReleaseCandidates("album-1")
+        advanceUntilIdle()
+        assertEquals(listOf("album-1"), albumRepository.searchReleaseCandidatesCalls)
+
+        viewModel.refreshAllAlbumMetadata()
+        advanceUntilIdle()
+
+        assertEquals(1, albumRepository.refreshAllMetadataCallCount)
+        assertEquals(listOf("album-1", "album-1"), albumRepository.searchReleaseCandidatesCalls)
+        assertEquals(listOf(candidate), viewModel.uiState.value.albumMatchCandidates?.candidates)
+    }
+
+    @Test
     fun `refreshing album metadata delegates to the repository`() = runTest {
         val albumRepository = FakeAlbumRepository()
         val viewModel = viewModel(albumRepository = albumRepository)
