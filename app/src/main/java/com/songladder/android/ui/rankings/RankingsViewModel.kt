@@ -383,19 +383,23 @@ class RankingsViewModel(
     // Without this, clearing albumCandidatesState to null after a refresh would leave a
     // manually opened "Change release" picker (requestReleaseCandidates) stuck loading
     // forever with no way to retry. Reissue the search directly instead when that picker
-    // was open for the album that was just refreshed.
+    // was open for the album that was just refreshed - and only touch state that actually
+    // belongs to that album, so a refresh for one album can't clobber a different album's
+    // picker that happens to be open (e.g. the user switched dialogs while this refresh
+    // was still in flight).
     private fun reloadReleaseCandidatesIfOpenForAlbum(albumId: String?) {
-        val wasOpenForThisAlbum = albumId != null && albumCandidatesState.value?.albumId == albumId
+        if (albumId == null || albumCandidatesState.value?.albumId != albumId) return
         albumCandidatesState.value = null
-        if (wasOpenForThisAlbum && albumId != null) {
-            loadAlbumMatchCandidatesIfNeeded(albumId)
-        }
+        loadAlbumMatchCandidatesIfNeeded(albumId)
     }
+
+    private var candidateSearchJob: Job? = null
 
     private fun loadAlbumMatchCandidatesIfNeeded(albumId: String) {
         if (albumCandidatesState.value?.albumId == albumId) return
         albumCandidatesState.value = AlbumMatchCandidatesState(albumId = albumId, isLoading = true)
-        viewModelScope.launch {
+        candidateSearchJob?.cancel()
+        candidateSearchJob = viewModelScope.launch {
             albumRepository.searchReleaseCandidates(albumId)
                 .onSuccess { candidates ->
                     albumCandidatesState.update { current ->
